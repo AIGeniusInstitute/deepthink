@@ -38,7 +38,9 @@ import {
   deleteSession,
   getSessionProviderId,
   setSessionProviderId,
+  getUserById,
 } from './db.js';
+import { DEFAULT_LANGUAGE } from './i18n-languages.js';
 import { isApiError } from './agent-output-parser.js';
 import type { ClaudeProviderConfig } from './runtime-config.js';
 import { loadUserMcpServers } from './mcp-utils.js';
@@ -230,6 +232,12 @@ export interface ContainerInput {
   plugins?: Array<{ type: 'local'; path: string }>;
   /** Runtime context audit bootstrap; agent-runner enriches it with SDK usage. */
   contextAudit?: ClaudeContextAudit;
+  /**
+   * User's preferred response language (BCP-47-ish code, e.g. 'zh-CN', 'en').
+   * Injected into the agent's system prompt as a "respond in this language"
+   * directive. Defaults to 'zh-CN' when undefined.
+   */
+  userLanguage?: string;
 }
 
 export interface ContainerOutput {
@@ -1008,8 +1016,12 @@ export async function runContainerAgent(
       });
       // Derive a new input with docker-runtime plugins injected; never mutate
       // the caller's `input` object (queue/log/retry paths reuse the same ref).
+      const ownerLanguage = group.created_by
+        ? getUserById(group.created_by)?.language ?? DEFAULT_LANGUAGE
+        : DEFAULT_LANGUAGE;
       const dockerInput: ContainerInput = {
         ...input,
+        userLanguage: input.userLanguage ?? ownerLanguage,
         plugins: group.created_by
           ? loadUserPlugins(group.created_by, { runtime: 'docker' })
           : [],
@@ -1799,8 +1811,12 @@ export async function runHostAgent(
       // prepareHostPlugins mirrors the docker path's pre-spawn materialize so
       // a freshly-enabled v2 user (no runtime/ on disk yet) doesn't see 0
       // plugins.
+      const ownerLanguage = group.created_by
+        ? getUserById(group.created_by)?.language ?? DEFAULT_LANGUAGE
+        : DEFAULT_LANGUAGE;
       const hostInput: ContainerInput = {
         ...input,
+        userLanguage: input.userLanguage ?? ownerLanguage,
         plugins: prepareHostPlugins(group.created_by),
         contextAudit: hostClaudeContextPlan.audit,
       };

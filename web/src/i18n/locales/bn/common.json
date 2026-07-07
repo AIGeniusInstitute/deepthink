@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "বাতিল",
+    "confirm": "নিশ্চিত করুন",
+    "save": "সংরক্ষণ",
+    "saving": "সংরক্ষণ করা হচ্ছে...",
+    "delete": "মুছুন",
+    "edit": "সম্পাদনা",
+    "close": "বন্ধ করুন",
+    "open": "খুলুন",
+    "loading": "লোড হচ্ছে...",
+    "retry": "পুনঃচেষ্টা",
+    "back": "পিছনে",
+    "next": "পরবর্তী",
+    "previous": "পূর্ববর্তী",
+    "submit": "জমা দিন",
+    "reset": "রিসেট",
+    "search": "অনুসন্ধান",
+    "copy": "কপি",
+    "copied": "কপি হয়েছে",
+    "yes": "হ্যাঁ",
+    "no": "না",
+    "all": "সব",
+    "none": "কিছুই না",
+    "ok": "ঠিক আছে"
+  },
+  "nav": {
+    "chat": "চ্যাট",
+    "settings": "সেটিংস",
+    "tasks": "কাজ",
+    "memory": "স্মৃতি",
+    "monitor": "মনিটর",
+    "skills": "Skills",
+    "mcpServers": "MCP সার্ভার",
+    "users": "ব্যবহারকারী",
+    "files": "ফাইল"
+  },
+  "login": {
+    "title": "লগইন",
+    "subtitle": "DeepThink-এ সাইন ইন করুন",
+    "username": "ব্যবহারকারীর নাম",
+    "password": "পাসওয়ার্ড",
+    "submit": "সাইন ইন",
+    "register": "নিবন্ধন",
+    "logout": "লগআউট",
+    "errors": {
+      "invalid": "ব্যবহারকারীর নাম বা পাসওয়ার্ড ভুল",
+      "locked": "অ্যাকাউন্ট লক করা, পরে আবার চেষ্টা করুন",
+      "network": "নেটওয়ার্ক ত্রুটি, অনুগ্রহ করে পুনঃচেষ্টা করুন"
+    }
+  },
+  "register": {
+    "title": "নিবন্ধন",
+    "subtitle": "নতুন অ্যাকাউন্ট তৈরি করুন",
+    "username": "ব্যবহারকারীর নাম",
+    "password": "পাসওয়ার্ড",
+    "confirmPassword": "পাসওয়ার্ড নিশ্চিত করুন",
+    "inviteCode": "আমন্ত্রণ কোড",
+    "submit": "নিবন্ধন",
+    "backToLogin": "লগইনে ফিরে যান",
+    "errors": {
+      "usernameTaken": "ব্যবহারকারীর নাম ইতিমধ্যে ব্যবহৃত হচ্ছে",
+      "passwordMismatch": "পাসওয়ার্ড মেলে না",
+      "invalidInvite": "অবৈধ আমন্ত্রণ কোড"
+    }
+  },
+  "setup": {
+    "title": "সেটআপ",
+    "adminAccount": "অ্যাডমিন অ্যাকাউন্ট তৈরি করুন",
+    "claudeConfig": "Claude কনফিগার করুন",
+    "imChannels": "IM চ্যানেল কনফিগার করুন",
+    "welcome": "DeepThink-এ স্বাগতম",
+    "getStarted": "শুরু করুন"
+  },
+  "chat": {
+    "inputPlaceholder": "বার্তা লিখুন, পাঠাতে Enter, নতুন লাইনের জন্য Shift+Enter",
+    "thinking": "ভাবছে",
+    "send": "পাঠান",
+    "stop": "থামুন",
+    "clearMessages": "কথোপকথন মুছুন",
+    "attachments": "সংযুক্তি",
+    "uploadFile": "ফাইল আপলোড",
+    "noMessages": "নতুন কথোপকথন শুরু করুন",
+    "regenerate": "পুনরায় তৈরি",
+    "copyMessage": "বার্তা কপি",
+    "deleteMessage": "বার্তা মুছুন",
+    "tokenUsage": "Token ব্যবহার"
+  },
+  "settings": {
+    "title": "সেটিংস",
+    "sections": {
+      "profile": "প্রোফাইল",
+      "appearance": "অবয়ব",
+      "language": "ভাষা",
+      "claude": "মডেল সরবরাহকারী",
+      "im": "IM চ্যানেল",
+      "tasks": "কাজ",
+      "system": "সিস্টেম",
+      "users": "ব্যবহারকারী",
+      "audit": "অডিট লগ",
+      "invites": "আমন্ত্রণ কোড",
+      "groups": "গ্রুপ",
+      "mcpServers": "MCP সার্ভার",
+      "skills": "Skills",
+      "plugins": "প্লাগইন",
+      "billing": "বিলিং"
+    },
+    "language": {
+      "title": "ইন্টারফেস ভাষা",
+      "description": "ইন্টারফেসের ভাষা নির্বাচন করুন। এজেন্টও এই ভাষায় উত্তর দেবে।",
+      "selectPlaceholder": "ভাষা নির্বাচন করুন",
+      "appliedNotice": "ভাষা পরিবর্তিত হয়েছে",
+      "rtlNotice": "ডান-থেকে-বাম লেআউটে পরিবর্তিত হয়েছে"
+    },
+    "profile": {
+      "username": "ব্যবহারকারীর নাম",
+      "displayName": "প্রদর্শিত নাম",
+      "avatar": "অবতার",
+      "updateSuccess": "প্রোফাইল আপডেট হয়েছে"
+    },
+    "appearance": {
+      "theme": "থিম",
+      "light": "হালকা",
+      "dark": "গাঢ়",
+      "system": "সিস্টেম",
+      "assistantName": "সহকারীর নাম",
+      "assistantAvatar": "সহকারীর অবতার"
+    }
+  },
+  "status": {
+    "online": "অনলাইন",
+    "offline": "অফলাইন",
+    "connecting": "সংযুক্ত হচ্ছে",
+    "reconnecting": "পুনঃসংযোগ",
+    "connected": "সংযুক্ত",
+    "disconnected": "সংযোগ বিচ্ছিন্ন"
+  },
+  "errors": {
+    "networkFailure": "নেটওয়ার্ক অনুরোধ ব্যর্থ",
+    "unknown": "অজানা ত্রুটি",
+    "forbidden": "নিষিদ্ধ",
+    "notFound": "পাওয়া যায়নি",
+    "serverError": "সার্ভার ত্রুটি",
+    "timeout": "অনুরোধের সময় শেষ"
+  }
+}

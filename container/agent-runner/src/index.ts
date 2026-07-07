@@ -34,6 +34,7 @@ import type {
   StreamEvent,
 } from './types.js';
 import type { ClaudeContextAudit } from './stream-event.types.js';
+import { buildLanguageDirective } from './i18n-directive.js';
 export type { StreamEventType, StreamEvent } from './types.js';
 
 import { sanitizeFilename, generateFallbackName, formatLocalNow, isSuspectTruncatedStreamResult, AssistantTextTracker } from './utils.js';
@@ -1446,6 +1447,10 @@ async function runQuery(
     ...(containerInput.agentId
       ? [{ name: 'agent-override.md', text: CONVERSATION_AGENT_BLOCK }]
       : []),
+    {
+      name: 'response-language.md',
+      text: buildLanguageDirective(containerInput.userLanguage),
+    },
   ];
   const systemPromptAppend = promptPieces.map((piece) => piece.text).join('\n');
   const promptAudit = buildPromptAudit(promptPieces);

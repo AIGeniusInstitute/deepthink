@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "save": "Salvar",
+    "saving": "Salvando...",
+    "delete": "Excluir",
+    "edit": "Editar",
+    "close": "Fechar",
+    "open": "Abrir",
+    "loading": "Carregando...",
+    "retry": "Tentar novamente",
+    "back": "Voltar",
+    "next": "Próximo",
+    "previous": "Anterior",
+    "submit": "Enviar",
+    "reset": "Redefinir",
+    "search": "Pesquisar",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "yes": "Sim",
+    "no": "Não",
+    "all": "Todos",
+    "none": "Nenhum",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "Chat",
+    "settings": "Configurações",
+    "tasks": "Tarefas",
+    "memory": "Memória",
+    "monitor": "Monitor",
+    "skills": "Skills",
+    "mcpServers": "Servidores MCP",
+    "users": "Usuários",
+    "files": "Arquivos"
+  },
+  "login": {
+    "title": "Entrar",
+    "subtitle": "Acesse o DeepThink",
+    "username": "Usuário",
+    "password": "Senha",
+    "submit": "Entrar",
+    "register": "Registrar",
+    "logout": "Sair",
+    "errors": {
+      "invalid": "Usuário ou senha inválidos",
+      "locked": "Conta bloqueada, tente novamente mais tarde",
+      "network": "Erro de rede, tente novamente"
+    }
+  },
+  "register": {
+    "title": "Registrar",
+    "subtitle": "Criar uma nova conta",
+    "username": "Usuário",
+    "password": "Senha",
+    "confirmPassword": "Confirmar senha",
+    "inviteCode": "Código de convite",
+    "submit": "Registrar",
+    "backToLogin": "Voltar para o login",
+    "errors": {
+      "usernameTaken": "Nome de usuário já em uso",
+      "passwordMismatch": "As senhas não coincidem",
+      "invalidInvite": "Código de convite inválido"
+    }
+  },
+  "setup": {
+    "title": "Configuração",
+    "adminAccount": "Criar conta de administrador",
+    "claudeConfig": "Configurar Claude",
+    "imChannels": "Configurar canais de mensagens",
+    "welcome": "Bem-vindo ao DeepThink",
+    "getStarted": "Começar"
+  },
+  "chat": {
+    "inputPlaceholder": "Digite uma mensagem, Enter para enviar, Shift+Enter para nova linha",
+    "thinking": "Pensando",
+    "send": "Enviar",
+    "stop": "Parar",
+    "clearMessages": "Limpar conversa",
+    "attachments": "Anexos",
+    "uploadFile": "Enviar arquivo",
+    "noMessages": "Inicie uma nova conversa",
+    "regenerate": "Regenerar",
+    "copyMessage": "Copiar mensagem",
+    "deleteMessage": "Excluir mensagem",
+    "tokenUsage": "Uso de Token"
+  },
+  "settings": {
+    "title": "Configurações",
+    "sections": {
+      "profile": "Perfil",
+      "appearance": "Aparência",
+      "language": "Idioma",
+      "claude": "Provedor de modelo",
+      "im": "Canais de mensagens",
+      "tasks": "Tarefas",
+      "system": "Sistema",
+      "users": "Usuários",
+      "audit": "Registro de auditoria",
+      "invites": "Códigos de convite",
+      "groups": "Grupos",
+      "mcpServers": "Servidores MCP",
+      "skills": "Skills",
+      "plugins": "Plugins",
+      "billing": "Faturamento"
+    },
+    "language": {
+      "title": "Idioma da interface",
+      "description": "Escolha o idioma da interface. O agente também responderá neste idioma.",
+      "selectPlaceholder": "Selecionar idioma",
+      "appliedNotice": "Idioma alterado",
+      "rtlNotice": "Alterado para layout da direita para a esquerda"
+    },
+    "profile": {
+      "username": "Usuário",
+      "displayName": "Nome de exibição",
+      "avatar": "Avatar",
+      "updateSuccess": "Perfil atualizado"
+    },
+    "appearance": {
+      "theme": "Tema",
+      "light": "Claro",
+      "dark": "Escuro",
+      "system": "Sistema",
+      "assistantName": "Nome do assistente",
+      "assistantAvatar": "Avatar do assistente"
+    }
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "connecting": "Conectando",
+    "reconnecting": "Reconectando",
+    "connected": "Conectado",
+    "disconnected": "Desconectado"
+  },
+  "errors": {
+    "networkFailure": "Falha na solicitação de rede",
+    "unknown": "Erro desconhecido",
+    "forbidden": "Proibido",
+    "notFound": "Não encontrado",
+    "serverError": "Erro do servidor",
+    "timeout": "Tempo limite da solicitação"
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Annulla",
+    "confirm": "Conferma",
+    "save": "Salva",
+    "saving": "Salvataggio...",
+    "delete": "Elimina",
+    "edit": "Modifica",
+    "close": "Chiudi",
+    "open": "Apri",
+    "loading": "Caricamento...",
+    "retry": "Riprova",
+    "back": "Indietro",
+    "next": "Avanti",
+    "previous": "Precedente",
+    "submit": "Invia",
+    "reset": "Reimposta",
+    "search": "Cerca",
+    "copy": "Copia",
+    "copied": "Copiato",
+    "yes": "Sì",
+    "no": "No",
+    "all": "Tutti",
+    "none": "Nessuno",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "Chat",
+    "settings": "Impostazioni",
+    "tasks": "Attività",
+    "memory": "Memoria",
+    "monitor": "Monitor",
+    "skills": "Competenze",
+    "mcpServers": "Server MCP",
+    "users": "Utenti",
+    "files": "File"
+  },
+  "login": {
+    "title": "Accedi",
+    "subtitle": "Accedi a DeepThink",
+    "username": "Nome utente",
+    "password": "Password",
+    "submit": "Accedi",
+    "register": "Registrati",
+    "logout": "Esci",
+    "errors": {
+      "invalid": "Nome utente o password non validi",
+      "locked": "Account bloccato, riprova più tardi",
+      "network": "Errore di rete, riprova"
+    }
+  },
+  "register": {
+    "title": "Registrati",
+    "subtitle": "Crea un nuovo account",
+    "username": "Nome utente",
+    "password": "Password",
+    "confirmPassword": "Conferma password",
+    "inviteCode": "Codice invito",
+    "submit": "Registrati",
+    "backToLogin": "Torna al login",
+    "errors": {
+      "usernameTaken": "Nome utente già in uso",
+      "passwordMismatch": "Le password non corrispondono",
+      "invalidInvite": "Codice invito non valido"
+    }
+  },
+  "setup": {
+    "title": "Configurazione",
+    "adminAccount": "Crea account amministratore",
+    "claudeConfig": "Configura Claude",
+    "imChannels": "Configura canali IM",
+    "welcome": "Benvenuto in DeepThink",
+    "getStarted": "Inizia"
+  },
+  "chat": {
+    "inputPlaceholder": "Scrivi un messaggio, Enter per inviare, Shift+Enter per nuova riga",
+    "thinking": "Pensando",
+    "send": "Invia",
+    "stop": "Ferma",
+    "clearMessages": "Cancella conversazione",
+    "attachments": "Allegati",
+    "uploadFile": "Carica file",
+    "noMessages": "Inizia una nuova conversazione",
+    "regenerate": "Rigenera",
+    "copyMessage": "Copia messaggio",
+    "deleteMessage": "Elimina messaggio",
+    "tokenUsage": "Utilizzo Token"
+  },
+  "settings": {
+    "title": "Impostazioni",
+    "sections": {
+      "profile": "Profilo",
+      "appearance": "Aspetto",
+      "language": "Lingua",
+      "claude": "Provider del modello",
+      "im": "Canali IM",
+      "tasks": "Attività",
+      "system": "Sistema",
+      "users": "Utenti",
+      "audit": "Registro audit",
+      "invites": "Codici invito",
+      "groups": "Gruppi",
+      "mcpServers": "Server MCP",
+      "skills": "Competenze",
+      "plugins": "Plugin",
+      "billing": "Fatturazione"
+    },
+    "language": {
+      "title": "Lingua interfaccia",
+      "description": "Scegli la lingua dell'interfaccia. Anche l'agent risponderà in questa lingua.",
+      "selectPlaceholder": "Seleziona lingua",
+      "appliedNotice": "Lingua cambiata",
+      "rtlNotice": "Passato a layout da destra a sinistra"
+    },
+    "profile": {
+      "username": "Nome utente",
+      "displayName": "Nome visualizzato",
+      "avatar": "Avatar",
+      "updateSuccess": "Profilo aggiornato"
+    },
+    "appearance": {
+      "theme": "Tema",
+      "light": "Chiaro",
+      "dark": "Scuro",
+      "system": "Sistema",
+      "assistantName": "Nome assistente",
+      "assistantAvatar": "Avatar assistente"
+    }
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "connecting": "In connessione",
+    "reconnecting": "Riconnessione",
+    "connected": "Connesso",
+    "disconnected": "Disconnesso"
+  },
+  "errors": {
+    "networkFailure": "Richiesta di rete fallita",
+    "unknown": "Errore sconosciuto",
+    "forbidden": "Accesso negato",
+    "notFound": "Non trovato",
+    "serverError": "Errore del server",
+    "timeout": "Timeout della richiesta"
+  }
+}

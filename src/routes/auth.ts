@@ -88,6 +88,7 @@ export function toUserPublic(u: User): UserPublic {
     ai_avatar_color: u.ai_avatar_color ?? null,
     ai_avatar_url: u.ai_avatar_url ?? null,
     default_require_mention: u.default_require_mention,
+    language: u.language,
     created_at: u.created_at,
     last_login_at: u.last_login_at,
     last_active_at: null,
@@ -616,6 +617,9 @@ authRoutes.put('/profile', authMiddleware, async (c) => {
   }
   if (validation.data.default_require_mention !== undefined) {
     updates.default_require_mention = validation.data.default_require_mention;
+  }
+  if (validation.data.language !== undefined) {
+    updates.language = validation.data.language;
   }
   if (Object.keys(updates).length === 0) {
     return c.json({ error: 'No fields to update' }, 400);

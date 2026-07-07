@@ -1,0 +1,89 @@
+**Languages**: [English](README.md) · [简体中文](README.zh-CN.md) · [Español](README.es.md) · [हिन्दी](README.hi.md) · [العربية](README.ar.md) · [বাংলা](README.bn.md) · [Português](README.pt.md) · [Русский](README.ru.md) · [日本語](README.ja.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Bahasa Indonesia](README.id.md) · [اردو](README.ur.md) · [मराठी](README.mr.md) · [తెలుగు](README.te.md) · [Türkçe](README.tr.md) · [தமிழ்](README.ta.md) · [한국어](README.ko.md) · [Tiếng Việt](README.vi.md) · [Italiano](README.it.md) · [Polski](README.pl.md) · [Українська](README.uk.md) · [Nederlands](README.nl.md) · [ไทย](README.th.md) · [ગુજરાતી](README.gu.md) · [Bahasa Melayu](README.ms.md) · [ಕನ್ನಡ](README.kn.md) · [فارسی](README.fa.md) · [Svenska](README.sv.md) · [Čeština](README.cs.md)
+
+<p align="center">
+  <img src="web/public/icons/logo-1024.png" alt="DeepThink Logo" width="400" />
+</p>
+
+<h1 align="center">DeepThink</h1>
+
+<p align="center">
+  Samohostowany wieloużytkownikowy lokalny system AI Agent Loop Engineering (desktop + przeglądarka + mobilne) / Powered By AI Genius Institute
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge" alt="License" /></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" /></a>
+  <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <a href="https://github.com/AIGeniusInstitute/deep-think/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
+</p>
+
+---
+
+## Czym jest DeepThink
+
+DeepThink to samohostowany wieloużytkownikowy system AI Agent zbudowany na [Claude Agent SDK](https://github.com/anthropics/claude-code/tree/main/packages/claude-agent-sdk). Pakuje pełny runtime Claude Code jako usługę dostępną z Feishu, Telegrama, QQ, DingTalk, WeChat i interfejsu webowego. Obsługuje odczyt/zapis plików, sterowanie terminalem, automatyzację przeglądarki, wielorundowe wnioskowanie oraz ekosystem narzędzi MCP.
+
+Zasada projektowa: **nie reimplementuj możliwości Agenta, lecz bezpośrednio reużywaj Claude Code**. Pod maską działa pełny runtime Claude Code CLI, a nie wrapper API czy łańcuch promptów. Ulepszenia Claude Code (nowe narzędzia, silniejsze wnioskowanie, większe wsparcie MCP) automatycznie, bez adapterów, przenoszą się do DeepThink.
+
+### Główne cechy
+
+- **Natywny silnik Claude Code** — oparty na Claude Agent SDK, wewnętrzny runtime to pełny Claude Code CLI, dziedziczy wszystkie możliwości
+- **Izolacja wielu użytkowników** — workspace per użytkownik, kanały IM per użytkownik, system uprawnień RBAC, rejestracja kodem zaproszenia, dziennik audytu
+- **Routing sześciu kanałów** — Feishu WebSocket, Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, interfejs web
+- **Load balancing wielu providerów** — wielu providerów Claude API, trzy strategie (round-robin / weighted / failover) z automatycznym health-check
+- **Billing i statystyki użycia** — pełny billing (subskrypcja, portfel, kody wymiany), śledzenie tokenów per model z wykresami
+- **Mobilne PWA** — zoptymalizowane na mobilne, instalacja na ekranie głównym jednym kliknięciem, obsługa iOS i Android
+
+## Szybki start
+
+### Wymagania wstępne
+
+**Wymagane**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (dla trybu container; niepotrzebny dla trybu host admina), klucz Claude API (oficjalny Anthropic lub kompatybilna usługa relay).
+
+**Opcjonalne**: dane uwierzytelniające aplikacji enterprise Feishu, Telegram Bot Token, dane QQ Bot, dane DingTalk, token WeChat iLink — tylko gdy potrzebujesz integracji IM.
+
+> Claude Code CLI nie wymaga ręcznej instalacji — zależność projektu od Claude Agent SDK zawiera pełny runtime CLI, instalowany automatycznie przy pierwszym `make start`.
+
+### Instalacja i uruchomienie
+
+```bash
+# 1. Sklonuj repozytorium
+git clone https://github.com/AIGeniusInstitute/deep-think.git
+cd deepthink
+
+# 2. Uruchomienie jednym poleceniem (pierwszy raz instaluje zależności + kompiluje)
+make start
+```
+
+Otwórz http://localhost:3000 i podążaj za kreatorem konfiguracji: utwórz administratora (brak domyślnego konta), skonfiguruj Claude API i opcjonalnie kanały IM. Wszystko konfiguruje się z interfejsu webowego, bez plików konfiguracyjnych. Klucze API są szyfrowane AES-256-GCM.
+
+### Aktywacja trybu container
+
+Administrator używa domyślnie trybu host (bez Dockera). Tryb container jest wymagany dla użytkowników member (aktywowany automatycznie po rejestracji):
+
+```bash
+./container/build.sh
+```
+
+Po rejestracji nowego użytkownika główne workspace w trybie container (`home-{userId}`) jest tworzone automatycznie, bez dodatkowej konfiguracji.
+
+## Przegląd architektury
+
+DeepThink składa się z trzech niezależnych projektów Node.js:
+
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): router wiadomości (polling 2s + deduplikacja), kolejka współbieżna (maks. 20 kontenerów + 5 procesów hosta), harmonogram zadań (cron / interval / once), serwer WebSocket do streamingu w czasie rzeczywistym i terminala, uwierzytelnianie bcrypt + HMAC Cookie, RBAC, konfiguracja szyfrowana AES-256-GCM. Dane w SQLite (tryb WAL, schema v1→v33).
+- **Frontend** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, react-markdown, mermaid, recharts, xterm.js, mobilne PWA.
+- **Agent Runner** (`container/agent-runner/`): silnik wykonawczy w kontenerze Docker lub jako proces hosta. Wywołuje `query()` z Claude Agent SDK, emituje 14 typów StreamEvent i udostępnia 12 narzędzi MCP procesowi nadrzędnemu przez IPC plikowe z atomowymi zapisami.
+
+Sześć kanałów IM trafia do routera, jest deduplikowane i kolejkowane, ProviderPool wybiera klucz API i uruchamia kontener lub proces hosta. Zdarzenia streamingu wracają do klientów webowych przez WebSocket lub do kanałów przez API IM.
+
+## Pełna dokumentacja
+
+Pełny przewodnik znajdziesz tutaj:
+
+- [Pełna wersja angielska](README.md)
+- [Pełna wersja 简体中文](README.zh-CN.md)
+
+---
+
+**Languages**: [English](README.md) · [简体中文](README.zh-CN.md) · [Español](README.es.md) · [हिन्दी](README.hi.md) · [العربية](README.ar.md) · [বাংলা](README.bn.md) · [Português](README.pt.md) · [Русский](README.ru.md) · [日本語](README.ja.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Bahasa Indonesia](README.id.md) · [اردو](README.ur.md) · [मराठी](README.mr.md) · [తెలుగు](README.te.md) · [Türkçe](README.tr.md) · [தமிழ்](README.ta.md) · [한국어](README.ko.md) · [Tiếng Việt](README.vi.md) · [Italiano](README.it.md) · [Polski](README.pl.md) · [Українська](README.uk.md) · [Nederlands](README.nl.md) · [ไทย](README.th.md) · [ગુજરાતી](README.gu.md) · [Bahasa Melayu](README.ms.md) · [ಕನ್ನಡ](README.kn.md) · [فارسی](README.fa.md) · [Svenska](README.sv.md) · [Čeština](README.cs.md)

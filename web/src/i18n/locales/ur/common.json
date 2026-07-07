@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "منسوخ کریں",
+    "confirm": "تصدیق کریں",
+    "save": "محفوظ کریں",
+    "saving": "محفوظ ہو رہا ہے...",
+    "delete": "حذف کریں",
+    "edit": "ترمیم",
+    "close": "بند کریں",
+    "open": "کھلیں",
+    "loading": "لوڈ ہو رہا ہے...",
+    "retry": "دوبارہ کوشش کریں",
+    "back": "واپس",
+    "next": "آگے",
+    "previous": "پچھلا",
+    "submit": "جمع کریں",
+    "reset": "ری سیٹ",
+    "search": "تلاش",
+    "copy": "کاپی",
+    "copied": "کاپی ہو گیا",
+    "yes": "ہاں",
+    "no": "نہیں",
+    "all": "تمام",
+    "none": "کوئی نہیں",
+    "ok": "ٹھیک ہے"
+  },
+  "nav": {
+    "chat": "چیٹ",
+    "settings": "ترتیبات",
+    "tasks": "کام",
+    "memory": "یاداشت",
+    "monitor": "مانیٹر",
+    "skills": "مہارتیں",
+    "mcpServers": "MCP سرورز",
+    "users": "صارفین",
+    "files": "فائلیں"
+  },
+  "login": {
+    "title": "لاگ ان",
+    "subtitle": "DeepThink میں سائن ان کریں",
+    "username": "صارف نام",
+    "password": "پاس ورڈ",
+    "submit": "سائن ان",
+    "register": "رجسٹر",
+    "logout": "لاگ آؤٹ",
+    "errors": {
+      "invalid": "غلط صارف نام یا پاس ورڈ",
+      "locked": "اکاؤنٹ بند ہے، بعد میں کوشش کریں",
+      "network": "نیٹ ورک خاموشی، دوبارہ کوشش کریں"
+    }
+  },
+  "register": {
+    "title": "رجسٹر",
+    "subtitle": "نیا اکاؤنٹ بنائیں",
+    "username": "صارف نام",
+    "password": "پاس ورڈ",
+    "confirmPassword": "پاس ورڈ تصدیق کریں",
+    "inviteCode": "دعوت کوڈ",
+    "submit": "رجسٹر",
+    "backToLogin": "لاگ ان پر واپس",
+    "errors": {
+      "usernameTaken": "صارف نام پہلے سے موجود ہے",
+      "passwordMismatch": "پاس ورڈز مماثل نہیں",
+      "invalidInvite": "غلط دعوت کوڈ"
+    }
+  },
+  "setup": {
+    "title": "سیٹ اپ",
+    "adminAccount": "ایڈمن اکاؤنٹ بنائیں",
+    "claudeConfig": "Claude کنفیگر کریں",
+    "imChannels": "IM چینلز کنفیگر کریں",
+    "welcome": "DeepThink میں خوش آمدید",
+    "getStarted": "شروع کریں"
+  },
+  "chat": {
+    "inputPlaceholder": "پیام ٹائپ کریں، بھیجنے کے لیے Enter، نئی لائن کے لیے Shift+Enter",
+    "thinking": "سوچ رہا ہے",
+    "send": "بھیجیں",
+    "stop": "روکیں",
+    "clearMessages": "بات چیت مٹائیں",
+    "attachments": "منسلکات",
+    "uploadFile": "فائل اپ لوڈ کریں",
+    "noMessages": "نئی بات چیت شروع کریں",
+    "regenerate": "دوبارہ بنائیں",
+    "copyMessage": "پیام کاپی کریں",
+    "deleteMessage": "پیام حذف کریں",
+    "tokenUsage": "Token استعمال"
+  },
+  "settings": {
+    "title": "ترتیبات",
+    "sections": {
+      "profile": "پروفائل",
+      "appearance": "ظاہری شکل",
+      "language": "زبان",
+      "claude": "ماڈل فراہم کنندہ",
+      "im": "IM چینلز",
+      "tasks": "کام",
+      "system": "سسٹم",
+      "users": "صارفین",
+      "audit": "آڈٹ لاگ",
+      "invites": "دعوت کوڈز",
+      "groups": "گروپس",
+      "mcpServers": "MCP سرورز",
+      "skills": "مہارتیں",
+      "plugins": "پلگ انز",
+      "billing": "بلنگ"
+    },
+    "language": {
+      "title": "انٹرفیس زبان",
+      "description": "انٹرفیس زبان منتخب کریں۔ ایجنٹ بھی اسی زبان میں جواب دے گا۔",
+      "selectPlaceholder": "زبان منتخب کریں",
+      "appliedNotice": "زبان تبدیل ہ گئی",
+      "rtlNotice": "رائٹ ٹو لیفٹ لے آؤٹ پر تبدیل ہو گیا"
+    },
+    "profile": {
+      "username": "صارف نام",
+      "displayName": "دکھائی دینے والا نام",
+      "avatar": "اوتار",
+      "updateSuccess": "پروفائل اپ ڈیٹ ہو گیا"
+    },
+    "appearance": {
+      "theme": "تھیم",
+      "light": "روشن",
+      "dark": "تاریک",
+      "system": "سسٹم",
+      "assistantName": "اسسٹنٹ نام",
+      "assistantAvatar": "اسسٹنٹ اوتار"
+    }
+  },
+  "status": {
+    "online": "آن لائن",
+    "offline": "آف لائن",
+    "connecting": "کنیکٹ ہو رہا ہے",
+    "reconnecting": "دوبارہ کنیکٹ ہو رہا ہے",
+    "connected": "کنیکٹڈ",
+    "disconnected": "ڈس کنیکٹڈ"
+  },
+  "errors": {
+    "networkFailure": "نیٹ ورک درخواست ناکام",
+    "unknown": "نامعلوم خاموشی",
+    "forbidden": "منع",
+    "notFound": "نہیں ملا",
+    "serverError": "سرور خاموشی",
+    "timeout": "درخواست ٹائم آؤٹ"
+  }
+}

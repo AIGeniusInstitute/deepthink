@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Annuleren",
+    "confirm": "Bevestigen",
+    "save": "Opslaan",
+    "saving": "Opslaan...",
+    "delete": "Verwijderen",
+    "edit": "Bewerken",
+    "close": "Sluiten",
+    "open": "Openen",
+    "loading": "Laden...",
+    "retry": "Opnieuw",
+    "back": "Terug",
+    "next": "Volgende",
+    "previous": "Vorige",
+    "submit": "Verzenden",
+    "reset": "Resetten",
+    "search": "Zoeken",
+    "copy": "Kopiëren",
+    "copied": "Gekopieerd",
+    "yes": "Ja",
+    "no": "Nee",
+    "all": "Alle",
+    "none": "Geen",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "Chat",
+    "settings": "Instellingen",
+    "tasks": "Taken",
+    "memory": "Geheugen",
+    "monitor": "Monitor",
+    "skills": "Vaardigheden",
+    "mcpServers": "MCP-servers",
+    "users": "Gebruikers",
+    "files": "Bestanden"
+  },
+  "login": {
+    "title": "Inloggen",
+    "subtitle": "Log in op DeepThink",
+    "username": "Gebruikersnaam",
+    "password": "Wachtwoord",
+    "submit": "Inloggen",
+    "register": "Registreren",
+    "logout": "Uitloggen",
+    "errors": {
+      "invalid": "Ongeldige gebruikersnaam of wachtwoord",
+      "locked": "Account geblokkeerd, probeer het later opnieuw",
+      "network": "Netwerkfout, probeer het opnieuw"
+    }
+  },
+  "register": {
+    "title": "Registreren",
+    "subtitle": "Maak een nieuw account aan",
+    "username": "Gebruikersnaam",
+    "password": "Wachtwoord",
+    "confirmPassword": "Wachtwoord bevestigen",
+    "inviteCode": "Uitnodigingscode",
+    "submit": "Registreren",
+    "backToLogin": "Terug naar inloggen",
+    "errors": {
+      "usernameTaken": "Gebruikersnaam al in gebruik",
+      "passwordMismatch": "Wachtwoorden komen niet overeen",
+      "invalidInvite": "Ongeldige uitnodigingscode"
+    }
+  },
+  "setup": {
+    "title": "Instellen",
+    "adminAccount": "Beheerdersaccount aanmaken",
+    "claudeConfig": "Claude configureren",
+    "imChannels": "IM-kanalen configureren",
+    "welcome": "Welkom bij DeepThink",
+    "getStarted": "Aan de slag"
+  },
+  "chat": {
+    "inputPlaceholder": "Typ een bericht, Enter om te verzenden, Shift+Enter voor nieuwe regel",
+    "thinking": "Denkt na",
+    "send": "Verzenden",
+    "stop": "Stoppen",
+    "clearMessages": "Gesprek wissen",
+    "attachments": "Bijlagen",
+    "uploadFile": "Bestand uploaden",
+    "noMessages": "Start een nieuw gesprek",
+    "regenerate": "Opnieuw genereren",
+    "copyMessage": "Bericht kopiëren",
+    "deleteMessage": "Bericht verwijderen",
+    "tokenUsage": "Token-gebruik"
+  },
+  "settings": {
+    "title": "Instellingen",
+    "sections": {
+      "profile": "Profiel",
+      "appearance": "Weergave",
+      "language": "Taal",
+      "claude": "Modelprovider",
+      "im": "IM-kanalen",
+      "tasks": "Taken",
+      "system": "Systeem",
+      "users": "Gebruikers",
+      "audit": "Auditlogboek",
+      "invites": "Uitnodigingscodes",
+      "groups": "Groepen",
+      "mcpServers": "MCP-servers",
+      "skills": "Vaardigheden",
+      "plugins": "Plug-ins",
+      "billing": "Facturatie"
+    },
+    "language": {
+      "title": "Interfacetaal",
+      "description": "Kies de interfacetaal. De agent zal ook in deze taal antwoorden.",
+      "selectPlaceholder": "Taal selecteren",
+      "appliedNotice": "Taal gewijzigd",
+      "rtlNotice": "Overschakeld naar rechts-naar-links layout"
+    },
+    "profile": {
+      "username": "Gebruikersnaam",
+      "displayName": "Weergavenaam",
+      "avatar": "Avatar",
+      "updateSuccess": "Profiel bijgewerkt"
+    },
+    "appearance": {
+      "theme": "Thema",
+      "light": "Licht",
+      "dark": "Donker",
+      "system": "Systeem",
+      "assistantName": "Naam assistent",
+      "assistantAvatar": "Avatar assistent"
+    }
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "connecting": "Verbinden",
+    "reconnecting": "Opnieuw verbinden",
+    "connected": "Verbonden",
+    "disconnected": "Verbinding verbroken"
+  },
+  "errors": {
+    "networkFailure": "Netwerkverzoek mislukt",
+    "unknown": "Onbekende fout",
+    "forbidden": "Verboden",
+    "notFound": "Niet gevonden",
+    "serverError": "Serverfout",
+    "timeout": "Time-out van verzoek"
+  }
+}

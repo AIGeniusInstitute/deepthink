@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Hủy",
+    "confirm": "Xác nhận",
+    "save": "Lưu",
+    "saving": "Đang lưu...",
+    "delete": "Xóa",
+    "edit": "Sửa",
+    "close": "Đóng",
+    "open": "Mở",
+    "loading": "Đang tải...",
+    "retry": "Thử lại",
+    "back": "Quay lại",
+    "next": "Tiếp theo",
+    "previous": "Trước",
+    "submit": "Gửi",
+    "reset": "Đặt lại",
+    "search": "Tìm kiếm",
+    "copy": "Sao chép",
+    "copied": "Đã sao chép",
+    "yes": "Có",
+    "no": "Không",
+    "all": "Tất cả",
+    "none": "Không có",
+    "ok": "Đồng ý"
+  },
+  "nav": {
+    "chat": "Trò chuyện",
+    "settings": "Cài đặt",
+    "tasks": "Nhiệm vụ",
+    "memory": "Bộ nhớ",
+    "monitor": "Giám sát",
+    "skills": "Kỹ năng",
+    "mcpServers": "Máy chủ MCP",
+    "users": "Người dùng",
+    "files": "Tệp"
+  },
+  "login": {
+    "title": "Đăng nhập",
+    "subtitle": "Đăng nhập vào DeepThink",
+    "username": "Tên người dùng",
+    "password": "Mật khẩu",
+    "submit": "Đăng nhập",
+    "register": "Đăng ký",
+    "logout": "Đăng xuất",
+    "errors": {
+      "invalid": "Tên người dùng hoặc mật khẩu không hợp lệ",
+      "locked": "Tài khoản đã bị khóa, vui lòng thử lại sau",
+      "network": "Lỗi mạng, vui lòng thử lại"
+    }
+  },
+  "register": {
+    "title": "Đăng ký",
+    "subtitle": "Tạo tài khoản mới",
+    "username": "Tên người dùng",
+    "password": "Mật khẩu",
+    "confirmPassword": "Xác nhận mật khẩu",
+    "inviteCode": "Mã mời",
+    "submit": "Đăng ký",
+    "backToLogin": "Quay lại đăng nhập",
+    "errors": {
+      "usernameTaken": "Tên người dùng đã được sử dụng",
+      "passwordMismatch": "Mật khẩu không khớp",
+      "invalidInvite": "Mã mời không hợp lệ"
+    }
+  },
+  "setup": {
+    "title": "Thiết lập",
+    "adminAccount": "Tạo tài khoản quản trị",
+    "claudeConfig": "Cấu hình Claude",
+    "imChannels": "Cấu hình kênh IM",
+    "welcome": "Chào mừng đến với DeepThink",
+    "getStarted": "Bắt đầu"
+  },
+  "chat": {
+    "inputPlaceholder": "Nhập tin nhắn, Enter để gửi, Shift+Enter để xuống dòng",
+    "thinking": "Đang suy nghĩ",
+    "send": "Gửi",
+    "stop": "Dừng",
+    "clearMessages": "Xóa cuộc trò chuyện",
+    "attachments": "Tệp đính kèm",
+    "uploadFile": "Tải tệp lên",
+    "noMessages": "Bắt đầu cuộc trò chuyện mới",
+    "regenerate": "Tạo lại",
+    "copyMessage": "Sao chép tin nhắn",
+    "deleteMessage": "Xóa tin nhắn",
+    "tokenUsage": "Sử dụng Token"
+  },
+  "settings": {
+    "title": "Cài đặt",
+    "sections": {
+      "profile": "Hồ sơ",
+      "appearance": "Giao diện",
+      "language": "Ngôn ngữ",
+      "claude": "Nhà cung cấp mô hình",
+      "im": "Kênh IM",
+      "tasks": "Nhiệm vụ",
+      "system": "Hệ thống",
+      "users": "Người dùng",
+      "audit": "Nhật ký kiểm toán",
+      "invites": "Mã mời",
+      "groups": "Nhóm",
+      "mcpServers": "Máy chủ MCP",
+      "skills": "Kỹ năng",
+      "plugins": "Tiện ích",
+      "billing": "Thanh toán"
+    },
+    "language": {
+      "title": "Ngôn ngữ giao diện",
+      "description": "Chọn ngôn ngữ giao diện. Agent cũng sẽ trả lời bằng ngôn ngữ này.",
+      "selectPlaceholder": "Chọn ngôn ngữ",
+      "appliedNotice": "Đã chuyển ngôn ngữ",
+      "rtlNotice": "Đã chuyển sang bố cục phải-sang-trái"
+    },
+    "profile": {
+      "username": "Tên người dùng",
+      "displayName": "Tên hiển thị",
+      "avatar": "Ảnh đại diện",
+      "updateSuccess": "Đã cập nhật hồ sơ"
+    },
+    "appearance": {
+      "theme": "Giao diện",
+      "light": "Sáng",
+      "dark": "Tối",
+      "system": "Hệ thống",
+      "assistantName": "Tên trợ lý",
+      "assistantAvatar": "Ảnh trợ lý"
+    }
+  },
+  "status": {
+    "online": "Trực tuyến",
+    "offline": "Ngoại tuyến",
+    "connecting": "Đang kết nối",
+    "reconnecting": "Đang kết nối lại",
+    "connected": "Đã kết nối",
+    "disconnected": "Đã ngắt kết nối"
+  },
+  "errors": {
+    "networkFailure": "Yêu cầu mạng thất bại",
+    "unknown": "Lỗi không xác định",
+    "forbidden": "Bị cấm",
+    "notFound": "Không tìm thấy",
+    "serverError": "Lỗi máy chủ",
+    "timeout": "Hết thời gian yêu cầu"
+  }
+}

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { api, apiFetch } from '../api/client';
 import { clearApiCaches } from '../utils/pwaCache';
 import { clearMessageSnapshotCache } from '../utils/messageSnapshotCache';
+import { APP_I18N } from '../i18n/config';
+import { DEFAULT_LANGUAGE } from '../i18n/languages';
 
 export type Permission =
   | 'manage_system_config'
@@ -33,6 +35,7 @@ export interface UserPublic {
   ai_avatar_color: string | null;
   ai_avatar_url: string | null;
   default_require_mention: boolean;
+  language: string;
 }
 
 export interface AppearanceConfig {
@@ -62,7 +65,7 @@ interface AuthState {
   checkStatus: () => Promise<void>;
   setupAdmin: (username: string, password: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  updateProfile: (payload: { username?: string; display_name?: string; avatar_emoji?: string | null; avatar_color?: string | null; avatar_url?: string | null; ai_name?: string | null; ai_avatar_emoji?: string | null; ai_avatar_color?: string | null; ai_avatar_url?: string | null; default_require_mention?: boolean }) => Promise<void>;
+  updateProfile: (payload: { username?: string; display_name?: string; avatar_emoji?: string | null; avatar_color?: string | null; avatar_url?: string | null; ai_name?: string | null; ai_avatar_emoji?: string | null; ai_avatar_color?: string | null; ai_avatar_url?: string | null; default_require_mention?: boolean; language?: string }) => Promise<void>;
   uploadAvatar: (file: File, target?: 'user' | 'ai') => Promise<string>;
   fetchAppearance: () => Promise<void>;
   hasPermission: (permission: Permission) => boolean;
@@ -138,6 +141,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         try {
           const data = await api.get<{ user: UserPublic; setupStatus?: SetupStatus; appearance?: AppearanceConfig }>('/api/auth/me');
           set({ authenticated: true, user: data.user, setupStatus: data.setupStatus ?? null, appearance: data.appearance ?? null, initialized: true, checking: false });
+          // Sync i18n language to the persisted backend preference, overriding
+          // browser detection on first login (localStorage may be empty or stale).
+          const preferred = data.user.language || DEFAULT_LANGUAGE;
+          if (APP_I18N.language !== preferred) {
+            void APP_I18N.changeLanguage(preferred);
+          }
           return;
         } catch (err) {
           const status =

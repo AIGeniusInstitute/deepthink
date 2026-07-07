@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "إلغاء",
+    "confirm": "تأكيد",
+    "save": "حفظ",
+    "saving": "جارٍ الحفظ...",
+    "delete": "حذف",
+    "edit": "تعديل",
+    "close": "إغلاق",
+    "open": "فتح",
+    "loading": "جارٍ التحميل...",
+    "retry": "إعادة المحاولة",
+    "back": "رجوع",
+    "next": "التالي",
+    "previous": "السابق",
+    "submit": "إرسال",
+    "reset": "إعادة تعيين",
+    "search": "بحث",
+    "copy": "نسخ",
+    "copied": "تم النسخ",
+    "yes": "نعم",
+    "no": "لا",
+    "all": "الكل",
+    "none": "لا شيء",
+    "ok": "موافق"
+  },
+  "nav": {
+    "chat": "المحادثة",
+    "settings": "الإعدادات",
+    "tasks": "المهام",
+    "memory": "الذاكرة",
+    "monitor": "المراقبة",
+    "skills": "Skills",
+    "mcpServers": "خوادم MCP",
+    "users": "المستخدمون",
+    "files": "الملفات"
+  },
+  "login": {
+    "title": "تسجيل الدخول",
+    "subtitle": "سجّل الدخول إلى DeepThink",
+    "username": "اسم المستخدم",
+    "password": "كلمة المرور",
+    "submit": "تسجيل الدخول",
+    "register": "تسجيل",
+    "logout": "تسجيل الخروج",
+    "errors": {
+      "invalid": "اسم المستخدم أو كلمة المرور غير صحيحة",
+      "locked": "تم قفل الحساب، حاول مرة أخرى لاحقًا",
+      "network": "خطأ في الشبكة، يرجى إعادة المحاولة"
+    }
+  },
+  "register": {
+    "title": "تسجيل",
+    "subtitle": "إنشاء حساب جديد",
+    "username": "اسم المستخدم",
+    "password": "كلمة المرور",
+    "confirmPassword": "تأكيد كلمة المرور",
+    "inviteCode": "رمز الدعوة",
+    "submit": "تسجيل",
+    "backToLogin": "العودة إلى تسجيل الدخول",
+    "errors": {
+      "usernameTaken": "اسم المستخدم مستخدم بالفعل",
+      "passwordMismatch": "كلمتا المرور غير متطابقتين",
+      "invalidInvite": "رمز الدعوة غير صالح"
+    }
+  },
+  "setup": {
+    "title": "الإعداد",
+    "adminAccount": "إنشاء حساب المسؤول",
+    "claudeConfig": "تكوين Claude",
+    "imChannels": "تكوين قنوات المراسلة",
+    "welcome": "مرحبًا بك في DeepThink",
+    "getStarted": "البدء"
+  },
+  "chat": {
+    "inputPlaceholder": "اكتب رسالة، اضغط Enter للإرسال، Shift+Enter لسطر جديد",
+    "thinking": "يفكّر",
+    "send": "إرسال",
+    "stop": "إيقاف",
+    "clearMessages": "مسح المحادثة",
+    "attachments": "المرفقات",
+    "uploadFile": "رفع ملف",
+    "noMessages": "ابدأ محادثة جديدة",
+    "regenerate": "إعادة التوليد",
+    "copyMessage": "نسخ الرسالة",
+    "deleteMessage": "حذف الرسالة",
+    "tokenUsage": "استخدام Token"
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "sections": {
+      "profile": "الملف الشخصي",
+      "appearance": "المظهر",
+      "language": "اللغة",
+      "claude": "مزود النموذج",
+      "im": "قنوات المراسلة",
+      "tasks": "المهام",
+      "system": "النظام",
+      "users": "المستخدمون",
+      "audit": "سجل التدقيق",
+      "invites": "رموز الدعوة",
+      "groups": "المجموعات",
+      "mcpServers": "خوادم MCP",
+      "skills": "Skills",
+      "plugins": "الإضافات",
+      "billing": "الفوترة"
+    },
+    "language": {
+      "title": "لغة الواجهة",
+      "description": "اختر لغة الواجهة. سيرد المساعد بهذه اللغة أيضًا.",
+      "selectPlaceholder": "اختر اللغة",
+      "appliedNotice": "تم تغيير اللغة",
+      "rtlNotice": "تم التبديل إلى تخطيط من اليمين إلى اليسار"
+    },
+    "profile": {
+      "username": "اسم المستخدم",
+      "displayName": "الاسم المعروض",
+      "avatar": "الصورة الرمزية",
+      "updateSuccess": "تم تحديث الملف الشخصي"
+    },
+    "appearance": {
+      "theme": "السمة",
+      "light": "فاتح",
+      "dark": "داكن",
+      "system": "النظام",
+      "assistantName": "اسم المساعد",
+      "assistantAvatar": "صورة المساعد"
+    }
+  },
+  "status": {
+    "online": "متصل",
+    "offline": "غير متصل",
+    "connecting": "جارٍ الاتصال",
+    "reconnecting": "إعادة الاتصال",
+    "connected": "متصل",
+    "disconnected": "غير متصل"
+  },
+  "errors": {
+    "networkFailure": "فشل طلب الشبكة",
+    "unknown": "خطأ غير معروف",
+    "forbidden": "محظور",
+    "notFound": "غير موجود",
+    "serverError": "خطأ في الخادم",
+    "timeout": "انتهت مهلة الطلب"
+  }
+}

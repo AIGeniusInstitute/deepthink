@@ -217,6 +217,11 @@ export interface User {
    * Existing groups are not retroactively changed.
    */
   default_require_mention: boolean;
+  /**
+   * User's preferred UI and Agent response language (BCP-47-ish code).
+   * Defaults to 'zh-CN'. Must be one of SUPPORTED_LANGUAGES codes.
+   */
+  language: string;
   created_at: string;
   updated_at: string;
   last_login_at: string | null;
@@ -241,6 +246,8 @@ export interface UserPublic {
   ai_avatar_color: string | null;
   ai_avatar_url: string | null;
   default_require_mention: boolean;
+  /** User's preferred UI and Agent response language. */
+  language: string;
   created_at: string;
   last_login_at: string | null;
   last_active_at: string | null;

@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "ยกเลิก",
+    "confirm": "ยืนยัน",
+    "save": "บันทึก",
+    "saving": "กำลังบันทึก...",
+    "delete": "ลบ",
+    "edit": "แก้ไข",
+    "close": "ปิด",
+    "open": "เปิด",
+    "loading": "กำลังโหลด...",
+    "retry": "ลองอีกครั้",
+    "back": "ย้อนกลับ",
+    "next": "ถัดไป",
+    "previous": "ก่อนหน้า",
+    "submit": "ส่ง",
+    "reset": "รีเซ็ต",
+    "search": "ค้นหา",
+    "copy": "คัดลอก",
+    "copied": "คัดลอกแล้ว",
+    "yes": "ใช่",
+    "no": "ไม่",
+    "all": "ทั้งหมด",
+    "none": "ไม่มี",
+    "ok": "ตกลง"
+  },
+  "nav": {
+    "chat": "แชท",
+    "settings": "ตั้งค่า",
+    "tasks": "งาน",
+    "memory": "ความจำ",
+    "monitor": "มอนิเตอร์",
+    "skills": "ทักษะ",
+    "mcpServers": "MCP Servers",
+    "users": "ผู้ใช้",
+    "files": "ไฟล์"
+  },
+  "login": {
+    "title": "เข้าสู่ระบบ",
+    "subtitle": "เข้าสู่ระบบ DeepThink",
+    "username": "ชื่อผู้ใช้",
+    "password": "รหัสผ่าน",
+    "submit": "เข้าสู่ระบบ",
+    "register": "ลงทะเบียน",
+    "logout": "ออกจากระบบ",
+    "errors": {
+      "invalid": "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
+      "locked": "บัญชีถูกล็อก โปรดลองอีกครั้ในภายหลัง",
+      "network": "เครือข่ายผิดพลาด โปรดลองอีกครั้"
+    }
+  },
+  "register": {
+    "title": "ลงทะเบียน",
+    "subtitle": "สร้างบัญชีใหม่",
+    "username": "ชื่อผู้ใช้",
+    "password": "รหัสผ่าน",
+    "confirmPassword": "ยืนยันรหัสผ่าน",
+    "inviteCode": "รหัสเชิญ",
+    "submit": "ลงทะเบียน",
+    "backToLogin": "กลับสู่หน้าเข้าสู่ระบบ",
+    "errors": {
+      "usernameTaken": "ชื่อผู้ใช้นี้ถูกใช้แล้ว",
+      "passwordMismatch": "รหัสผ่านไม่ตรงกัน",
+      "invalidInvite": "รหัสเชิญไม่ถูกต้อง"
+    }
+  },
+  "setup": {
+    "title": "ตั้งค่าระบบ",
+    "adminAccount": "สร้างบัญชีผู้ดูแลระบบ",
+    "claudeConfig": "ตั้งค่า Claude",
+    "imChannels": "ตั้งค่าช่องทาง IM",
+    "welcome": "ยินดีต้อนรับสู่ DeepThink",
+    "getStarted": "เริ่มต้นใช้งาน"
+  },
+  "chat": {
+    "inputPlaceholder": "พิมพ์ข้อความ, กด Enter เพื่อส่ง, กด Shift+Enter เพื่อขึ้นบรรทัดใหม่",
+    "thinking": "กำลังคิด",
+    "send": "ส่ง",
+    "stop": "หยุด",
+    "clearMessages": "ล้างบทสนทนา",
+    "attachments": "ไฟล์แนบ",
+    "uploadFile": "อัปโหลดไฟล์",
+    "noMessages": "เริ่มบทสนทนาใหม่",
+    "regenerate": "สร้างใหม่",
+    "copyMessage": "คัดลอกข้อความ",
+    "deleteMessage": "ลบข้อความ",
+    "tokenUsage": "การใช้ Token"
+  },
+  "settings": {
+    "title": "ตั้งค่า",
+    "sections": {
+      "profile": "โปรไฟล์",
+      "appearance": "ลักษณะ",
+      "language": "ภาษา",
+      "claude": "ผู้ให้บริการโมเดล",
+      "im": "ช่องทาง IM",
+      "tasks": "งาน",
+      "system": "ระบบ",
+      "users": "ผู้ใช้",
+      "audit": "บันทึกการตรวจสอบ",
+      "invites": "รหัสเชิญ",
+      "groups": "กลุ่ม",
+      "mcpServers": "MCP Servers",
+      "skills": "ทักษะ",
+      "plugins": "ปลั๊กอิน",
+      "billing": "การเรียกเก็บเงิน"
+    },
+    "language": {
+      "title": "ภาษาของอินเทอร์เฟซ",
+      "description": "เลือกภาษาของอินเทอร์เฟซ เอเจนต์จะตอบกลับด้วยภาษานี้เช่นกัน",
+      "selectPlaceholder": "เลือกภาษา",
+      "appliedNotice": "เปลี่ยนภาษาแล้ว",
+      "rtlNotice": "สลับเป็นเลย์เอาต์จากขวาไปซ้าย"
+    },
+    "profile": {
+      "username": "ชื่อผู้ใช้",
+      "displayName": "ชื่อที่แสดง",
+      "avatar": "รูปประจำตัว",
+      "updateSuccess": "อัปเดตโปรไฟล์แล้ว"
+    },
+    "appearance": {
+      "theme": "ธีม",
+      "light": "สว่าง",
+      "dark": "มืด",
+      "system": "ระบบ",
+      "assistantName": "ชื่อผู้ช่วย",
+      "assistantAvatar": "รูปผู้ช่วย"
+    }
+  },
+  "status": {
+    "online": "ออนไลน์",
+    "offline": "ออฟไลน์",
+    "connecting": "กำลังเชื่อมต่อ",
+    "reconnecting": "กำลังเชื่อมต่อใหม่",
+    "connected": "เชื่อมต่อแล้ว",
+    "disconnected": "ไม่ได้เชื่อมต่อ"
+  },
+  "errors": {
+    "networkFailure": "คำขอเครือข่ายล้มเหลว",
+    "unknown": "ข้อผิดพลาดที่ไม่ทราบสาเหตุ",
+    "forbidden": "ไม่ได้รับอนุญาต",
+    "notFound": "ไม่พบ",
+    "serverError": "เซิร์ฟเวอร์ผิดพลาด",
+    "timeout": "คำขอหมดเวลา"
+  }
+}

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { ALL_PERMISSIONS } from './permissions.js';
 import type { Permission } from './types.js';
 import { MAX_GROUP_NAME_LEN } from './web-context.js';
+import { LANGUAGE_CODES } from './i18n-languages.js';
 
 export const TaskPatchSchema = z.object({
   chat_jid: z.string().min(1).optional(),
@@ -342,6 +343,7 @@ export const ProfileUpdateSchema = z.object({
     .nullable()
     .optional(),
   default_require_mention: z.boolean().optional(),
+  language: z.enum(LANGUAGE_CODES as [string, ...string[]]).optional(),
 });
 
 export const PermissionValueSchema = z

@@ -10,6 +10,7 @@ import { ProfileSection } from '../components/settings/ProfileSection';
 import { SecuritySection } from '../components/settings/SecuritySection';
 import { AboutSection } from '../components/settings/AboutSection';
 import { AppearanceSection } from '../components/settings/AppearanceSection';
+import { LanguageSection } from '../components/settings/LanguageSection';
 import { SystemSettingsSection } from '../components/settings/SystemSettingsSection';
 import { UserChannelsSection } from '../components/settings/UserChannelsSection';
 import { GroupsPage } from './GroupsPage';
@@ -25,7 +26,7 @@ import { MonitorPage } from './MonitorPage';
 import { Card, CardContent } from '@/components/ui/card';
 import type { SettingsTab } from '../components/settings/types';
 
-const VALID_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'about', 'bindings', 'usage', 'monitor'];
+const VALID_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'about', 'bindings', 'usage', 'monitor', 'language'];
 const SYSTEM_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system'];
 const FULLPAGE_TABS: SettingsTab[] = ['groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'bindings', 'usage', 'monitor'];
 
@@ -67,6 +68,7 @@ export function SettingsPage() {
   const mobileTabs = useMemo(() => {
     const tabs: { key: SettingsTab; label: string }[] = [];
     tabs.push({ key: 'profile', label: '个人偏好' });
+    tabs.push({ key: 'language', label: '语言' });
     tabs.push({ key: 'my-channels', label: '消息通道' });
     tabs.push({ key: 'security', label: '安全' });
     if (canManageSystemConfig) {
@@ -122,6 +124,7 @@ export function SettingsPage() {
     bindings: 'IM 绑定',
     usage: '用量统计',
     monitor: '系统监控',
+    language: '语言',
   };
 
   return (
@@ -216,6 +219,7 @@ export function SettingsPage() {
                   {activeTab === 'my-channels' && <UserChannelsSection />}
                   {activeTab === 'security' && <SecuritySection />}
                   {activeTab === 'about' && <AboutSection />}
+                  {activeTab === 'language' && <LanguageSection />}
                 </CardContent>
               </Card>
             </div>

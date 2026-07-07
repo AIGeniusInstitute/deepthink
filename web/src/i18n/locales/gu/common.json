@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "રદ કરો",
+    "confirm": "પુષ્ટિ કરો",
+    "save": "સાચવો",
+    "saving": "સાચવી રહ્યા છીએ...",
+    "delete": "કાઢી નાખો",
+    "edit": "સંપાદિત કરો",
+    "close": "બંધ કરો",
+    "open": "ખોલો",
+    "loading": "લોડ થઈ રહ્યું છે...",
+    "retry": "ફરી પ્રયાસ કરો",
+    "back": "પાછળ",
+    "next": "આગળનું",
+    "previous": "પાછલું",
+    "submit": "સબમિટ કરો",
+    "reset": "રીસેટ કરો",
+    "search": "શોધો",
+    "copy": "કૉપિ કરો",
+    "copied": "કૉપિ થયું",
+    "yes": "હા",
+    "no": "ના",
+    "all": "બધા",
+    "none": "કોઈ નહીં",
+    "ok": "બરાબર"
+  },
+  "nav": {
+    "chat": "ચેટ",
+    "settings": "સેટિંગ્સ",
+    "tasks": "કાર્યો",
+    "memory": "મેમરી",
+    "monitor": "મૉનિટર",
+    "skills": "કૌશલ્યો",
+    "mcpServers": "MCP Servers",
+    "users": "વપરાશકર્તાઓ",
+    "files": "ફાઇલો"
+  },
+  "login": {
+    "title": "લૉગિન",
+    "subtitle": "DeepThink માં સાઇન ઇન કરો",
+    "username": "વપરાશકર્તાનામ",
+    "password": "પાસવર્ડ",
+    "submit": "સાઇન ઇન કરો",
+    "register": "નોંધણી કરો",
+    "logout": "લૉગ આઉટ",
+    "errors": {
+      "invalid": "અયોગ્ય વપરાશકર્તાનામ અથવા પાસવર્ડ",
+      "locked": "ખાતું લૉક થયું છે, પછીથી ફરી પ્રયાસ કરો",
+      "network": "નેટવર્ક ભૂલ, ફરી પ્રયાસ કરો"
+    }
+  },
+  "register": {
+    "title": "નોંધણી",
+    "subtitle": "નવું ખાતું બનાવો",
+    "username": "વપરાશકર્તાનામ",
+    "password": "પાસવર્ડ",
+    "confirmPassword": "પાસવર્ડની પુષ્ટિ કરો",
+    "inviteCode": "આમંત્રણ કોડ",
+    "submit": "નોંધણી કરો",
+    "backToLogin": "લૉગિન પર પાછળ",
+    "errors": {
+      "usernameTaken": "વપરાશકર્તાનામ પહેલેથી લઈ લેવામાં આવ્યું છે",
+      "passwordMismatch": "પાસવર્ડ મેળ ખાતા નથી",
+      "invalidInvite": "અયોગ્ય આમંત્રણ કોડ"
+    }
+  },
+  "setup": {
+    "title": "સેટઅપ",
+    "adminAccount": "વ્યવસ્થાપક ખાતું બનાવો",
+    "claudeConfig": "Claude રૂપરેખાંકિત કરો",
+    "imChannels": "IM ચેનલ્સ રૂપરેખાંકિત કરો",
+    "welcome": "DeepThink માં આપનું સ્વાગત છે",
+    "getStarted": "શરૂ કરો"
+  },
+  "chat": {
+    "inputPlaceholder": "સંદેશ લખો, મોકલવા માટે Enter, નવી લાઇન માટે Shift+Enter",
+    "thinking": "વિચારી રહ્યા છે",
+    "send": "મોકલો",
+    "stop": "રોકો",
+    "clearMessages": "વાર્તાલાપ સાફ કરો",
+    "attachments": "જોડાણો",
+    "uploadFile": "ફાઇલ અપલોડ કરો",
+    "noMessages": "નવો વાર્તાલાપ શરૂ કરો",
+    "regenerate": "ફરી જનરેટ કરો",
+    "copyMessage": "સંદેશ કૉપિ કરો",
+    "deleteMessage": "સંદેશ કાઢી નાખો",
+    "tokenUsage": "Token વપરાશ"
+  },
+  "settings": {
+    "title": "સેટિંગ્સ",
+    "sections": {
+      "profile": "પ્રોફાઇલ",
+      "appearance": "દેખાવ",
+      "language": "ભાષા",
+      "claude": "મોડેલ પ્રદાતા",
+      "im": "IM ચેનલ્સ",
+      "tasks": "કાર્યો",
+      "system": "સિસ્ટમ",
+      "users": "વપરાશકર્તાઓ",
+      "audit": "ઑડિટ લૉગ",
+      "invites": "આમંત્રણ કોડ",
+      "groups": "જૂથો",
+      "mcpServers": "MCP Servers",
+      "skills": "કૌશલ્યો",
+      "plugins": "પ્લગઇન્સ",
+      "billing": "બિલિંગ"
+    },
+    "language": {
+      "title": "ઇન્ટરફેસ ભાષા",
+      "description": "ઇન્ટરફેસ ભાષા પસંદ કરો. એજન્ટ પણ આ ભાષામાં જવાબ આપશે.",
+      "selectPlaceholder": "ભાષા પસંદ કરો",
+      "appliedNotice": "ભાષા બદલાઈ",
+      "rtlNotice": "જમણેથી ડાબે લેઆઉટ પર સ્વિચ થયું"
+    },
+    "profile": {
+      "username": "વપરાશકર્તાનામ",
+      "displayName": "દર્શાવનામ",
+      "avatar": "અવતાર",
+      "updateSuccess": "પ્રોફાઇલ અપડેટ થયું"
+    },
+    "appearance": {
+      "theme": "થીમ",
+      "light": "હળવી",
+      "dark": "ઘેરી",
+      "system": "સિસ્ટમ",
+      "assistantName": "સહાયકનું નામ",
+      "assistantAvatar": "સહાયક અવતાર"
+    }
+  },
+  "status": {
+    "online": "ઑનલાઇન",
+    "offline": "ઑફલાઇન",
+    "connecting": "જોડાઈ રહ્યા છે",
+    "reconnecting": "ફરી જોડાઈ રહ્યા છે",
+    "connected": "જોડાયેલા",
+    "disconnected": "જોડાણ તૂટ્યું"
+  },
+  "errors": {
+    "networkFailure": "નેટવર્ક વિનંતી નિષ્ફળ",
+    "unknown": "અજ્ઞાત ભૂલ",
+    "forbidden": "પ્રતિબંધિત",
+    "notFound": "મળ્યું નહીં",
+    "serverError": "સર્વર ભૂલ",
+    "timeout": "વિનંતી સમય સમાપ્ત"
+  }
+}

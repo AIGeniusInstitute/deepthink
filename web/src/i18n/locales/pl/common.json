@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Anuluj",
+    "confirm": "Potwierdź",
+    "save": "Zapisz",
+    "saving": "Zapisywanie...",
+    "delete": "Usuń",
+    "edit": "Edytuj",
+    "close": "Zamknij",
+    "open": "Otwórz",
+    "loading": "Ładowanie...",
+    "retry": "Ponów",
+    "back": "Wstecz",
+    "next": "Dalej",
+    "previous": "Poprzedni",
+    "submit": "Wyślij",
+    "reset": "Resetuj",
+    "search": "Szukaj",
+    "copy": "Kopiuj",
+    "copied": "Skopiowano",
+    "yes": "Tak",
+    "no": "Nie",
+    "all": "Wszystko",
+    "none": "Brak",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "Czat",
+    "settings": "Ustawienia",
+    "tasks": "Zadania",
+    "memory": "Pamięć",
+    "monitor": "Monitor",
+    "skills": "Umiejętności",
+    "mcpServers": "Serwery MCP",
+    "users": "Użytkownicy",
+    "files": "Pliki"
+  },
+  "login": {
+    "title": "Zaloguj",
+    "subtitle": "Zaloguj się do DeepThink",
+    "username": "Nazwa użytkownika",
+    "password": "Hasło",
+    "submit": "Zaloguj",
+    "register": "Zarejestruj",
+    "logout": "Wyloguj",
+    "errors": {
+      "invalid": "Nieprawidłowa nazwa użytkownika lub hasło",
+      "locked": "Konto zablokowane, spróbuj ponownie później",
+      "network": "Błąd sieci, spróbuj ponownie"
+    }
+  },
+  "register": {
+    "title": "Rejestracja",
+    "subtitle": "Utwórz nowe konto",
+    "username": "Nazwa użytkownika",
+    "password": "Hasło",
+    "confirmPassword": "Potwierdź hasło",
+    "inviteCode": "Kod zaproszenia",
+    "submit": "Zarejestruj",
+    "backToLogin": "Wróć do logowania",
+    "errors": {
+      "usernameTaken": "Nazwa użytkownika jest już zajęta",
+      "passwordMismatch": "Hasła nie są zgodne",
+      "invalidInvite": "Nieprawidłowy kod zaproszenia"
+    }
+  },
+  "setup": {
+    "title": "Konfiguracja",
+    "adminAccount": "Utwórz konto administratora",
+    "claudeConfig": "Skonfiguruj Claude",
+    "imChannels": "Skonfiguruj kanały IM",
+    "welcome": "Witamy w DeepThink",
+    "getStarted": "Rozpocznij"
+  },
+  "chat": {
+    "inputPlaceholder": "Wpisz wiadomość, Enter aby wysłać, Shift+Enter dla nowej linii",
+    "thinking": "Myśli",
+    "send": "Wyślij",
+    "stop": "Zatrzymaj",
+    "clearMessages": "Wyczyść rozmowę",
+    "attachments": "Załączniki",
+    "uploadFile": "Prześlij plik",
+    "noMessages": "Rozpocznij nową rozmowę",
+    "regenerate": "Wygeneruj ponownie",
+    "copyMessage": "Kopiuj wiadomość",
+    "deleteMessage": "Usuń wiadomość",
+    "tokenUsage": "Użycie Token"
+  },
+  "settings": {
+    "title": "Ustawienia",
+    "sections": {
+      "profile": "Profil",
+      "appearance": "Wygląd",
+      "language": "Język",
+      "claude": "Dostawca modelu",
+      "im": "Kanały IM",
+      "tasks": "Zadania",
+      "system": "System",
+      "users": "Użytkownicy",
+      "audit": "Dziennik audytu",
+      "invites": "Kody zaproszeń",
+      "groups": "Grupy",
+      "mcpServers": "Serwery MCP",
+      "skills": "Umiejętności",
+      "plugins": "Wtyczki",
+      "billing": "Rozliczenia"
+    },
+    "language": {
+      "title": "Język interfejsu",
+      "description": "Wybierz język interfejsu. Agent również będzie odpowiadać w tym języku.",
+      "selectPlaceholder": "Wybierz język",
+      "appliedNotice": "Język zmieniony",
+      "rtlNotice": "Przełączono na układ od prawej do lewej"
+    },
+    "profile": {
+      "username": "Nazwa użytkownika",
+      "displayName": "Nazwa wyświetlana",
+      "avatar": "Awatar",
+      "updateSuccess": "Profil zaktualizowany"
+    },
+    "appearance": {
+      "theme": "Motyw",
+      "light": "Jasny",
+      "dark": "Ciemny",
+      "system": "System",
+      "assistantName": "Nazwa asystenta",
+      "assistantAvatar": "Awatar asystenta"
+    }
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "connecting": "Łączenie",
+    "reconnecting": "Ponowne łączenie",
+    "connected": "Połączono",
+    "disconnected": "Rozłączono"
+  },
+  "errors": {
+    "networkFailure": "Żądanie sieciowe nie powiodło się",
+    "unknown": "Nieznany błąd",
+    "forbidden": "Zabronione",
+    "notFound": "Nie znaleziono",
+    "serverError": "Błąd serwera",
+    "timeout": "Przekroczono czas żądania"
+  }
+}
