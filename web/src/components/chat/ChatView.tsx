@@ -10,8 +10,7 @@ import { ContainerEnvPanel } from './ContainerEnvPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { PromptDialog } from '@/components/common/PromptDialog';
-import { ArrowLeft, FolderOpen, Link, MessageSquare, Monitor, Moon, MoreHorizontal, PanelRightClose, PanelRightOpen, Puzzle, Server, Sun, Terminal, Users, Variable, X } from 'lucide-react';
-import { useDisplayMode } from '../../hooks/useDisplayMode';
+import { ArrowLeft, FolderOpen, Link, MessageSquare, Monitor, Moon, MoreHorizontal, PanelRightClose, PanelRightOpen, Puzzle, Server, Sun, Terminal, Users, Variable, X } from 'lucide-react';import { useDisplayMode } from '../../hooks/useDisplayMode';
 import { useTheme } from '../../hooks/useTheme';
 import { cn } from '@/lib/utils';
 import { wsManager } from '../../api/ws';
@@ -26,8 +25,6 @@ import { ImBindingDialog } from './ImBindingDialog';
 import { TopicSidebar } from './TopicSidebar';
 import { showToast } from '../../utils/toast';
 import { getWorkspaceLastAgent, setWorkspaceLastAgent } from '../../utils/workspaceLastAgent';
-import { CHANNEL_LABEL } from '../settings/channel-meta';
-
 /** Sentinel value for binding the main conversation (vs. a specific agent) */
 const MAIN_BINDING = '__main__' as const;
 
@@ -564,40 +561,13 @@ export function ChatView({ groupJid, onBack, headerLeft }: ChatViewProps) {
         )}
         {headerLeft}
         <div className="flex-1 min-w-0">
-          <h2 className="font-semibold text-foreground text-[15px] truncate">{group.name}</h2>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>{isWaiting ? '正在思考...' : group.is_home ? '主 Agent' : 'Agent'}</span>
-            {!isWaiting && group.is_shared && (
-              <>
-                <span className="text-muted-foreground/40">·</span>
-                <span className="inline-flex items-center gap-0.5">
-                  <Users className="w-3 h-3" />
-                  {group.member_count ?? 0} 人协作
-                </span>
-              </>
-            )}
-            {!isWaiting && group.execution_mode && (
-              <>
-                <span className="text-muted-foreground/40">·</span>
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-medium border ${group.execution_mode === 'host' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800' : 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-800'}`}>
-                  {group.execution_mode === 'host' ? '宿主机' : 'Docker'}
-                </span>
-              </>
-            )}
-            {isOwnHome && imStatus && Object.entries(imStatus).some(([, v]) => v) && (
-              <>
-                <span className="text-muted-foreground/40">·</span>
-                {Object.entries(imStatus)
-                  .filter(([, connected]) => connected)
-                  .map(([channel]) => (
-                    <span key={channel} className="inline-flex items-center gap-0.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      {CHANNEL_LABEL[channel] ?? channel}
-                    </span>
-                  ))}
-              </>
-            )}
-          </div>
+          <h2 className="font-semibold text-foreground text-[16px] tracking-tight truncate">{group.name}</h2>
+          {isWaiting && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="w-1 h-1 rounded-full bg-foreground/60 animate-pulse" />
+              <span>思考中</span>
+            </div>
+          )}
         </div>
         {/* Desktop: toggle theme (light → dark → system) */}
         <button
