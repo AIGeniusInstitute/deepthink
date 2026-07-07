@@ -26,10 +26,10 @@ function readTheme(): Theme {
 }
 
 function readColorScheme(): ColorScheme {
-  if (typeof window === 'undefined') return 'orange';
+  if (typeof window === 'undefined') return 'neutral';
   const stored = window.localStorage.getItem(SCHEME_KEY);
   if (stored === 'default' || stored === 'orange' || stored === 'neutral') return stored;
-  return 'orange';
+  return 'neutral';
 }
 
 function readFontStyle(): FontStyle {
@@ -82,7 +82,7 @@ function subscribe(cb: () => void) {
 
 export function useTheme() {
   const theme = useSyncExternalStore(subscribe, readTheme, () => 'light' as Theme);
-  const colorScheme = useSyncExternalStore(subscribe, readColorScheme, () => 'orange' as ColorScheme);
+  const colorScheme = useSyncExternalStore(subscribe, readColorScheme, () => 'neutral' as ColorScheme);
   const fontStyle = useSyncExternalStore(subscribe, readFontStyle, () => 'default' as FontStyle);
 
   useEffect(() => { applyTheme(theme); }, [theme]);
@@ -106,7 +106,7 @@ export function useTheme() {
   }, []);
 
   const setColorScheme = useCallback((s: ColorScheme) => {
-    if (s === 'orange') window.localStorage.removeItem(SCHEME_KEY);
+    if (s === 'neutral') window.localStorage.removeItem(SCHEME_KEY);
     else window.localStorage.setItem(SCHEME_KEY, s);
     applyColorScheme(s);
     notify();

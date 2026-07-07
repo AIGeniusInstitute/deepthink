@@ -1419,10 +1419,13 @@ groupRoutes.delete('/:jid/messages/:messageId', authMiddleware, (c) => {
     return c.json({ error: 'Message not found' }, 404);
   }
   if (authUser.role !== 'admin') {
-    // AI messages (is_from_me=1) cannot be deleted by non-admin
-    // User messages can only be deleted by the sender
-    if (msg.is_from_me === 1 || (msg.sender && msg.sender !== authUser.id)) {
-      return c.json({ error: 'Permission denied' }, 403);
+    // 系统消息（sender='__system__'）任何用户都可删除——它们是产品状态提示，不属于任何人
+    const isSystemMessage = msg.sender === '__system__';
+    if (!isSystemMessage) {
+      // 普通消息：AI 消息不能删，用户消息只能删自己发的
+      if (msg.is_from_me === 1 || (msg.sender && msg.sender !== authUser.id)) {
+        return c.json({ error: 'Permission denied' }, 403);
+      }
     }
   }
 

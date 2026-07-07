@@ -11,6 +11,7 @@ import { ImageLightbox } from './ImageLightbox';
 import { mediumTap } from '../../hooks/useHaptic';
 import { useDisplayMode } from '../../hooks/useDisplayMode';
 import { formatThinkingDuration } from '../../utils/thinking-duration';
+import { resolveSystemMessage } from '../../lib/system-message-registry';
 
 const ShareImageDialog = lazy(() => import('./ShareImageDialog').then(m => ({ default: m.ShareImageDialog })));
 
@@ -201,28 +202,55 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
   };
 
 
-  // Context overflow system message
-  if (message.sender === '__system__' && message.content.startsWith('context_overflow:')) {
-    const errorMsg = message.content.replace(/^context_overflow:\s*/, '');
+  // System message — unified render with delete menu (covers context_overflow / agent_error / agent_max_retries / system_error / context_reset / system_info / query_interrupted)
+  if (message.sender === '__system__') {
+    const resolved = resolveSystemMessage(message.content);
+    const isError = resolved.style === 'error';
+    const banner = isError
+      ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800/60 border-l-red-500'
+      : 'bg-muted/40 border-border border-l-muted-foreground/40';
+    const titleColor = isError ? 'text-red-900 dark:text-red-200' : 'text-foreground';
+    const bodyColor = isError ? 'text-red-800 dark:text-red-300' : 'text-muted-foreground';
+    const badgeColor = isError ? 'text-red-600' : 'text-muted-foreground';
+    const iconBg = isError ? 'bg-red-500' : 'bg-muted-foreground/60';
+    const title = isError ? '系统错误' : '系统提示';
     return (
-      <div className="mb-6">
+      <div className="group relative mb-6">
         {showTime && (
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs text-muted-foreground">{time}</span>
-            <span className="text-xs font-medium text-red-600">系统消息</span>
+            <span className={`text-xs font-medium ${badgeColor}`}>系统消息</span>
           </div>
         )}
-        <div className="relative bg-red-50 dark:bg-red-950/30 rounded-xl border border-red-200 dark:border-red-800/60 border-l-[3px] border-l-red-500 px-5 py-4">
+        <div className={`relative rounded-xl border border-l-[3px] px-5 py-4 ${banner}`}>
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-              !
+            <div className={`flex-shrink-0 w-6 h-6 ${iconBg} rounded-full flex items-center justify-center text-white font-bold text-sm`}>
+              {isError ? '!' : 'i'}
             </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-semibold text-red-900 dark:text-red-200 mb-1">上下文溢出错误</h3>
-              <p className="text-sm text-red-800 dark:text-red-300 leading-relaxed">{errorMsg}</p>
+            <div className="flex-1 min-w-0">
+              <h3 className={`text-sm font-semibold mb-1 ${titleColor}`}>{title}</h3>
+              <p className={`text-sm leading-relaxed whitespace-pre-wrap break-words ${bodyColor}`}>{resolved.text}</p>
             </div>
+            <button
+              type="button"
+              onClick={handleMenuButton}
+              onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }); }}
+              className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity ml-1 self-start p-1.5 rounded-md hover:bg-foreground/10 text-muted-foreground hover:text-foreground"
+              aria-label="消息菜单"
+            >
+              <Ellipsis size={16} />
+            </button>
           </div>
         </div>
+        {contextMenu && (
+          <MessageContextMenu
+            content={message.content}
+            position={contextMenu}
+            onClose={() => setContextMenu(null)}
+            chatJid={message.chat_jid}
+            messageId={message.id}
+          />
+        )}
       </div>
     );
   }
