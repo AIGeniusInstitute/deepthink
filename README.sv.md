@@ -7,7 +7,7 @@
 <h1 align="center">DeepThink</h1>
 
 <p align="center">
-  Självhostat flervänligt lokalt AI Agent Loop Engineering-system (skrivbord + webbläsare + mobil) / Drivs av AI Genius Institute
+  Självhostat flervänligt lokalt AI Agent Loop Engineering-system (desktop + webbläsare + mobil) / Powered By AI Genius Institute
 </p>
 
 <p align="center">
@@ -19,30 +19,30 @@
 
 ---
 
-## Vad är DeepThink?
+## Vad är DeepThink
 
-DeepThink är ett självhostat, flervänligt AI Agent-system byggt ovanpå [Claude Agent SDK](https://github.com/anthropics/claude-code/tree/main/packages/claude-agent-sdk). Det omsluter hela Claude Code-runtime i en tjänst som är åtkomlig via Feishu, Telegram, QQ, DingTalk, WeChat och webbgränssnittet, med stöd för filläsning/skrivning, terminaloperationer, webbläsarautomation, flervalsresonemang och MCP-verktygsekosystem.
+DeepThink är ett självhostat flervänligt AI Agent-system byggt ovanpå [Claude Agent SDK](https://github.com/anthropics/claude-code/tree/main/packages/claude-agent-sdk). Det packar hela Claude Code-runtime som en tjänst som nås från Feishu, Telegram, QQ, DingTalk, WeChat och webbgränssnitt. Stöder filläsning/skrivning, terminalstyrning, webbläsarautomation, flerrunds resonemang och MCP-verktygsekosystem.
 
-Central designprincip: **omimplementera inte Agent-kapacitet, återanvänd Claude Code direkt**. Det som anropas under huven är hela Claude Code CLI-runtime, inte ett API-omslag eller prompt-kedja. Varje uppgradering av Claude Code — nya verktyg, starkare resonemang, mer MCP-stöd — gynnar DeepThink automatiskt utan anpassning.
+Designprincip: **implementera inte om Agentens förmågor, utan återanvänd Claude Code direkt**. Under huven körs hela Claude Code CLI-runtime, inte ett API-wrapper eller promptkedja. Uppgraderingar av Claude Code (nya verktyg, starkare resonemang, mer MCP-stöd) reflekteras automatiskt i DeepThink utan adapter.
 
 ### Nyckelfunktioner
 
-- **Drivs inbyggt av Claude Code** — Baserat på Claude Agent SDK, underliggande runtime är hela Claude Code CLI, ärver alla dess kapaciteter
-- **Flervänlig isolering** — Workspace per användare, IM-kanaler per användare, RBAC-behörighetssystem, inbjudningskodregistrering, revisionsloggar
-- **Enhetlig routing över sex kanaler** — Feishu WebSocket, Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, webbgränssnitt
-- **Lastbalansering mellan flera leverantörer** — flera Claude API-leverantörer, tre strategier (round-robin / weighted / failover) med automatisk hälsokontroll
-- **Fakturering och användningsstatistik** — komplett faktureringssystem (prenumerationsplaner, plånbokssaldo, inlösenkoder), token-spårning per modell med diagram
-- **Mobil PWA** — djupt optimerad för mobil, enkelklicksinstallation på skrivbordet, iOS / Android anpassade
+- **Inbyggd Claude Code-motor** — baserad på Claude Agent SDK, intern runtime är hela Claude Code CLI, ärver alla förmågor
+- **Flervän isolering** — workspace per användare, IM-kanaler per användare, RBAC-rättighetssystem, inbjudningskod-registrering, revisionslogg
+- **Sex-kanal routing** — Feishu WebSocket, Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, webbgränssnitt
+- **Multi-provider lastbalansering** — flera Claude API-leverantörer, tre strategier (round-robin / weighted / failover) med automatisk hälsokontroll
+- **Fakturering och användningsstatistik** — komplett fakturering (prenumeration, plånbok, inlösenkoder), token-spårning per modell med diagram
+- **Mobil PWA** — optimerad för mobil, installation på hemskärm med ett klick, både iOS och Android
 
 ## Snabbstart
 
 ### Förutsättningar
 
-**Obligatoriskt**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (för containerläge; admin i värdläge behöver det inte), och en Claude API-nyckel (officiell Anthropic eller kompatibel relay-tjänst).
+**Obligatoriskt**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (för containerläge; inte nödvändigt för admin host-läge), Claude API-nyckel (officiell Anthropic eller kompatibel relay-tjänst).
 
-**Valfritt**: Feishu-företagsapp-autentiseringsuppgifter, Telegram Bot Token, QQ Bot-autentiseringsuppgifter, DingTalk-autentiseringsuppgifter, WeChat iLink-token — endast om du vill ha IM-integrationer.
+**Valfritt**: Feishu enterprise-app-referenser, Telegram Bot Token, QQ Bot-referenser, DingTalk-referenser, WeChat iLink-token — endast om IM-integration behövs.
 
-> Claude Code CLI behöver inte installeras manuellt — projektets Claude Agent SDK-beroende inkluderar redan hela CLI-runtime, installeras automatiskt vid första `make start`.
+> Claude Code CLI behöver inte installeras manuellt — projektets Claude Agent SDK-beroende innehåller hela CLI-runtime, installeras automatiskt vid första `make start`.
 
 ### Installation och start
 
@@ -51,35 +51,35 @@ Central designprincip: **omimplementera inte Agent-kapacitet, återanvänd Claud
 git clone https://github.com/AIGeniusInstitute/deep-think.git
 cd deepthink
 
-# 2. Start med ett kommando (installerar beroenden och kompilerar första gången)
+# 2. Start med ett kommando (första gången installerar beroenden + kompilerar)
 make start
 ```
 
-Besök http://localhost:3000 och följ inställningsguiden: skapa en administratör (inget standardkonto), konfigurera Claude API och alternativt IM-kanaler. All konfiguration görs från webbgränssnittet, utan konfigurationsfiler. API-nycklar lagras krypterade med AES-256-GCM.
+Öppna http://localhost:3000 och följ setup-guiden: skapa en administratör (inget standardkonto), konfigurera Claude API och vid behov IM-kanaler. Allt konfigureras från webbgränssnittet, inga konfigurationsfiler. API-nycklar krypteras med AES-256-GCM.
 
 ### Aktivera containerläge
 
-Admin-användaren använder som standard värdläge (ingen Docker). Om du behöver containerläge (member-användare använder det automatiskt efter registrering):
+Admin-användare använder som standard host-läge (utan Docker). Containerläge behövs för member-användare (aktiveras automatiskt efter registrering):
 
 ```bash
 ./container/build.sh
 ```
 
-Efter registrering får varje ny användare automatiskt ett huvudsakligt workspace i containerläge (`home-{userId}`), utan ytterligare konfiguration.
+Efter registrering av ny användare skapas main-workspace i containerläge (`home-{userId}`) automatiskt, utan extra konfiguration.
 
 ## Arkitekturöversikt
 
 DeepThink består av tre oberoende Node.js-projekt:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): huvudtjänst med meddelanderouter (2s-polling + dedup), samtidighetskö (upp till 20 containrar + 5 värdprocesser), uppgiftsschemaläggare (cron / interval / once), WebSocket-server för realtidsströmning och terminal, bcrypt + HMAC Cookie-autentisering, RBAC och AES-256-GCM-krypterad konfigurationshantering. Data i SQLite (WAL-läge, schema v1→v33).
-- **Frontend** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, med react-markdown, mermaid, recharts, xterm.js och mobil PWA.
-- **Agent Runner** (`container/agent-runner/`): exekveringsmotor som körs inuti en Docker-container eller som värdprocess; anropar `query()` från Claude Agent SDK, sänder ut 14 StreamEvent-typer och tillhandahåller 12 MCP-verktyg till huvudprocessen via filbaserade IPC-kanaler med atomisk skrivning.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): meddelanderouter (2s polling + deduplicering), samtidighetskö (max 20 containrar + 5 host-processer), task-scheduler (cron / interval / once), WebSocket-server för realtidsstreaming och terminal, bcrypt + HMAC Cookie-autentisering, RBAC, AES-256-GCM-krypterad konfiguration. Data i SQLite (WAL-läge, schema v1→v33).
+- **Frontend** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, react-markdown, mermaid, recharts, xterm.js, mobil PWA.
+- **Agent Runner** (`container/agent-runner/`): exekveringsmotor i Docker-container eller som host-process. Anropar `query()` från Claude Agent SDK, emitterar 14 typer av StreamEvent och erbjuder 12 MCP-verktyg till förälder-processen via fil-IPC med atomiska skrivningar.
 
-De sex IM-kanalerna (Feishu, Telegram, QQ, DingTalk, WeChat, Web) går in i routern, dedupliceras och dirigeras till kön, som via ProviderPool väljer API-nyckel och startar containern eller värdprocessen. Strömmande händelser sänds via WebSocket till webbklienten eller skickas tillbaka via IM-API:er till varje kanal.
+Sex IM-kanaler kommer in i routern, dedupliceras och köläggs, ProviderPool väljer API-nyckel och startar container eller host-process. Streaming-händelser skickas till webbklienter via WebSocket eller tillbaka till kanalerna via IM API.
 
 ## Fullständig dokumentation
 
-För den fullständiga guiden, se:
+Den fullständiga guiden finns här:
 
 - [Fullständig engelsk version](README.md)
 - [Fullständig 简体中文-version](README.zh-CN.md)
