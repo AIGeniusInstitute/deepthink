@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "रद्द करें",
+    "confirm": "पुष्टि करें",
+    "save": "सहेजें",
+    "saving": "सहेज रहे हैं...",
+    "delete": "हटाएं",
+    "edit": "संपादित करें",
+    "close": "बंद करें",
+    "open": "खोलें",
+    "loading": "लोड हो रहा है...",
+    "retry": "पुनः प्रयास करें",
+    "back": "वापस",
+    "next": "अगला",
+    "previous": "पिछला",
+    "submit": "सबमिट करें",
+    "reset": "रीसेट करें",
+    "search": "खोजें",
+    "copy": "कॉपी करें",
+    "copied": "कॉपी हो गया",
+    "yes": "हां",
+    "no": "नहीं",
+    "all": "सभी",
+    "none": "कोई नहीं",
+    "ok": "ठीक है"
+  },
+  "nav": {
+    "chat": "चैट",
+    "settings": "सेटिंग्स",
+    "tasks": "कार्य",
+    "memory": "स्मृति",
+    "monitor": "मॉनिटर",
+    "skills": "Skills",
+    "mcpServers": "MCP सर्वर",
+    "users": "उपयोगकर्ता",
+    "files": "फ़ाइलें"
+  },
+  "login": {
+    "title": "लॉगिन",
+    "subtitle": "DeepThink में साइन इन करें",
+    "username": "उपयोगकर्ता नाम",
+    "password": "पासवर्ड",
+    "submit": "साइन इन करें",
+    "register": "रजिस्टर करें",
+    "logout": "लॉग आउट",
+    "errors": {
+      "invalid": "उपयोगकर्ता नाम या पासवर्ड गलत है",
+      "locked": "खाता लॉक है, बाद में पुनः प्रयास करें",
+      "network": "नेटवर्क त्रुटि, कृपया पुनः प्रयास करें"
+    }
+  },
+  "register": {
+    "title": "रजिस्टर करें",
+    "subtitle": "नया खाता बनाएं",
+    "username": "उपयोगकर्ता नाम",
+    "password": "पासवर्ड",
+    "confirmPassword": "पासवर्ड की पुष्टि करें",
+    "inviteCode": "आमंत्रण कोड",
+    "submit": "रजिस्टर करें",
+    "backToLogin": "लॉगिन पर वापस जाएं",
+    "errors": {
+      "usernameTaken": "उपयोगकर्ता नाम पहले से उपयोग में है",
+      "passwordMismatch": "पासवर्ड मेल नहीं खाते",
+      "invalidInvite": "अमान्य आमंत्रण कोड"
+    }
+  },
+  "setup": {
+    "title": "सेटअप",
+    "adminAccount": "व्यवस्थापक खाता बनाएं",
+    "claudeConfig": "Claude कॉन्फ़िगर करें",
+    "imChannels": "IM चैनल कॉन्फ़िगर करें",
+    "welcome": "DeepThink में आपका स्वागत है",
+    "getStarted": "आरंभ करें"
+  },
+  "chat": {
+    "inputPlaceholder": "संदेश लिखें, भेजने के लिए Enter, नई पंक्ति के लिए Shift+Enter",
+    "thinking": "सोच रहा है",
+    "send": "भेजें",
+    "stop": "रोकें",
+    "clearMessages": "वार्तालाप साफ़ करें",
+    "attachments": "अनुलग्नक",
+    "uploadFile": "फ़ाइल अपलोड करें",
+    "noMessages": "नया वार्तालाप शुरू करें",
+    "regenerate": "पुनः उत्पन्न करें",
+    "copyMessage": "संदेश कॉपी करें",
+    "deleteMessage": "संदेश हटाएं",
+    "tokenUsage": "Token उपयोग"
+  },
+  "settings": {
+    "title": "सेटिंग्स",
+    "sections": {
+      "profile": "प्रोफ़ाइल",
+      "appearance": "रूप",
+      "language": "भाषा",
+      "claude": "मॉडल प्रदाता",
+      "im": "IM चैनल",
+      "tasks": "कार्य",
+      "system": "सिस्टम",
+      "users": "उपयोगकर्ता",
+      "audit": "ऑडिट लॉग",
+      "invites": "आमंत्रण कोड",
+      "groups": "समूह",
+      "mcpServers": "MCP सर्वर",
+      "skills": "Skills",
+      "plugins": "Plugins",
+      "billing": "बिलिंग"
+    },
+    "language": {
+      "title": "इंटरफ़ेस भाषा",
+      "description": "इंटरफ़ेस की भाषा चुनें। एजेंट भी इसी भाषा में उत्तर देगा।",
+      "selectPlaceholder": "भाषा चुनें",
+      "appliedNotice": "भाषा बदली गई",
+      "rtlNotice": "दाएं-से-बाएं लेआउट में बदल गया"
+    },
+    "profile": {
+      "username": "उपयोगकर्ता नाम",
+      "displayName": "प्रदर्शित नाम",
+      "avatar": "अवतार",
+      "updateSuccess": "प्रोफ़ाइल अपडेट हो गई"
+    },
+    "appearance": {
+      "theme": "थीम",
+      "light": "हल्का",
+      "dark": "गहरा",
+      "system": "सिस्टम",
+      "assistantName": "सहायक का नाम",
+      "assistantAvatar": "सहायक का अवतार"
+    }
+  },
+  "status": {
+    "online": "ऑनलाइन",
+    "offline": "ऑफ़लाइन",
+    "connecting": "कनेक्ट हो रहा है",
+    "reconnecting": "पुनः कनेक्ट हो रहा है",
+    "connected": "कनेक्टेड",
+    "disconnected": "डिस्कनेक्टेड"
+  },
+  "errors": {
+    "networkFailure": "नेटवर्क अनुरोध विफल",
+    "unknown": "अज्ञात त्रुटि",
+    "forbidden": "प्रतिबंधित",
+    "notFound": "नहीं मिला",
+    "serverError": "सर्वर त्रुटि",
+    "timeout": "अनुरोध समय समाप्त"
+  }
+}

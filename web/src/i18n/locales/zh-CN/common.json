@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "取消",
+    "confirm": "确认",
+    "save": "保存",
+    "saving": "保存中...",
+    "delete": "删除",
+    "edit": "编辑",
+    "close": "关闭",
+    "open": "打开",
+    "loading": "加载中...",
+    "retry": "重试",
+    "back": "返回",
+    "next": "下一步",
+    "previous": "上一步",
+    "submit": "提交",
+    "reset": "重置",
+    "search": "搜索",
+    "copy": "复制",
+    "copied": "已复制",
+    "yes": "是",
+    "no": "否",
+    "all": "全部",
+    "none": "无",
+    "ok": "确定"
+  },
+  "nav": {
+    "chat": "聊天",
+    "settings": "设置",
+    "tasks": "定时任务",
+    "memory": "记忆",
+    "monitor": "监控",
+    "skills": "技能",
+    "mcpServers": "MCP 服务",
+    "users": "用户管理",
+    "files": "文件"
+  },
+  "login": {
+    "title": "登录",
+    "subtitle": "登录到 DeepThink",
+    "username": "用户名",
+    "password": "密码",
+    "submit": "登录",
+    "register": "注册",
+    "logout": "退出登录",
+    "errors": {
+      "invalid": "用户名或密码错误",
+      "locked": "账户已锁定，请稍后再试",
+      "network": "网络错误，请重试"
+    }
+  },
+  "register": {
+    "title": "注册",
+    "subtitle": "创建新账户",
+    "username": "用户名",
+    "password": "密码",
+    "confirmPassword": "确认密码",
+    "inviteCode": "邀请码",
+    "submit": "注册",
+    "backToLogin": "返回登录",
+    "errors": {
+      "usernameTaken": "用户名已被占用",
+      "passwordMismatch": "两次密码不一致",
+      "invalidInvite": "邀请码无效"
+    }
+  },
+  "setup": {
+    "title": "初始化设置",
+    "adminAccount": "创建管理员账户",
+    "claudeConfig": "配置 Claude",
+    "imChannels": "配置 IM 通道",
+    "welcome": "欢迎使用 DeepThink",
+    "getStarted": "开始使用"
+  },
+  "chat": {
+    "inputPlaceholder": "输入消息，Enter 发送，Shift+Enter 换行",
+    "thinking": "思考中",
+    "send": "发送",
+    "stop": "停止",
+    "clearMessages": "清除对话",
+    "attachments": "附件",
+    "uploadFile": "上传文件",
+    "noMessages": "开始一段新对话",
+    "regenerate": "重新生成",
+    "copyMessage": "复制消息",
+    "deleteMessage": "删除消息",
+    "tokenUsage": "Token 用量"
+  },
+  "settings": {
+    "title": "设置",
+    "sections": {
+      "profile": "个人资料",
+      "appearance": "全局外观",
+      "language": "语言",
+      "claude": "模型服务商",
+      "im": "IM 通道",
+      "tasks": "定时任务",
+      "system": "系统",
+      "users": "用户管理",
+      "audit": "审计日志",
+      "invites": "邀请码",
+      "groups": "群组管理",
+      "mcpServers": "MCP 服务",
+      "skills": "技能",
+      "plugins": "插件",
+      "billing": "订阅与计费"
+    },
+    "language": {
+      "title": "界面语言",
+      "description": "选择界面显示语言，Agent 也会使用该语言回复",
+      "selectPlaceholder": "选择语言",
+      "appliedNotice": "语言已切换",
+      "rtlNotice": "已切换为从右到左布局"
+    },
+    "profile": {
+      "username": "用户名",
+      "displayName": "显示名",
+      "avatar": "头像",
+      "updateSuccess": "个人资料已更新"
+    },
+    "appearance": {
+      "theme": "主题",
+      "light": "浅色",
+      "dark": "深色",
+      "system": "跟随系统",
+      "assistantName": "AI 名称",
+      "assistantAvatar": "AI 头像"
+    }
+  },
+  "status": {
+    "online": "在线",
+    "offline": "离线",
+    "connecting": "连接中",
+    "reconnecting": "重新连接中",
+    "connected": "已连接",
+    "disconnected": "已断开"
+  },
+  "errors": {
+    "networkFailure": "网络请求失败",
+    "unknown": "未知错误",
+    "forbidden": "无权限",
+    "notFound": "未找到",
+    "serverError": "服务器错误",
+    "timeout": "请求超时"
+  }
+}

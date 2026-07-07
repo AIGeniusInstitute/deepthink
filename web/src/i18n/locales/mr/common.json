@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "रद्द करा",
+    "confirm": "पुष्टी करा",
+    "save": "जतन करा",
+    "saving": "जतन होत आहे...",
+    "delete": "हटवा",
+    "edit": "संपादित करा",
+    "close": "बंद करा",
+    "open": "उघडा",
+    "loading": "लोड होत आहे...",
+    "retry": "पुन्हा प्रयत्न करा",
+    "back": "मागे",
+    "next": "पुढे",
+    "previous": "मागील",
+    "submit": "सबमिट करा",
+    "reset": "रीसेट करा",
+    "search": "शोधा",
+    "copy": "कॉपी करा",
+    "copied": "कॉपी झाले",
+    "yes": "होय",
+    "no": "नाही",
+    "all": "सर्व",
+    "none": "काहीही नाही",
+    "ok": "ठीक आहे"
+  },
+  "nav": {
+    "chat": "गप्पा",
+    "settings": "सेटिंग्ज",
+    "tasks": "कार्ये",
+    "memory": "स्मृती",
+    "monitor": "मॉनिटर",
+    "skills": "कौशल्य",
+    "mcpServers": "MCP सर्व्हर्स",
+    "users": "वापरकर्ते",
+    "files": "फायली"
+  },
+  "login": {
+    "title": "लॉगिन",
+    "subtitle": "DeepThink मध्ये साइन इन करा",
+    "username": "वापरकर्तानाव",
+    "password": "पासवर्ड",
+    "submit": "साइन इन करा",
+    "register": "नोंदणी करा",
+    "logout": "लॉगआउट",
+    "errors": {
+      "invalid": "अवैध वापरकर्तानाव किंवा पासवर्ड",
+      "locked": "खाते बंद केले आहे, नंतर पुन्हा प्रयत्न करा",
+      "network": "नेटवर्क त्रुटी, कृपया पुन्हा प्रयत्न करा"
+    }
+  },
+  "register": {
+    "title": "नोंदणी",
+    "subtitle": "नवीन खाते तयार करा",
+    "username": "वापरकर्तानाव",
+    "password": "पासवर्ड",
+    "confirmPassword": "पासवर्ड पुष्टी करा",
+    "inviteCode": "आमंत्रण कोड",
+    "submit": "नोंदणी करा",
+    "backToLogin": "लॉगिनवर परत",
+    "errors": {
+      "usernameTaken": "वापरकर्तानाव आधीच घेतले आहे",
+      "passwordMismatch": "पासवर्ड जुळत नाहीत",
+      "invalidInvite": "अवैध आमंत्रण कोड"
+    }
+  },
+  "setup": {
+    "title": "सेटअप",
+    "adminAccount": "ॲडमिन खाते तयार करा",
+    "claudeConfig": "Claude संरचित करा",
+    "imChannels": "IM चॅनेल संरचित करा",
+    "welcome": "DeepThink मध्ये स्वागत आहे",
+    "getStarted": "सुरू करा"
+  },
+  "chat": {
+    "inputPlaceholder": "संदेश टाइप करा, पाठवण्यासाठी Enter, नवीन ओळीसाठी Shift+Enter",
+    "thinking": "विचार करत आहे",
+    "send": "पाठवा",
+    "stop": "थांबा",
+    "clearMessages": "संभाषण साफ करा",
+    "attachments": "जोडण्या",
+    "uploadFile": "फाइल अपलोड करा",
+    "noMessages": "नवीन संभाषण सुरू करा",
+    "regenerate": "पुन्हा तयार करा",
+    "copyMessage": "संदेश कॉपी करा",
+    "deleteMessage": "संदेश हटवा",
+    "tokenUsage": "Token वापर"
+  },
+  "settings": {
+    "title": "सेटिंग्ज",
+    "sections": {
+      "profile": "प्रोफाइल",
+      "appearance": "दर्शन",
+      "language": "भाषा",
+      "claude": "मॉडेल प्रदाता",
+      "im": "IM चॅनेल",
+      "tasks": "कार्ये",
+      "system": "सिस्टम",
+      "users": "वापरकर्ते",
+      "audit": "ऑडिट लॉग",
+      "invites": "आमंत्रण कोड",
+      "groups": "गट",
+      "mcpServers": "MCP सर्व्हर्स",
+      "skills": "कौशल्य",
+      "plugins": "प्लगइन्स",
+      "billing": "बिलिंग"
+    },
+    "language": {
+      "title": "इंटरफेस भाषा",
+      "description": "इंटरफेस भाषा निवडा. एजंट देखील या भाषेत उत्तर देईल.",
+      "selectPlaceholder": "भाषा निवडा",
+      "appliedNotice": "भाषा बदलली",
+      "rtlNotice": "उजवीकडून-डावीकडे लेआउटवर स्विच केले"
+    },
+    "profile": {
+      "username": "वापरकर्तानाव",
+      "displayName": "प्रदर्शन नाव",
+      "avatar": "अवतार",
+      "updateSuccess": "प्रोफाइल अपडेट झाले"
+    },
+    "appearance": {
+      "theme": "थीम",
+      "light": "लाइट",
+      "dark": "डार्क",
+      "system": "सिस्टम",
+      "assistantName": "सहाय्यक नाव",
+      "assistantAvatar": "सहाय्यक अवतार"
+    }
+  },
+  "status": {
+    "online": "ऑनलाइन",
+    "offline": "ऑफलाइन",
+    "connecting": "कनेक्ट होत आहे",
+    "reconnecting": "पुन्हा कनेक्ट होत आहे",
+    "connected": "कनेक्टेड",
+    "disconnected": "डिस्कनेक्टेड"
+  },
+  "errors": {
+    "networkFailure": "नेटवर्क विनंती अयशस्वी",
+    "unknown": "अज्ञात त्रुटी",
+    "forbidden": "प्रतिबंधित",
+    "notFound": "सापडले नाही",
+    "serverError": "सर्व्हर त्रुटी",
+    "timeout": "विनंती वेळ संपला"
+  }
+}

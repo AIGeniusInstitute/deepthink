@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Zrušit",
+    "confirm": "Potvrdit",
+    "save": "Uložit",
+    "saving": "Ukládání...",
+    "delete": "Smazat",
+    "edit": "Upravit",
+    "close": "Zavřít",
+    "open": "Otevřít",
+    "loading": "Načítání...",
+    "retry": "Zkusit znovu",
+    "back": "Zpět",
+    "next": "Další",
+    "previous": "Předchozí",
+    "submit": "Odeslat",
+    "reset": "Resetovat",
+    "search": "Hledat",
+    "copy": "Kopírovat",
+    "copied": "Zkopírováno",
+    "yes": "Ano",
+    "no": "Ne",
+    "all": "Vše",
+    "none": "Žádné",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "Chat",
+    "settings": "Nastavení",
+    "tasks": "Úkoly",
+    "memory": "Paměť",
+    "monitor": "Monitor",
+    "skills": "Dovednosti",
+    "mcpServers": "MCP servery",
+    "users": "Uživatelé",
+    "files": "Soubory"
+  },
+  "login": {
+    "title": "Přihlášení",
+    "subtitle": "Přihlásit se do DeepThink",
+    "username": "Uživatelské jméno",
+    "password": "Heslo",
+    "submit": "Přihlásit se",
+    "register": "Registrace",
+    "logout": "Odhlásit se",
+    "errors": {
+      "invalid": "Neplatné uživatelské jméno nebo heslo",
+      "locked": "Účet je uzamčen, zkuste to později",
+      "network": "Chyba sítě, zkuste to znovu"
+    }
+  },
+  "register": {
+    "title": "Registrace",
+    "subtitle": "Vytvořit nový účet",
+    "username": "Uživatelské jméno",
+    "password": "Heslo",
+    "confirmPassword": "Potvrdit heslo",
+    "inviteCode": "Pozvánkový kód",
+    "submit": "Registrovat",
+    "backToLogin": "Zpět na přihlášení",
+    "errors": {
+      "usernameTaken": "Uživatelské jméno je již obsazeno",
+      "passwordMismatch": "Hesla se neshodují",
+      "invalidInvite": "Neplatný pozvánkový kód"
+    }
+  },
+  "setup": {
+    "title": "Nastavení",
+    "adminAccount": "Vytvořit účet správce",
+    "claudeConfig": "Konfigurovat Claude",
+    "imChannels": "Konfigurovat IM kanály",
+    "welcome": "Vítejte v DeepThink",
+    "getStarted": "Začít"
+  },
+  "chat": {
+    "inputPlaceholder": "Napište zprávu, Enter pro odeslání, Shift+Enter pro nový řádek",
+    "thinking": "Přemýšlí",
+    "send": "Odeslat",
+    "stop": "Zastavit",
+    "clearMessages": "Vymazat konverzaci",
+    "attachments": "Přílohy",
+    "uploadFile": "Nahrát soubor",
+    "noMessages": "Začněte novou konverzaci",
+    "regenerate": "Vygenerovat znovu",
+    "copyMessage": "Kopírovat zprávu",
+    "deleteMessage": "Smazat zprávu",
+    "tokenUsage": "Spotřeba Token"
+  },
+  "settings": {
+    "title": "Nastavení",
+    "sections": {
+      "profile": "Profil",
+      "appearance": "Vzhled",
+      "language": "Jazyk",
+      "claude": "Poskytovatel modelu",
+      "im": "IM kanály",
+      "tasks": "Úkoly",
+      "system": "Systém",
+      "users": "Uživatelé",
+      "audit": "Auditní log",
+      "invites": "Pozvánkové kódy",
+      "groups": "Skupiny",
+      "mcpServers": "MCP servery",
+      "skills": "Dovednosti",
+      "plugins": "Zásuvné moduly",
+      "billing": "Fakturace"
+    },
+    "language": {
+      "title": "Jazyk rozhraní",
+      "description": "Vyberte jazyk rozhraní. Agent bude odpovídat také v tomto jazyce.",
+      "selectPlaceholder": "Vyberte jazyk",
+      "appliedNotice": "Jazyk byl změněn",
+      "rtlNotice": "Přepnuto na rozložení zprava doleva"
+    },
+    "profile": {
+      "username": "Uživatelské jméno",
+      "displayName": "Zobrazované jméno",
+      "avatar": "Avatar",
+      "updateSuccess": "Profil byl aktualizován"
+    },
+    "appearance": {
+      "theme": "Motiv",
+      "light": "Světlý",
+      "dark": "Tmavý",
+      "system": "Systém",
+      "assistantName": "Jméno asistenta",
+      "assistantAvatar": "Avatar asistenta"
+    }
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "connecting": "Připojování",
+    "reconnecting": "Opětovné připojování",
+    "connected": "Připojeno",
+    "disconnected": "Odpojeno"
+  },
+  "errors": {
+    "networkFailure": "Síťový požadavek selhal",
+    "unknown": "Neznámá chyba",
+    "forbidden": "Zakázáno",
+    "notFound": "Nenalezeno",
+    "serverError": "Chyba serveru",
+    "timeout": "Časový limit požadavku vypršel"
+  }
+}

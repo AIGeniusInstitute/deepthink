@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './styles/globals.css';
+import './i18n/config';
 import { shouldUseHashRouter } from './utils/url';
 
 if (typeof window !== 'undefined') {

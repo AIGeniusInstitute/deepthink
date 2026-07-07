@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Скасувати",
+    "confirm": "Підтвердити",
+    "save": "Зберегти",
+    "saving": "Збереження...",
+    "delete": "Видалити",
+    "edit": "Редагувати",
+    "close": "Закрити",
+    "open": "Відкрити",
+    "loading": "Завантаження...",
+    "retry": "Спробувати знову",
+    "back": "Назад",
+    "next": "Далі",
+    "previous": "Попередній",
+    "submit": "Надіслати",
+    "reset": "Скинути",
+    "search": "Пошук",
+    "copy": "Копіювати",
+    "copied": "Скопійовано",
+    "yes": "Так",
+    "no": "Ні",
+    "all": "Усі",
+    "none": "Жоден",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "Чат",
+    "settings": "Налаштування",
+    "tasks": "Завдання",
+    "memory": "Пам'ять",
+    "monitor": "Монітор",
+    "skills": "Навички",
+    "mcpServers": "Сервери MCP",
+    "users": "Користувачі",
+    "files": "Файли"
+  },
+  "login": {
+    "title": "Увійти",
+    "subtitle": "Увійдіть у DeepThink",
+    "username": "Ім'я користувача",
+    "password": "Пароль",
+    "submit": "Увійти",
+    "register": "Зареєструватися",
+    "logout": "Вийти",
+    "errors": {
+      "invalid": "Невірне ім'я користувача або пароль",
+      "locked": "Акаунт заблоковано, спробуйте пізніше",
+      "network": "Помилка мережі, спробуйте знову"
+    }
+  },
+  "register": {
+    "title": "Реєстрація",
+    "subtitle": "Створити новий акаунт",
+    "username": "Ім'я користувача",
+    "password": "Пароль",
+    "confirmPassword": "Підтвердити пароль",
+    "inviteCode": "Код запрошення",
+    "submit": "Зареєструватися",
+    "backToLogin": "Повернутися до входу",
+    "errors": {
+      "usernameTaken": "Ім'я користувача вже зайняте",
+      "passwordMismatch": "Паролі не співпадають",
+      "invalidInvite": "Невірний код запрошення"
+    }
+  },
+  "setup": {
+    "title": "Налаштування",
+    "adminAccount": "Створити акаунт адміністратора",
+    "claudeConfig": "Налаштувати Claude",
+    "imChannels": "Налаштувати IM-канали",
+    "welcome": "Ласкаво просимо до DeepThink",
+    "getStarted": "Розпочати"
+  },
+  "chat": {
+    "inputPlaceholder": "Введіть повідомлення, Enter для надсилання, Shift+Enter для нового рядка",
+    "thinking": "Обмірковує",
+    "send": "Надіслати",
+    "stop": "Зупинити",
+    "clearMessages": "Очистити розмову",
+    "attachments": "Вкладення",
+    "uploadFile": "Завантажити файл",
+    "noMessages": "Почніть нову розмову",
+    "regenerate": "Згенерувати знову",
+    "copyMessage": "Копіювати повідомлення",
+    "deleteMessage": "Видалити повідомлення",
+    "tokenUsage": "Використання Token"
+  },
+  "settings": {
+    "title": "Налаштування",
+    "sections": {
+      "profile": "Профіль",
+      "appearance": "Вигляд",
+      "language": "Мова",
+      "claude": "Постачальник моделі",
+      "im": "IM-канали",
+      "tasks": "Завдання",
+      "system": "Система",
+      "users": "Користувачі",
+      "audit": "Журнал аудиту",
+      "invites": "Коди запрошень",
+      "groups": "Групи",
+      "mcpServers": "Сервери MCP",
+      "skills": "Навички",
+      "plugins": "Плагіни",
+      "billing": "Оплата"
+    },
+    "language": {
+      "title": "Мова інтерфейсу",
+      "description": "Виберіть мову інтерфейсу. Агент також відповідатиме цією мовою.",
+      "selectPlaceholder": "Виберіть мову",
+      "appliedNotice": "Мову змінено",
+      "rtlNotice": "Перемкнуто на макет справа-наліво"
+    },
+    "profile": {
+      "username": "Ім'я користувача",
+      "displayName": "Відображуване ім'я",
+      "avatar": "Аватар",
+      "updateSuccess": "Профіль оновлено"
+    },
+    "appearance": {
+      "theme": "Тема",
+      "light": "Світла",
+      "dark": "Темна",
+      "system": "Система",
+      "assistantName": "Ім'я асистента",
+      "assistantAvatar": "Аватар асистента"
+    }
+  },
+  "status": {
+    "online": "Онлайн",
+    "offline": "Офлайн",
+    "connecting": "Підключення",
+    "reconnecting": "Перепідключення",
+    "connected": "Підключено",
+    "disconnected": "Відключено"
+  },
+  "errors": {
+    "networkFailure": "Мережевий запит не вдався",
+    "unknown": "Невідома помилка",
+    "forbidden": "Заборонено",
+    "notFound": "Не знайдено",
+    "serverError": "Помилка сервера",
+    "timeout": "Час запиту минув"
+  }
+}

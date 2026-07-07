@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Batal",
+    "confirm": "Sahkan",
+    "save": "Simpan",
+    "saving": "Menyimpan...",
+    "delete": "Padam",
+    "edit": "Sunting",
+    "close": "Tutup",
+    "open": "Buka",
+    "loading": "Memuatkan...",
+    "retry": "Cuba semula",
+    "back": "Kembali",
+    "next": "Seterusnya",
+    "previous": "Sebelumnya",
+    "submit": "Hantar",
+    "reset": "Set semula",
+    "search": "Cari",
+    "copy": "Salin",
+    "copied": "Disalin",
+    "yes": "Ya",
+    "no": "Tidak",
+    "all": "Semua",
+    "none": "Tiada",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "Sembang",
+    "settings": "Tetapan",
+    "tasks": "Tugas",
+    "memory": "Ingatan",
+    "monitor": "Pemantau",
+    "skills": "Kemahiran",
+    "mcpServers": "Pelayan MCP",
+    "users": "Pengguna",
+    "files": "Fail"
+  },
+  "login": {
+    "title": "Log masuk",
+    "subtitle": "Log masuk ke DeepThink",
+    "username": "Nama pengguna",
+    "password": "Kata laluan",
+    "submit": "Log masuk",
+    "register": "Daftar",
+    "logout": "Log keluar",
+    "errors": {
+      "invalid": "Nama pengguna atau kata laluan tidak sah",
+      "locked": "Akaun dikunci, cuba lagi kemudian",
+      "network": "Ralat rangkaian, sila cuba semula"
+    }
+  },
+  "register": {
+    "title": "Daftar",
+    "subtitle": "Buat akaun baharu",
+    "username": "Nama pengguna",
+    "password": "Kata laluan",
+    "confirmPassword": "Sahkan kata laluan",
+    "inviteCode": "Kod jemputan",
+    "submit": "Daftar",
+    "backToLogin": "Kembali ke log masuk",
+    "errors": {
+      "usernameTaken": "Nama pengguna telah diambil",
+      "passwordMismatch": "Kata laluan tidak sepadan",
+      "invalidInvite": "Kod jemputan tidak sah"
+    }
+  },
+  "setup": {
+    "title": "Persediaan",
+    "adminAccount": "Buat akaun pentadbir",
+    "claudeConfig": "Konfigur Claude",
+    "imChannels": "Konfigur saluran IM",
+    "welcome": "Selamat datang ke DeepThink",
+    "getStarted": "Mula"
+  },
+  "chat": {
+    "inputPlaceholder": "Taip mesej, Enter untuk hantar, Shift+Enter untuk baris baharu",
+    "thinking": "Meneroka",
+    "send": "Hantar",
+    "stop": "Berhenti",
+    "clearMessages": "Kosongkan perbualan",
+    "attachments": "Lampiran",
+    "uploadFile": "Muat naik fail",
+    "noMessages": "Mulakan perbualan baharu",
+    "regenerate": "Jana semula",
+    "copyMessage": "Salin mesej",
+    "deleteMessage": "Padam mesej",
+    "tokenUsage": "Penggunaan Token"
+  },
+  "settings": {
+    "title": "Tetapan",
+    "sections": {
+      "profile": "Profil",
+      "appearance": "Penampilan",
+      "language": "Bahasa",
+      "claude": "Penyedia model",
+      "im": "Saluran IM",
+      "tasks": "Tugas",
+      "system": "Sistem",
+      "users": "Pengguna",
+      "audit": "Log audit",
+      "invites": "Kod jemputan",
+      "groups": "Kumpulan",
+      "mcpServers": "Pelayan MCP",
+      "skills": "Kemahiran",
+      "plugins": "Plugin",
+      "billing": "Pengebilan"
+    },
+    "language": {
+      "title": "Bahasa antara muka",
+      "description": "Pilih bahasa antara muka. Ejen juga akan membalas dalam bahasa ini.",
+      "selectPlaceholder": "Pilih bahasa",
+      "appliedNotice": "Bahasa ditukar",
+      "rtlNotice": "Bertukar ke susunan kanan-ke-kiri"
+    },
+    "profile": {
+      "username": "Nama pengguna",
+      "displayName": "Nama paparan",
+      "avatar": "Avatar",
+      "updateSuccess": "Profil dikemas kini"
+    },
+    "appearance": {
+      "theme": "Tema",
+      "light": "Cerah",
+      "dark": "Gelap",
+      "system": "Sistem",
+      "assistantName": "Nama pembantu",
+      "assistantAvatar": "Avatar pembantu"
+    }
+  },
+  "status": {
+    "online": "Dalam talian",
+    "offline": "Luar talian",
+    "connecting": "Menghubungkan",
+    "reconnecting": "Menyambung semula",
+    "connected": "Bersambung",
+    "disconnected": "Terputus"
+  },
+  "errors": {
+    "networkFailure": "Permintaan rangkaian gagal",
+    "unknown": "Ralat tidak diketahui",
+    "forbidden": "Dilarang",
+    "notFound": "Tidak dijumpai",
+    "serverError": "Ralat pelayan",
+    "timeout": "Permintaan tamat masa"
+  }
+}

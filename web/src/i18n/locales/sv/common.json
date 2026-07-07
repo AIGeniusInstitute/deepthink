@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Avbryt",
+    "confirm": "Bekräfta",
+    "save": "Spara",
+    "saving": "Sparar...",
+    "delete": "Radera",
+    "edit": "Redigera",
+    "close": "Stäng",
+    "open": "Öppna",
+    "loading": "Laddar...",
+    "retry": "Försök igen",
+    "back": "Tillbaka",
+    "next": "Nästa",
+    "previous": "Föregående",
+    "submit": "Skicka",
+    "reset": "Återställ",
+    "search": "Sök",
+    "copy": "Kopiera",
+    "copied": "Kopierad",
+    "yes": "Ja",
+    "no": "Nej",
+    "all": "Alla",
+    "none": "Inga",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "Chatt",
+    "settings": "Inställningar",
+    "tasks": "Uppgifter",
+    "memory": "Minne",
+    "monitor": "Övervakning",
+    "skills": "Färdigheter",
+    "mcpServers": "MCP-servrar",
+    "users": "Användare",
+    "files": "Filer"
+  },
+  "login": {
+    "title": "Logga in",
+    "subtitle": "Logga in på DeepThink",
+    "username": "Användarnamn",
+    "password": "Lösenord",
+    "submit": "Logga in",
+    "register": "Registrera",
+    "logout": "Logga ut",
+    "errors": {
+      "invalid": "Felaktigt användarnamn eller lösenord",
+      "locked": "Kontot är låst, försök igen senare",
+      "network": "Nätverksfel, försök igen"
+    }
+  },
+  "register": {
+    "title": "Registrera",
+    "subtitle": "Skapa ett nytt konto",
+    "username": "Användarnamn",
+    "password": "Lösenord",
+    "confirmPassword": "Bekräfta lösenord",
+    "inviteCode": "Inbjudningskod",
+    "submit": "Registrera",
+    "backToLogin": "Tillbaka till inloggning",
+    "errors": {
+      "usernameTaken": "Användarnamnet är upptaget",
+      "passwordMismatch": "Lösenorden matchar inte",
+      "invalidInvite": "Ogiltig inbjudningskod"
+    }
+  },
+  "setup": {
+    "title": "Konfiguration",
+    "adminAccount": "Skapa administratörskonto",
+    "claudeConfig": "Konfigurera Claude",
+    "imChannels": "Konfigurera IM-kanaler",
+    "welcome": "Välkommen till DeepThink",
+    "getStarted": "Kom igång"
+  },
+  "chat": {
+    "inputPlaceholder": "Skriv ett meddelande, Enter för att skicka, Shift+Enter för ny rad",
+    "thinking": "Tänker",
+    "send": "Skicka",
+    "stop": "Stoppa",
+    "clearMessages": "Rensa konversation",
+    "attachments": "Bilagor",
+    "uploadFile": "Ladda upp fil",
+    "noMessages": "Starta en ny konversation",
+    "regenerate": "Återskapa",
+    "copyMessage": "Kopiera meddelande",
+    "deleteMessage": "Radera meddelande",
+    "tokenUsage": "Token-användning"
+  },
+  "settings": {
+    "title": "Inställningar",
+    "sections": {
+      "profile": "Profil",
+      "appearance": "Utseende",
+      "language": "Språk",
+      "claude": "Modellleverantör",
+      "im": "IM-kanaler",
+      "tasks": "Uppgifter",
+      "system": "System",
+      "users": "Användare",
+      "audit": "Granskningslogg",
+      "invites": "Inbjudningskoder",
+      "groups": "Grupper",
+      "mcpServers": "MCP-servrar",
+      "skills": "Färdigheter",
+      "plugins": "Insticksmoduler",
+      "billing": "Fakturering"
+    },
+    "language": {
+      "title": "Gränssnittsspråk",
+      "description": "Välj gränssnittsspråk. Agenten kommer också att svara på detta språk.",
+      "selectPlaceholder": "Välj språk",
+      "appliedNotice": "Språk ändrat",
+      "rtlNotice": "Växlat till höger-till-vänster-layout"
+    },
+    "profile": {
+      "username": "Användarnamn",
+      "displayName": "Visningsnamn",
+      "avatar": "Avatar",
+      "updateSuccess": "Profil uppdaterad"
+    },
+    "appearance": {
+      "theme": "Tema",
+      "light": "Ljust",
+      "dark": "Mörkt",
+      "system": "System",
+      "assistantName": "Assistentnamn",
+      "assistantAvatar": "Assistentavatar"
+    }
+  },
+  "status": {
+    "online": "Uppkopplad",
+    "offline": "Frånkopplad",
+    "connecting": "Ansluter",
+    "reconnecting": "Återansluter",
+    "connected": "Ansluten",
+    "disconnected": "Frånkopplad"
+  },
+  "errors": {
+    "networkFailure": "Nätverksbegäran misslyckades",
+    "unknown": "Okänt fel",
+    "forbidden": "Förbjuden",
+    "notFound": "Hittades inte",
+    "serverError": "Serverfel",
+    "timeout": "Begäran tog för lång tid"
+  }
+}

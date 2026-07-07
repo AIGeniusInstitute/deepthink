@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Abbrechen",
+    "confirm": "Bestätigen",
+    "save": "Speichern",
+    "saving": "Wird gespeichert...",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "close": "Schließen",
+    "open": "Öffnen",
+    "loading": "Wird geladen...",
+    "retry": "Erneut versuchen",
+    "back": "Zurück",
+    "next": "Weiter",
+    "previous": "Zurück",
+    "submit": "Absenden",
+    "reset": "Zurücksetzen",
+    "search": "Suchen",
+    "copy": "Kopieren",
+    "copied": "Kopiert",
+    "yes": "Ja",
+    "no": "Nein",
+    "all": "Alle",
+    "none": "Keine",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "Chat",
+    "settings": "Einstellungen",
+    "tasks": "Aufgaben",
+    "memory": "Speicher",
+    "monitor": "Monitor",
+    "skills": "Skills",
+    "mcpServers": "MCP-Server",
+    "users": "Benutzer",
+    "files": "Dateien"
+  },
+  "login": {
+    "title": "Anmelden",
+    "subtitle": "Bei DeepThink anmelden",
+    "username": "Benutzername",
+    "password": "Passwort",
+    "submit": "Anmelden",
+    "register": "Registrieren",
+    "logout": "Abmelden",
+    "errors": {
+      "invalid": "Ungültiger Benutzername oder Passwort",
+      "locked": "Konto gesperrt, bitte später erneut versuchen",
+      "network": "Netzwerkfehler, bitte erneut versuchen"
+    }
+  },
+  "register": {
+    "title": "Registrieren",
+    "subtitle": "Neues Konto erstellen",
+    "username": "Benutzername",
+    "password": "Passwort",
+    "confirmPassword": "Passwort bestätigen",
+    "inviteCode": "Einladungscode",
+    "submit": "Registrieren",
+    "backToLogin": "Zurück zur Anmeldung",
+    "errors": {
+      "usernameTaken": "Benutzername bereits vergeben",
+      "passwordMismatch": "Passwörter stimmen nicht überein",
+      "invalidInvite": "Ungültiger Einladungscode"
+    }
+  },
+  "setup": {
+    "title": "Einrichtung",
+    "adminAccount": "Administratorkonto erstellen",
+    "claudeConfig": "Claude konfigurieren",
+    "imChannels": "IM-Kanäle konfigurieren",
+    "welcome": "Willkommen bei DeepThink",
+    "getStarted": "Loslegen"
+  },
+  "chat": {
+    "inputPlaceholder": "Nachricht eingeben, Enter zum Senden, Shift+Enter für neue Zeile",
+    "thinking": "Denkt nach",
+    "send": "Senden",
+    "stop": "Stopp",
+    "clearMessages": "Unterhaltung löschen",
+    "attachments": "Anhänge",
+    "uploadFile": "Datei hochladen",
+    "noMessages": "Neue Unterhaltung beginnen",
+    "regenerate": "Neu generieren",
+    "copyMessage": "Nachricht kopieren",
+    "deleteMessage": "Nachricht löschen",
+    "tokenUsage": "Token-Verbrauch"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "sections": {
+      "profile": "Profil",
+      "appearance": "Darstellung",
+      "language": "Sprache",
+      "claude": "Modellanbieter",
+      "im": "IM-Kanäle",
+      "tasks": "Aufgaben",
+      "system": "System",
+      "users": "Benutzer",
+      "audit": "Audit-Protokoll",
+      "invites": "Einladungscodes",
+      "groups": "Gruppen",
+      "mcpServers": "MCP-Server",
+      "skills": "Skills",
+      "plugins": "Plugins",
+      "billing": "Abrechnung"
+    },
+    "language": {
+      "title": "Oberflächensprache",
+      "description": "Oberflächensprache wählen. Der Agent antwortet ebenfalls in dieser Sprache.",
+      "selectPlaceholder": "Sprache wählen",
+      "appliedNotice": "Sprache gewechselt",
+      "rtlNotice": "Auf Rechts-nach-Links-Layout gewechselt"
+    },
+    "profile": {
+      "username": "Benutzername",
+      "displayName": "Anzeigename",
+      "avatar": "Avatar",
+      "updateSuccess": "Profil aktualisiert"
+    },
+    "appearance": {
+      "theme": "Design",
+      "light": "Hell",
+      "dark": "Dunkel",
+      "system": "System",
+      "assistantName": "Assistentenname",
+      "assistantAvatar": "Assistentenavatar"
+    }
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "connecting": "Verbinde",
+    "reconnecting": "Verbinde erneut",
+    "connected": "Verbunden",
+    "disconnected": "Getrennt"
+  },
+  "errors": {
+    "networkFailure": "Netzwerkanforderung fehlgeschlagen",
+    "unknown": "Unbekannter Fehler",
+    "forbidden": "Verboten",
+    "notFound": "Nicht gefunden",
+    "serverError": "Serverfehler",
+    "timeout": "Zeitüberschreitung der Anforderung"
+  }
+}

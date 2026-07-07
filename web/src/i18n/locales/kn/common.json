@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "ರದ್ದುಮಾಡಿ",
+    "confirm": "ದೃಢೀಕರಿಸಿ",
+    "save": "ಉಳಿಸಿ",
+    "saving": "ಉಳಿಸಲಾಗುತ್ತಿದೆ...",
+    "delete": "ಅಳಿಸಿ",
+    "edit": "ಸಂಪಾದಿಸಿ",
+    "close": "ಮುಚ್ಚಿ",
+    "open": "ತೆರೆಯಿರಿ",
+    "loading": "ಲೋಡ್ ಆಗುತ್ತಿದೆ...",
+    "retry": "ಮರುಪ್ರಯತ್ನಿಸಿ",
+    "back": "ಹಿಂದೆ",
+    "next": "ಮುಂದೆ",
+    "previous": "ಹಿಂದಿನ",
+    "submit": "ಸಲ್ಲಿಸಿ",
+    "reset": "ಮರುಹೊಂದಿಸಿ",
+    "search": "ಹುಡುಕಿ",
+    "copy": "ನಕಲಿಸಿ",
+    "copied": "ನಕಲಿಸಲಾಗಿದೆ",
+    "yes": "ಹಾಂ",
+    "no": "ಇಲ್ಲ",
+    "all": "ಎಲ್ಲಾ",
+    "none": "ಯಾವುದೂ ಇಲ್ಲ",
+    "ok": "ಸರಿ"
+  },
+  "nav": {
+    "chat": "ಸಂಭಾಷಣೆ",
+    "settings": "ಸೆಟ್ಟಿಂಗ್‌ಗಳು",
+    "tasks": "ಕಾರ್ಯಗಳು",
+    "memory": "ನೆನಪು",
+    "monitor": "ಮಾನಿಟರ್",
+    "skills": "ಕೌಶಲ್ಯಗಳು",
+    "mcpServers": "MCP ಸರ್ವರ್‌ಗಳು",
+    "users": "ಬಳಕೆದಾರರು",
+    "files": "ಫೈಲ್‌ಗಳು"
+  },
+  "login": {
+    "title": "ಲಾಗಿನ್",
+    "subtitle": "DeepThink ಗೆ ಸೈನ್ ಇನ್ ಮಾಡಿ",
+    "username": "ಬಳಕೆದಾರ ಹೆಸರು",
+    "password": "ಪಾಸ್‌ವರ್ಡ್",
+    "submit": "ಸೈನ್ ಇನ್ ಮಾಡಿ",
+    "register": "ನೋಂದಣಿ",
+    "logout": "ಲಾಗ್ ಔಟ್",
+    "errors": {
+      "invalid": "ಅಮಾನ್ಯ ಬಳಕೆದಾರ ಹೆಸರು ಅಥವಾ ಪಾಸ್‌ವರ್ಡ್",
+      "locked": "ಖಾತೆ ಲಾಕ್ ಆಗಿದೆ, ನಂತರ ಮರುಪ್ರಯತ್ನಿಸಿ",
+      "network": "ನೆಟ್‌ವರ್ಕ್ ದೋಷ, ಮರುಪ್ರಯತ್ನಿಸಿ"
+    }
+  },
+  "register": {
+    "title": "ನೋಂದಣಿ",
+    "subtitle": "ಹೊಸ ಖಾತೆ ರಚಿಸಿ",
+    "username": "ಬಳಕೆದಾರ ಹೆಸರು",
+    "password": "ಪಾಸ್‌ವರ್ಡ್",
+    "confirmPassword": "ಪಾಸ್‌ವರ್ಡ್ ದೃಢೀಕರಿಸಿ",
+    "inviteCode": "ಆಹ್ವಾನ ಕೋಡ್",
+    "submit": "ನೋಂದಣಿ ಮಾಡಿ",
+    "backToLogin": "ಲಾಗಿನ್‌ಗೆ ಹಿಂತಿರುಗಿ",
+    "errors": {
+      "usernameTaken": "ಬಳಕೆದಾರ ಹೆಸರು ಈಗಾಗಲೇ ತೆಗೆದುಕೊಳ್ಳಲಾಗಿದೆ",
+      "passwordMismatch": "ಪಾಸ್‌ವರ್ಡ್‌ಗಳು ಹೊಂದಿಕೆಯಾಗುತ್ತಿಲ್ಲ",
+      "invalidInvite": "ಅಮಾನ್ಯ ಆಹ್ವಾನ ಕೋಡ್"
+    }
+  },
+  "setup": {
+    "title": "ಸೆಟಪ್",
+    "adminAccount": "ನಿರ್ವಾಹಕ ಖಾತೆ ರಚಿಸಿ",
+    "claudeConfig": "Claude ಕಾನ್ಫಿಗರ್ ಮಾಡಿ",
+    "imChannels": "IM ಚಾನಲ್‌ಗಳನ್ನು ಕಾನ್ಫಿಗರ್ ಮಾಡಿ",
+    "welcome": "DeepThink ಗೆ ಸ್ವಾಗತ",
+    "getStarted": "ಪ್ರಾರಂಭಿಸಿ"
+  },
+  "chat": {
+    "inputPlaceholder": "ಸಂದೇಶ ಟೈಪ್ ಮಾಡಿ, ಕಳುಹಿಸಲು Enter, ಹೊಸ ಸಾಲಿಗೆ Shift+Enter",
+    "thinking": "ಯೋಚಿಸುತ್ತಿದೆ",
+    "send": "ಕಳುಹಿಸಿ",
+    "stop": "ನಿಲ್ಲಿಸಿ",
+    "clearMessages": "ಸಂಭಾಷಣೆ ಅಳಿಸಿ",
+    "attachments": "ಲಗತ್ತುಗಳು",
+    "uploadFile": "ಫೈಲ್ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ",
+    "noMessages": "ಹೊಸ ಸಂಭಾಷಣೆ ಪ್ರಾರಂಭಿಸಿ",
+    "regenerate": "ಮರುಸೃಷ್ಟಿಸಿ",
+    "copyMessage": "ಸಂದೇಶ ನಕಲಿಸಿ",
+    "deleteMessage": "ಸಂದೇಶ ಅಳಿಸಿ",
+    "tokenUsage": "Token ಬಳಕೆ"
+  },
+  "settings": {
+    "title": "ಸೆಟ್ಟಿಂಗ್‌ಗಳು",
+    "sections": {
+      "profile": "ಪ್ರೊಫೈಲ್",
+      "appearance": "ಗೋಚರತೆ",
+      "language": "ಭಾಷೆ",
+      "claude": "ಮಾಡೆಲ್ ಪೂರೈಕೆದಾರ",
+      "im": "IM ಚಾನಲ್‌ಗಳು",
+      "tasks": "ಕಾರ್ಯಗಳು",
+      "system": "ವ್ಯವಸ್ಥೆ",
+      "users": "ಬಳಕೆದಾರರು",
+      "audit": "ಆಡಿಟ್ ಲಾಗ್",
+      "invites": "ಆಹ್ವಾನ ಕೋಡ್‌ಗಳು",
+      "groups": "ಗುಂಪುಗಳು",
+      "mcpServers": "MCP ಸರ್ವರ್‌ಗಳು",
+      "skills": "ಕೌಶಲ್ಯಗಳು",
+      "plugins": "ಪ್ಲಗಿನ್‌ಗಳು",
+      "billing": "ಬಿಲ್ಲಿಂಗ್"
+    },
+    "language": {
+      "title": "ಇಂಟರ್ಫೇಸ್ ಭಾಷೆ",
+      "description": "ಇಂಟರ್ಫೇಸ್ ಭಾಷೆ ಆಯ್ಕೆಮಾಡಿ. ಏಜೆಂಟ್ ಸಹ ಈ ಭಾಷೆಯಲ್ಲಿ ಪ್ರತ್ಯುತ್ತರಿಸುತ್ತದೆ.",
+      "selectPlaceholder": "ಭಾಷೆ ಆಯ್ಕೆಮಾಡಿ",
+      "appliedNotice": "ಭಾಷೆ ಬದಲಾಯಿಸಲಾಗಿದೆ",
+      "rtlNotice": "ಬಲದಿಂದ-ಎಡಕ್ಕೆ ವಿನ್ಯಾಸಕ್ಕೆ ಬದಲಾಯಿಸಲಾಗಿದೆ"
+    },
+    "profile": {
+      "username": "ಬಳಕೆದಾರ ಹೆಸರು",
+      "displayName": "ಪ್ರದರ್ಶನ ಹೆಸರು",
+      "avatar": "ಅವತಾರ",
+      "updateSuccess": "ಪ್ರೊಫೈಲ್ ಅಪ್‌ಡೇಟ್ ಆಗಿದೆ"
+    },
+    "appearance": {
+      "theme": "ಥೀಮ್",
+      "light": "ತಿಳಿ",
+      "dark": "ಗಾಢ",
+      "system": "ವ್ಯವಸ್ಥೆ",
+      "assistantName": "ಸಹಾಯಕರ ಹೆಸರು",
+      "assistantAvatar": "ಸಹಾಯಕರ ಅವತಾರ"
+    }
+  },
+  "status": {
+    "online": "ಆನ್‌ಲೈನ್",
+    "offline": "ಆಫ್‌ಲೈನ್",
+    "connecting": "ಸಂಪರ್ಕಿಸುತ್ತಿದೆ",
+    "reconnecting": "ಮರುಸಂಪರ್ಕಿಸುತ್ತಿದೆ",
+    "connected": "ಸಂಪರ್ಕಿತ",
+    "disconnected": "ಸಂಪರ್ಕ ಕಡಿತ"
+  },
+  "errors": {
+    "networkFailure": "ನೆಟ್‌ವರ್ಕ್ ವಿನಂತಿ ವಿಫಲ",
+    "unknown": "ಅಜ್ಞಾತ ದೋಷ",
+    "forbidden": "ನಿಷೇಧಿತ",
+    "notFound": "ಕಂಡುಬಂದಿಲ್ಲ",
+    "serverError": "ಸರ್ವರ್ ದೋಷ",
+    "timeout": "ವಿನಂತಿ ಸಮಯ ಮೀರಿದೆ"
+  }
+}

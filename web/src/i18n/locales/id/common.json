@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Batal",
+    "confirm": "Konfirmasi",
+    "save": "Simpan",
+    "saving": "Menyimpan...",
+    "delete": "Hapus",
+    "edit": "Edit",
+    "close": "Tutup",
+    "open": "Buka",
+    "loading": "Memuat...",
+    "retry": "Coba lagi",
+    "back": "Kembali",
+    "next": "Berikutnya",
+    "previous": "Sebelumnya",
+    "submit": "Kirim",
+    "reset": "Atur ulang",
+    "search": "Cari",
+    "copy": "Salin",
+    "copied": "Disalin",
+    "yes": "Ya",
+    "no": "Tidak",
+    "all": "Semua",
+    "none": "Tidak ada",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "Obrolan",
+    "settings": "Pengaturan",
+    "tasks": "Tugas",
+    "memory": "Memori",
+    "monitor": "Monitor",
+    "skills": "Keterampilan",
+    "mcpServers": "Server MCP",
+    "users": "Pengguna",
+    "files": "Berkas"
+  },
+  "login": {
+    "title": "Masuk",
+    "subtitle": "Masuk ke DeepThink",
+    "username": "Nama pengguna",
+    "password": "Kata sandi",
+    "submit": "Masuk",
+    "register": "Daftar",
+    "logout": "Keluar",
+    "errors": {
+      "invalid": "Nama pengguna atau kata sandi tidak valid",
+      "locked": "Akun terkunci, coba lagi nanti",
+      "network": "Kesalahan jaringan, silakan coba lagi"
+    }
+  },
+  "register": {
+    "title": "Daftar",
+    "subtitle": "Buat akun baru",
+    "username": "Nama pengguna",
+    "password": "Kata sandi",
+    "confirmPassword": "Konfirmasi kata sandi",
+    "inviteCode": "Kode undangan",
+    "submit": "Daftar",
+    "backToLogin": "Kembali ke masuk",
+    "errors": {
+      "usernameTaken": "Nama pengguna sudah digunakan",
+      "passwordMismatch": "Kata sandi tidak cocok",
+      "invalidInvite": "Kode undangan tidak valid"
+    }
+  },
+  "setup": {
+    "title": "Penyiapan",
+    "adminAccount": "Buat akun admin",
+    "claudeConfig": "Konfigurasi Claude",
+    "imChannels": "Konfigurasi kanal IM",
+    "welcome": "Selamat datang di DeepThink",
+    "getStarted": "Mulai"
+  },
+  "chat": {
+    "inputPlaceholder": "Ketik pesan, Enter untuk mengirim, Shift+Enter untuk baris baru",
+    "thinking": "Berpikir",
+    "send": "Kirim",
+    "stop": "Berhenti",
+    "clearMessages": "Hapus percakapan",
+    "attachments": "Lampiran",
+    "uploadFile": "Unggah berkas",
+    "noMessages": "Mulai percakapan baru",
+    "regenerate": "Buat ulang",
+    "copyMessage": "Salin pesan",
+    "deleteMessage": "Hapus pesan",
+    "tokenUsage": "Penggunaan Token"
+  },
+  "settings": {
+    "title": "Pengaturan",
+    "sections": {
+      "profile": "Profil",
+      "appearance": "Tampilan",
+      "language": "Bahasa",
+      "claude": "Penyedia model",
+      "im": "Kanal IM",
+      "tasks": "Tugas",
+      "system": "Sistem",
+      "users": "Pengguna",
+      "audit": "Log audit",
+      "invites": "Kode undangan",
+      "groups": "Grup",
+      "mcpServers": "Server MCP",
+      "skills": "Keterampilan",
+      "plugins": "Plugin",
+      "billing": "Penagihan"
+    },
+    "language": {
+      "title": "Bahasa antarmuka",
+      "description": "Pilih bahasa antarmuka. Agen juga akan membalas dalam bahasa ini.",
+      "selectPlaceholder": "Pilih bahasa",
+      "appliedNotice": "Bahasa diganti",
+      "rtlNotice": "Beralih ke tata letak kanan-ke-kiri"
+    },
+    "profile": {
+      "username": "Nama pengguna",
+      "displayName": "Nama tampilan",
+      "avatar": "Avatar",
+      "updateSuccess": "Profil diperbarui"
+    },
+    "appearance": {
+      "theme": "Tema",
+      "light": "Terang",
+      "dark": "Gelap",
+      "system": "Sistem",
+      "assistantName": "Nama asisten",
+      "assistantAvatar": "Avatar asisten"
+    }
+  },
+  "status": {
+    "online": "Daring",
+    "offline": "Luring",
+    "connecting": "Menghubungkan",
+    "reconnecting": "Menghubungkan kembali",
+    "connected": "Terhubung",
+    "disconnected": "Terputus"
+  },
+  "errors": {
+    "networkFailure": "Permintaan jaringan gagal",
+    "unknown": "Kesalahan tidak diketahui",
+    "forbidden": "Terlarang",
+    "notFound": "Tidak ditemukan",
+    "serverError": "Kesalahan server",
+    "timeout": "Permintaan waktu habis"
+  }
+}

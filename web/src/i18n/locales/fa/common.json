@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "لغو",
+    "confirm": "تأیید",
+    "save": "ذخیره",
+    "saving": "در حال ذخیره...",
+    "delete": "حذف",
+    "edit": "ویرایش",
+    "close": "بستن",
+    "open": "باز کردن",
+    "loading": "در حال بارگذاری...",
+    "retry": "تلاش دوباره",
+    "back": "بازگشت",
+    "next": "بعدی",
+    "previous": "قبلی",
+    "submit": "ارسال",
+    "reset": "بازنشانی",
+    "search": "جستجو",
+    "copy": "کپی",
+    "copied": "کپی شد",
+    "yes": "بله",
+    "no": "خیر",
+    "all": "همه",
+    "none": "هیچ‌کدام",
+    "ok": "تأیید"
+  },
+  "nav": {
+    "chat": "گفتگو",
+    "settings": "تنظیمات",
+    "tasks": "وظایف",
+    "memory": "حافظه",
+    "monitor": "مانیتور",
+    "skills": "مهارت‌ها",
+    "mcpServers": "سرورهای MCP",
+    "users": "کاربران",
+    "files": "فایل‌ها"
+  },
+  "login": {
+    "title": "ورود",
+    "subtitle": " وارد DeepThink شوید",
+    "username": "نام کاربری",
+    "password": "رمز عبور",
+    "submit": "ورود",
+    "register": "ثبت‌نام",
+    "logout": "خروج",
+    "errors": {
+      "invalid": "نام کاربری یا رمز عبور نامعتبر است",
+      "locked": "حساب قفل شده، بعداً دوباره تلاش کنید",
+      "network": "خطای شبکه، لطفاً دوباره تلاش کنید"
+    }
+  },
+  "register": {
+    "title": "ثبت‌نام",
+    "subtitle": "ساخت حساب جدید",
+    "username": "نام کاربری",
+    "password": "رمز عبور",
+    "confirmPassword": "تأیید رمز عبور",
+    "inviteCode": "کد دعوت",
+    "submit": "ثبت‌نام",
+    "backToLogin": "بازگشت به ورود",
+    "errors": {
+      "usernameTaken": "این نام کاربری قبلاً گرفته شده است",
+      "passwordMismatch": "رمزهای عبور مطابقت ندارند",
+      "invalidInvite": "کد دعوت نامعتبر است"
+    }
+  },
+  "setup": {
+    "title": "راه‌اندازی",
+    "adminAccount": "ساخت حساب مدیر",
+    "claudeConfig": "پیکربندی Claude",
+    "imChannels": "پیکربندی کانال‌های IM",
+    "welcome": "به DeepThink خوش آمدید",
+    "getStarted": "شروع کنید"
+  },
+  "chat": {
+    "inputPlaceholder": "پیام بنویسید، Enter برای ارسال، Shift+Enter برای خط جدید",
+    "thinking": "در حال تفکر",
+    "send": "ارسال",
+    "stop": "توقف",
+    "clearMessages": "پاک کردن گفتگو",
+    "attachments": "پیوست‌ها",
+    "uploadFile": "بارگذاری فایل",
+    "noMessages": "گفتگوی جدیدی آغاز کنید",
+    "regenerate": "تولید دوباره",
+    "copyMessage": "کپی پیام",
+    "deleteMessage": "حذف پیام",
+    "tokenUsage": "مصرف Token"
+  },
+  "settings": {
+    "title": "تنظیمات",
+    "sections": {
+      "profile": "نمایه",
+      "appearance": "ظاهر",
+      "language": "زبان",
+      "claude": "ارائه‌دهنده مدل",
+      "im": "کانال‌های IM",
+      "tasks": "وظایف",
+      "system": "سیستم",
+      "users": "کاربران",
+      "audit": "گزارش ممیزی",
+      "invites": "کدهای دعوت",
+      "groups": "گروه‌ها",
+      "mcpServers": "سرورهای MCP",
+      "skills": "مهارت‌ها",
+      "plugins": "افزونه‌ها",
+      "billing": "صورتحساب"
+    },
+    "language": {
+      "title": "زبان رابط کاربری",
+      "description": "زبان رابط کاربری را انتخاب کنید. عامل نیز با همین زبان پاسخ خواهد داد.",
+      "selectPlaceholder": "انتخاب زبان",
+      "appliedNotice": "زبان تغییر کرد",
+      "rtlNotice": "چیدمان راست‌به‌چپ فعال شد"
+    },
+    "profile": {
+      "username": "نام کاربری",
+      "displayName": "نام نمایشی",
+      "avatar": "آواتار",
+      "updateSuccess": "نمایه به‌روزرسانی شد"
+    },
+    "appearance": {
+      "theme": "پوسته",
+      "light": "روشن",
+      "dark": "تیره",
+      "system": "سیستمی",
+      "assistantName": "نام دستیار",
+      "assistantAvatar": "آواتار دستیار"
+    }
+  },
+  "status": {
+    "online": "برخط",
+    "offline": "برون‌خط",
+    "connecting": "در حال اتصال",
+    "reconnecting": "در حال اتصال مجدد",
+    "connected": "متصل",
+    "disconnected": "قطع شده"
+  },
+  "errors": {
+    "networkFailure": "درخواست شبکه ناموفق بود",
+    "unknown": "خطای ناشناخته",
+    "forbidden": "ممنوع",
+    "notFound": "یافت نشد",
+    "serverError": "خطای سرور",
+    "timeout": "زمان درخواست به پایان رسید"
+  }
+}

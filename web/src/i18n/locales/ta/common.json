@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "ரத்து செய்",
+    "confirm": "உறுதிப்படுத்து",
+    "save": "சேமி",
+    "saving": "சேமிக்கிறது...",
+    "delete": "நீக்கு",
+    "edit": "தொகு",
+    "close": "மூடு",
+    "open": "திற",
+    "loading": "ஏற்றுகிறது...",
+    "retry": "மீண்டும் முயற்சி",
+    "back": "பின்",
+    "next": "அடுத்து",
+    "previous": "முந்தைய",
+    "submit": "சமர்ப்பி",
+    "reset": "மீட்டமை",
+    "search": "தேடு",
+    "copy": "நகலெடு",
+    "copied": "நகலெடுக்கப்பட்டது",
+    "yes": "ஆம்",
+    "no": "இல்லை",
+    "all": "அனைத்தும்",
+    "none": "எதுவுமில்லை",
+    "ok": "சரி"
+  },
+  "nav": {
+    "chat": "அரட்டை",
+    "settings": "அமைப்புகள்",
+    "tasks": "பணிகள்",
+    "memory": "நினைவகம்",
+    "monitor": "கண்காணிப்பு",
+    "skills": "திறன்கள்",
+    "mcpServers": "MCP சேவையகங்கள்",
+    "users": "பயனர்கள்",
+    "files": "கோப்புகள்"
+  },
+  "login": {
+    "title": "உள்நுழைவு",
+    "subtitle": "DeepThink இல் உள்நுழைக",
+    "username": "பயனர்பெயர்",
+    "password": "கடவுச்சொல்",
+    "submit": "உள்நுழைக",
+    "register": "பதிவு செய்",
+    "logout": "வெளியேறு",
+    "errors": {
+      "invalid": "தவறான பயனர்பெயர் அல்லது கடவுச்சொல்",
+      "locked": "கணக்கு பூட்டப்பட்டது, பிறகு முயற்சிக்கவும்",
+      "network": "பிணைய பிழை, மீண்டும் முயற்சிக்கவும்"
+    }
+  },
+  "register": {
+    "title": "பதிவு",
+    "subtitle": "புதிய கணக்கை உருவாக்கு",
+    "username": "பயனர்பெயர்",
+    "password": "கடவுச்சொல்",
+    "confirmPassword": "கடவுச்சொல்லை உறுதிப்படுத்து",
+    "inviteCode": "அழைப்பு குறியீடு",
+    "submit": "பதிவு செய்",
+    "backToLogin": "உள்நுழைவுக்குத் திரும்பு",
+    "errors": {
+      "usernameTaken": "பயனர்பெயர் ஏற்கனவே எடுக்கப்பட்டது",
+      "passwordMismatch": "கடவுச்சொற்கள் பொருந்தவில்லை",
+      "invalidInvite": "தவறான அழைப்பு குறியீடு"
+    }
+  },
+  "setup": {
+    "title": "அமைப்பு",
+    "adminAccount": "நிர்வாக கணக்கை உருவாக்கு",
+    "claudeConfig": "Claude ஐ உள்ளமை",
+    "imChannels": "IM சேனல்களை உள்ளமை",
+    "welcome": "DeepThink க்கு வரவேற்கிறோம்",
+    "getStarted": "தொடங்குக"
+  },
+  "chat": {
+    "inputPlaceholder": "செய்தி உள்ளிடு, Enter அனுப்ப, Shift+Enter புதிய வரிக்கு",
+    "thinking": "சிந்திக்கிறது",
+    "send": "அனுப்பு",
+    "stop": "நிறுத்து",
+    "clearMessages": "உரையாடலை அழி",
+    "attachments": "இணைப்புகள்",
+    "uploadFile": "கோப்பை பதிவேற்று",
+    "noMessages": "புதிய உரையாடலைத் தொடங்கு",
+    "regenerate": "மீண்டும் உருவாக்கு",
+    "copyMessage": "செய்தியை நகலெடு",
+    "deleteMessage": "செய்தியை நீக்கு",
+    "tokenUsage": "Token பயன்பாடு"
+  },
+  "settings": {
+    "title": "அமைப்புகள்",
+    "sections": {
+      "profile": "சுயவிவரம்",
+      "appearance": "தோற்றம்",
+      "language": "மொழி",
+      "claude": "மாதிரி வழங்கி",
+      "im": "IM சேனல்கள்",
+      "tasks": "பணிகள்",
+      "system": "கணினி",
+      "users": "பயனர்கள்",
+      "audit": "தணிக்கை பதிவு",
+      "invites": "அழைப்பு குறியீடுகள்",
+      "groups": "குழுக்கள்",
+      "mcpServers": "MCP சேவையகங்கள்",
+      "skills": "திறன்கள்",
+      "plugins": "செருகுநிரல்கள்",
+      "billing": "பில்லிங்"
+    },
+    "language": {
+      "title": "இடைமுக மொழி",
+      "description": "இடைமுக மொழியைத் தேர்ந்தெடுக்கவும். Agent இந்த மொழியிலேயே பதிலளிக்கும்.",
+      "selectPlaceholder": "மொழியைத் தேர்ந்தெடு",
+      "appliedNotice": "மொழி மாற்றப்பட்டது",
+      "rtlNotice": "வலமிருந்து-இடமாக தளவமைப்புக்கு மாற்றப்பட்டது"
+    },
+    "profile": {
+      "username": "பயனர்பெயர்",
+      "displayName": "காட்சிப் பெயர்",
+      "avatar": "அவதாரம்",
+      "updateSuccess": "சுயவிவரம் புதுப்பிக்கப்பட்டது"
+    },
+    "appearance": {
+      "theme": "தீம்",
+      "light": "வெளிச்சம்",
+      "dark": "இருள்",
+      "system": "கணினி",
+      "assistantName": "உதவியாளர் பெயர்",
+      "assistantAvatar": "உதவியாளர் அவதாரம்"
+    }
+  },
+  "status": {
+    "online": "இணைப்பில்",
+    "offline": "இணைப்பில்லை",
+    "connecting": "இணைக்கிறது",
+    "reconnecting": "மீண்டும் இணைக்கிறது",
+    "connected": "இணைக்கப்பட்டது",
+    "disconnected": "துண்டிக்கப்பட்டது"
+  },
+  "errors": {
+    "networkFailure": "பிணைய கோரிக்கை தோல்வி",
+    "unknown": "தெரியாத பிழை",
+    "forbidden": "தடைசெய்யப்பட்டது",
+    "notFound": "கிடைக்கவில்லை",
+    "serverError": "சேவையக பிழை",
+    "timeout": "கோரிக்கை நேரம் முடிந்தது"
+  }
+}

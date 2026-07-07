@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "キャンセル",
+    "confirm": "確認",
+    "save": "保存",
+    "saving": "保存中...",
+    "delete": "削除",
+    "edit": "編集",
+    "close": "閉じる",
+    "open": "開く",
+    "loading": "読み込み中...",
+    "retry": "再試行",
+    "back": "戻る",
+    "next": "次へ",
+    "previous": "前へ",
+    "submit": "送信",
+    "reset": "リセット",
+    "search": "検索",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "yes": "はい",
+    "no": "いいえ",
+    "all": "すべて",
+    "none": "なし",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "チャット",
+    "settings": "設定",
+    "tasks": "タスク",
+    "memory": "メモリ",
+    "monitor": "モニター",
+    "skills": "Skills",
+    "mcpServers": "MCP サーバー",
+    "users": "ユーザー",
+    "files": "ファイル"
+  },
+  "login": {
+    "title": "ログイン",
+    "subtitle": "DeepThink にサインイン",
+    "username": "ユーザー名",
+    "password": "パスワード",
+    "submit": "サインイン",
+    "register": "登録",
+    "logout": "ログアウト",
+    "errors": {
+      "invalid": "ユーザー名またはパスワードが正しくありません",
+      "locked": "アカウントがロックされています。後でもう一度お試しください",
+      "network": "ネットワークエラーです。再試行してください"
+    }
+  },
+  "register": {
+    "title": "登録",
+    "subtitle": "新しいアカウントを作成",
+    "username": "ユーザー名",
+    "password": "パスワード",
+    "confirmPassword": "パスワードの確認",
+    "inviteCode": "招待コード",
+    "submit": "登録",
+    "backToLogin": "ログインへ戻る",
+    "errors": {
+      "usernameTaken": "このユーザー名は既に使用されています",
+      "passwordMismatch": "パスワードが一致しません",
+      "invalidInvite": "無効な招待コードです"
+    }
+  },
+  "setup": {
+    "title": "セットアップ",
+    "adminAccount": "管理者アカウントを作成",
+    "claudeConfig": "Claude を設定",
+    "imChannels": "IM チャンネルを設定",
+    "welcome": "DeepThink へようこそ",
+    "getStarted": "はじめる"
+  },
+  "chat": {
+    "inputPlaceholder": "メッセージを入力、Enter で送信、Shift+Enter で改行",
+    "thinking": "考え中",
+    "send": "送信",
+    "stop": "停止",
+    "clearMessages": "会話をクリア",
+    "attachments": "添付ファイル",
+    "uploadFile": "ファイルをアップロード",
+    "noMessages": "新しい会話を始めましょう",
+    "regenerate": "再生成",
+    "copyMessage": "メッセージをコピー",
+    "deleteMessage": "メッセージを削除",
+    "tokenUsage": "Token 使用量"
+  },
+  "settings": {
+    "title": "設定",
+    "sections": {
+      "profile": "プロフィール",
+      "appearance": "外観",
+      "language": "言語",
+      "claude": "モデルプロバイダー",
+      "im": "IM チャンネル",
+      "tasks": "タスク",
+      "system": "システム",
+      "users": "ユーザー",
+      "audit": "監査ログ",
+      "invites": "招待コード",
+      "groups": "グループ",
+      "mcpServers": "MCP サーバー",
+      "skills": "Skills",
+      "plugins": "プラグイン",
+      "billing": "課金"
+    },
+    "language": {
+      "title": "インターフェイス言語",
+      "description": "インターフェイスの言語を選択してください。エージェントもこの言語で返信します。",
+      "selectPlaceholder": "言語を選択",
+      "appliedNotice": "言語が切り替わりました",
+      "rtlNotice": "右から左へのレイアウトに切り替えました"
+    },
+    "profile": {
+      "username": "ユーザー名",
+      "displayName": "表示名",
+      "avatar": "アバター",
+      "updateSuccess": "プロフィールを更新しました"
+    },
+    "appearance": {
+      "theme": "テーマ",
+      "light": "ライト",
+      "dark": "ダーク",
+      "system": "システム",
+      "assistantName": "アシスタント名",
+      "assistantAvatar": "アシスタントのアバター"
+    }
+  },
+  "status": {
+    "online": "オンライン",
+    "offline": "オフライン",
+    "connecting": "接続中",
+    "reconnecting": "再接続中",
+    "connected": "接続済み",
+    "disconnected": "切断済み"
+  },
+  "errors": {
+    "networkFailure": "ネットワーク要求に失敗しました",
+    "unknown": "不明なエラー",
+    "forbidden": "権限がありません",
+    "notFound": "見つかりません",
+    "serverError": "サーバーエラー",
+    "timeout": "要求がタイムアウトしました"
+  }
+}
