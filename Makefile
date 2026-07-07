@@ -363,6 +363,36 @@ desktop-pack-linux: desktop-build ## 打包 Linux AppImage/.deb（在 Linux runn
 	TARGET_PLATFORM=linux ARCH=x64 node scripts/fetch-node-binary.js
 	cd $(DESKTOP_DIR) && npx electron-builder --config build/linux.json
 
+# ─── Release ───────────────────────────────────────────────
+
+RELEASE_REPO ?= AIGeniusInstitute/deep-think
+RELEASE_NOTES_DIR ?= docs/release-notes
+
+release: ## 发布 release 到 GitHub（用法: make release VERSION=v1.0.0；需先 make desktop-pack-* 并打 tag）
+	@if [ -z "$(VERSION)" ]; then echo "❌ 用法: make release VERSION=v1.0.0"; exit 1; fi
+	@if ! command -v gh >/dev/null 2>&1; then echo "❌ 未安装 gh CLI"; echo "  安装: brew install gh"; echo "  登录: gh auth login"; exit 1; fi
+	@if ! gh auth status >/dev/null 2>&1; then echo "❌ gh 未登录，请先 gh auth login"; exit 1; fi
+	@if ! git rev-parse "$(VERSION)" >/dev/null 2>&1; then echo "❌ 本地无 tag $(VERSION)"; echo "  请先: git tag -a $(VERSION) -m 'Release $(VERSION)' && git push origin $(VERSION)"; exit 1; fi
+	@if [ ! -d desktop/release ] || [ -z "$$(ls -A desktop/release 2>/dev/null)" ]; then echo "❌ desktop/release 为空"; echo "  请先在对应平台执行: make desktop-pack-mac / desktop-pack-win / desktop-pack-linux"; exit 1; fi
+	@NOTES_FILE=$(RELEASE_NOTES_DIR)/$(VERSION).md; \
+	  if [ -f "$$NOTES_FILE" ]; then NOTES_ARG="--notes-file $$NOTES_FILE"; else NOTES_ARG="--generate-notes"; fi; \
+	  echo "🚀 发布 $(VERSION) 到 $(RELEASE_REPO)..."; \
+	  echo "   资产:"; ls desktop/release/ | sed 's/^/   📦 /'; \
+	  gh release create "$(VERSION)" \
+	    --repo $(RELEASE_REPO) \
+	    --title "DeepThink $(VERSION)" \
+	    $$NOTES_ARG \
+	    --latest \
+	    desktop/release/
+
+release-delete: ## 删除 release 及 tag（用法: make release-delete VERSION=v1.0.0）
+	@if [ -z "$(VERSION)" ]; then echo "❌ 用法: make release-delete VERSION=v1.0.0"; exit 1; fi
+	@echo "🗑  删除 $(VERSION)..."
+	gh release delete "$(VERSION)" --repo $(RELEASE_REPO) --yes --cleanup-tag 2>/dev/null || true
+	git tag -d "$(VERSION)" 2>/dev/null || true
+	git push origin --delete "$(VERSION)" 2>/dev/null || true
+	@echo "✅ 已删除 $(VERSION)"
+
 # ─── Help ────────────────────────────────────────────────────
 
 help: ## 显示帮助
