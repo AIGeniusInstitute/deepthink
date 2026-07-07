@@ -23,6 +23,7 @@ import {
   Music,
   AlertCircle,
   Copy,
+  Globe,
 } from 'lucide-react';
 import { useFileStore, FileEntry, toBase64Url } from '../../stores/files';
 import { useChatStore } from '../../stores/chat';
@@ -148,6 +149,7 @@ function FileIcon({ name }: { name: string }) {
   if (ext === 'pdf') return <FileText className="w-4 h-4 text-red-500" />;
   if (ext === 'json') return <FileCode className="w-4 h-4 text-yellow-600" />;
   if (ext === 'md') return <FileText className="w-4 h-4 text-blue-500" />;
+  if (ext === 'html' || ext === 'htm') return <Globe className="w-4 h-4 text-emerald-500" />;
   if (CODE_EXTENSIONS.has(ext))
     return <FileCode className="w-4 h-4 text-emerald-500" />;
   if (TEXT_EXTENSIONS.has(ext))
@@ -185,6 +187,7 @@ type PreviewState =
   | { kind: 'pdf'; file: FileEntry }
   | { kind: 'video'; file: FileEntry }
   | { kind: 'audio'; file: FileEntry }
+  | { kind: 'html'; file: FileEntry }
   | { kind: 'text'; file: FileEntry };
 
 // ─── Helpers ─────────────────────────────────────────────────────
@@ -622,6 +625,30 @@ function PdfPreview({
   );
 }
 
+// ─── HTML Preview Overlay ───────────────────────────────────────
+
+function HtmlPreview({
+  groupJid,
+  file,
+  onClose,
+}: {
+  groupJid: string;
+  file: FileEntry;
+  onClose: () => void;
+}) {
+  return (
+    <MediaOverlay onClose={onClose} fileName={file.name}>
+      <iframe
+        src={buildPreviewUrl(groupJid, file.path)}
+        title={file.name}
+        sandbox="allow-scripts allow-same-origin"
+        className="w-full h-full max-w-[90vw] max-h-[90vh] rounded-lg bg-white"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </MediaOverlay>
+  );
+}
+
 // ─── Video Preview Overlay ─────────────────────────────────────
 
 function VideoPreview({
@@ -887,6 +914,8 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
         setPreview({ kind: 'audio', file: item });
       } else if (ext === 'md' && !item.isSystem) {
         setPreview({ kind: 'markdown', file: item });
+      } else if (ext === 'html' || ext === 'htm') {
+        setPreview({ kind: 'html', file: item });
       } else {
         setPreview({ kind: 'text', file: item });
       }
@@ -1272,6 +1301,9 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
       )}
       {preview?.kind === 'pdf' && (
         <PdfPreview groupJid={groupJid} file={preview.file} onClose={() => setPreview(null)} />
+      )}
+      {preview?.kind === 'html' && (
+        <HtmlPreview groupJid={groupJid} file={preview.file} onClose={() => setPreview(null)} />
       )}
       {preview?.kind === 'video' && (
         <VideoPreview groupJid={groupJid} file={preview.file} onClose={() => setPreview(null)} />

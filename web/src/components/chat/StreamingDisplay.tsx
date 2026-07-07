@@ -155,7 +155,7 @@ function AgentContextPanel({ audit }: { audit: AgentContextAudit }) {
 function TaskAgentBlock({ agent, groupJid }: { agent: AgentInfo; groupJid: string }) {
   const streaming = useChatStore(s => s.agentStreaming[agent.id]);
   const isRunning = agent.status === 'running';
-  const [expanded, setExpanded] = useState(isRunning);
+  const [expanded, setExpanded] = useState(true);
   const [localElapsed, setLocalElapsed] = useState<Record<string, number>>({});
 
   // Auto-expand when agent starts running
@@ -243,6 +243,9 @@ function TaskAgentBlock({ agent, groupJid }: { agent: AgentInfo; groupJid: strin
                     />
                   ))}
                 </div>
+              )}
+              {streaming.todos && streaming.todos.length > 0 && (
+                <TodoProgressPanel todos={streaming.todos} />
               )}
               {streaming.partialText && (
                 <div className="max-w-none overflow-hidden text-sm [&>div>*:first-child]:!mt-0">
