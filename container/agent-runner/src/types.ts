@@ -41,6 +41,12 @@ export interface ContainerInput {
   plugins?: Array<{ type: 'local'; path: string }>;
   /** Runtime context audit bootstrap from the host/container launcher. */
   contextAudit?: ClaudeContextAudit;
+  /**
+   * User's preferred response language (BCP-47-ish code, e.g. 'zh-CN', 'en').
+   * Injected into the agent's system prompt as a "respond in this language"
+   * directive. Defaults to 'zh-CN' when undefined.
+   */
+  userLanguage?: string;
 }
 
 export interface ContainerOutput {

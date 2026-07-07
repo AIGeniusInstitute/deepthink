@@ -387,6 +387,7 @@ export function initDatabase(): void {
       ai_avatar_color TEXT,
       ai_avatar_url TEXT,
       default_require_mention INTEGER NOT NULL DEFAULT 0,
+      language TEXT NOT NULL DEFAULT 'zh-CN',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       last_login_at TEXT,
@@ -700,6 +701,7 @@ export function initDatabase(): void {
   ensureColumn('users', 'ai_avatar_emoji', 'TEXT');
   ensureColumn('users', 'ai_avatar_color', 'TEXT');
   ensureColumn('users', 'ai_avatar_url', 'TEXT');
+  ensureColumn('users', 'language', "TEXT NOT NULL DEFAULT 'zh-CN'");
   ensureColumn(
     'users',
     'default_require_mention',
@@ -1359,7 +1361,7 @@ export function initDatabase(): void {
     }
   }
 
-  const SCHEMA_VERSION = '39';
+  const SCHEMA_VERSION = '40';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -3455,6 +3457,8 @@ function mapUserRow(row: Record<string, unknown>): User {
     ai_avatar_url:
       typeof row.ai_avatar_url === 'string' ? row.ai_avatar_url : null,
     default_require_mention: !!row.default_require_mention,
+    language:
+      typeof row.language === 'string' && row.language ? row.language : 'zh-CN',
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
     last_login_at:
@@ -3482,6 +3486,7 @@ function toUserPublic(user: User, lastActiveAt: string | null): UserPublic {
     ai_avatar_color: user.ai_avatar_color,
     ai_avatar_url: user.ai_avatar_url,
     default_require_mention: user.default_require_mention,
+    language: user.language,
     created_at: user.created_at,
     last_login_at: user.last_login_at,
     last_active_at: lastActiveAt,
@@ -3770,6 +3775,7 @@ export function updateUserFields(
       | 'ai_avatar_color'
       | 'ai_avatar_url'
       | 'default_require_mention'
+      | 'language'
       | 'deleted_at'
     >
   >,
@@ -3848,6 +3854,10 @@ export function updateUserFields(
   if (updates.default_require_mention !== undefined) {
     fields.push('default_require_mention = ?');
     values.push(updates.default_require_mention ? 1 : 0);
+  }
+  if (updates.language !== undefined) {
+    fields.push('language = ?');
+    values.push(updates.language);
   }
   if (updates.deleted_at !== undefined) {
     fields.push('deleted_at = ?');
