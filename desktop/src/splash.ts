@@ -4,8 +4,8 @@ let splashWindow: BrowserWindow | null = null;
 
 export function createSplash(): BrowserWindow {
   splashWindow = new BrowserWindow({
-    width: 480,
-    height: 320,
+    width: 520,
+    height: 360,
     frame: false,
     resizable: false,
     minimizable: false,
@@ -26,21 +26,36 @@ export function createSplash(): BrowserWindow {
 <meta charset="utf-8" />
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #E8EEF2; color: #1F2937;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-  .wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; }
-  .logo { font-size: 56px; font-weight: 700; color: #1F2937; letter-spacing: -1px; }
-  .tag { font-size: 13px; color: #6B7785; margin-top: 4px; }
-  .status { font-size: 13px; color: #4A5563; margin-top: 28px; }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #1F2937;
-    margin-right: 8px; animation: pulse 1.2s infinite; }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+    overflow: hidden; }
+  .wrap { display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; position: relative; }
+  .logo { font-size: 64px; font-weight: 700; color: #1F2937; letter-spacing: -1.5px;
+    opacity: 0; transform: translateY(8px);
+    text-shadow: 0 0 24px rgba(31, 41, 55, 0.10);
+    animation: slideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards,
+               breath 2.4s ease-in-out 0.8s infinite; }
+  .tag { font-size: 12px; color: #6B7785; margin-top: 10px; letter-spacing: 0.5px;
+    opacity: 0; animation: fadeIn 0.6s ease-out 0.5s forwards; }
+  .tag .dot { color: #9CA3AF; margin: 0 6px; }
+  .status { font-size: 12px; color: #4A5563; margin-top: 32px; letter-spacing: 0.3px;
+    opacity: 0; animation: fadeIn 0.6s ease-out 0.9s forwards; }
+  .status .sub { color: #9CA3AF; margin-left: 6px; font-size: 11px; }
+  .progress { position: absolute; bottom: 0; left: 0; height: 1px; width: 0%;
+    background: #1F2937; animation: progress 1.8s cubic-bezier(0.4, 0, 0.2, 1) 0.3s forwards; }
+  @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeIn { to { opacity: 1; } }
+  @keyframes breath { 0%, 100% { text-shadow: 0 0 24px rgba(31, 41, 55, 0.10); }
+                      50% { text-shadow: 0 0 36px rgba(31, 41, 55, 0.22); } }
+  @keyframes progress { to { width: 100%; } }
 </style>
 </head>
 <body>
   <div class="wrap">
     <div class="logo">DeepThink</div>
-    <div class="tag">本地 AI Agent · 思考的深度</div>
-    <div class="status"><span class="dot"></span>正在启动…</div>
+    <div class="tag">Loop Engineering<span class="dot">·</span>本地优先<span class="dot">·</span>思考的深度</div>
+    <div class="status">正在唤醒思考<span class="sub">Initializing…</span></div>
+    <div class="progress"></div>
   </div>
 </body>
 </html>`;
