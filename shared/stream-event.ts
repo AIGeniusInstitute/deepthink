@@ -19,7 +19,9 @@ export type StreamEventType =
   | 'context_audit'
   | 'todo_update'
   | 'usage'
-  | 'status' | 'init';
+  | 'status' | 'init'
+  | 'loop_start' | 'loop_iteration_start' | 'loop_iteration_end'
+  | 'loop_goal_check' | 'loop_review_result' | 'loop_end';
 
 export type StreamAgentScope = 'main' | 'task' | 'subagent' | 'system';
 export type StreamDisplayLevel = 'primary' | 'detail' | 'debug';
@@ -157,5 +159,32 @@ export interface StreamEvent {
       cacheCreationInputTokens: number;
       costUSD: number;
     }>;
+  };
+  /** Loop engineering metadata. Present on loop_* events and any event
+   *  emitted while ContainerInput.loopRunId is set. */
+  loop?: {
+    loopRunId: string;
+    kind: 'goal' | 'loop' | 'schedule' | 'proactive';
+    iteration?: number;
+    goalText?: string;
+    successCriteria?: string;
+    maxTurns?: number;
+    currentTurn?: number;
+    status?: string;
+    reviewResult?: 'pass' | 'fail' | 'needs_improvement' | 'skipped';
+    reviewReason?: string;
+    totalTokens?: number;
+    totalCostUsd?: number;
+  };
+  /** Trace node metadata for DAG visualization. Persisted to loop_trace_nodes. */
+  traceNode?: {
+    nodeId: number;
+    nodeType: 'turn' | 'tool' | 'review' | 'goal_check' | 'skill' | 'subagent';
+    parentNodeId?: number | null;
+    title?: string;
+    inputSummary?: string;
+    outputSummary?: string;
+    tokens?: number;
+    status?: string;
   };
 }

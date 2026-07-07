@@ -219,6 +219,14 @@ import { verifyPairingCode } from './telegram-pairing.js';
 import { sdkQuery } from './sdk-query.js';
 import { executeSessionReset } from './commands.js';
 import {
+  handleGoalCommand,
+  handleLoopCommand,
+  handleScheduleCommand,
+  handleProactiveCommand,
+  handleCancelCommand,
+  handleListLoopsCommand as handleListLoopsCmd,
+} from './loop-commands.js';
+import {
   claimOwner,
   releaseOwner,
   addToAllowlist,
@@ -1488,6 +1496,18 @@ async function handleCommand(
       return handleDisallowCommand(chatJid, senderImId, mentions);
     case 'allowlist':
       return handleAllowlistCommand(chatJid);
+    case 'goal':
+      return handleGoalLoopCommand(chatJid, rawArgs, senderImId);
+    case 'loop':
+      return handleTimeLoopCommand(chatJid, rawArgs, senderImId);
+    case 'schedule':
+      return handleScheduleLoopCommand(chatJid, rawArgs, senderImId);
+    case 'proactive':
+      return handleProactiveLoopCommand(chatJid, rawArgs, senderImId);
+    case 'cancel':
+      return handleCancelLoopCommand(chatJid, rawArgs, senderImId);
+    case 'loops':
+      return handleLoopsListCommand(chatJid, senderImId);
     default:
       return null;
   }
@@ -2051,6 +2071,112 @@ function handleAllowlistCommand(chatJid: string): string {
   const ownerMark = (id: string) => (id === group.owner_im_id ? ' (owner)' : '');
   const lines = allowlist.map((id, i) => `${i + 1}. ${id}${ownerMark(id)}`);
   return `白名单（${allowlist.length} 人）：\n${lines.join('\n')}`;
+}
+
+// ─── Loop Engineering command wrappers ─────────────────────────
+// Each wrapper resolves the owner user id + workspace folder from the chat
+// context, then delegates to the pure handler in loop-commands.ts.
+
+function resolveLoopCommandDeps(
+  chatJid: string,
+  senderImId?: string,
+): { ok: true; deps: import('./loop-commands.js').LoopCommandDeps } | { ok: false; reply: string } {
+  const group = registeredGroups[chatJid] ?? getRegisteredGroup(chatJid);
+  if (!group) {
+    return { ok: false, reply: '未找到当前工作区' };
+  }
+  const ownerUserId = group.created_by ?? null;
+  if (!ownerUserId) {
+    return { ok: false, reply: '当前工作区没有所有者，无法启动循环' };
+  }
+  const loopDeps: import('./loop-orchestrator.js').LoopDeps = {
+    registeredGroups: () => registeredGroups,
+    getSessions: () => sessions,
+    onProcess: (groupJid, proc, containerName, groupFolder, displayName, taskRunId, selectedProviderId) =>
+      queue.registerProcess(groupJid, proc, {
+        containerName,
+        groupFolder,
+        displayName,
+        taskRunId,
+        selectedProviderId,
+      }),
+    broadcastStreamEvent,
+    storeResultAndNotify: async (targetJid, text, options) => {
+      await sendMessage(targetJid, text, {
+        sendToIM: false,
+        source: 'scheduled_task',
+        messageMeta: { sourceKind: options.sourceKind || 'sdk_final' },
+      });
+    },
+  };
+  return {
+    ok: true,
+    deps: {
+      ownerUserId,
+      groupFolder: group.folder,
+      chatJid,
+      loopDeps,
+    },
+  };
+}
+
+async function handleGoalLoopCommand(
+  chatJid: string,
+  rawArgs: string,
+  senderImId?: string,
+): Promise<string> {
+  const resolved = resolveLoopCommandDeps(chatJid, senderImId);
+  if (!resolved.ok) return resolved.reply;
+  return handleGoalCommand(rawArgs, resolved.deps);
+}
+
+async function handleTimeLoopCommand(
+  chatJid: string,
+  rawArgs: string,
+  senderImId?: string,
+): Promise<string> {
+  const resolved = resolveLoopCommandDeps(chatJid, senderImId);
+  if (!resolved.ok) return resolved.reply;
+  return handleLoopCommand(rawArgs, resolved.deps);
+}
+
+async function handleScheduleLoopCommand(
+  chatJid: string,
+  rawArgs: string,
+  senderImId?: string,
+): Promise<string> {
+  const resolved = resolveLoopCommandDeps(chatJid, senderImId);
+  if (!resolved.ok) return resolved.reply;
+  return handleScheduleCommand(rawArgs, resolved.deps);
+}
+
+async function handleProactiveLoopCommand(
+  chatJid: string,
+  rawArgs: string,
+  senderImId?: string,
+): Promise<string> {
+  const resolved = resolveLoopCommandDeps(chatJid, senderImId);
+  if (!resolved.ok) return resolved.reply;
+  return handleProactiveCommand(rawArgs, resolved.deps);
+}
+
+async function handleCancelLoopCommand(
+  chatJid: string,
+  rawArgs: string,
+  senderImId?: string,
+): Promise<string> {
+  const resolved = resolveLoopCommandDeps(chatJid, senderImId);
+  if (!resolved.ok) return resolved.reply;
+  return handleCancelCommand(rawArgs, resolved.deps);
+}
+
+async function handleLoopsListCommand(
+  chatJid: string,
+  senderImId?: string,
+): Promise<string> {
+  const resolved = resolveLoopCommandDeps(chatJid, senderImId);
+  if (!resolved.ok) return resolved.reply;
+  return handleListLoopsCmd(resolved.deps);
 }
 
 const recallCooldowns = new Map<string, number>();

@@ -151,6 +151,11 @@ export interface ScheduledTask {
   created_at: string;
   created_by?: string;
   notify_channels?: string[] | null;
+  /** Loop Engineering metadata. Null for regular scheduled tasks.
+   *  Set when the task was created by /loop, /schedule, or /proactive. */
+  loop_kind?: 'loop' | 'schedule' | 'proactive' | null;
+  /** Reference to loop_runs.id when loop_kind='proactive'. Null otherwise. */
+  loop_run_id?: string | null;
 }
 
 export interface TaskRunLog {
