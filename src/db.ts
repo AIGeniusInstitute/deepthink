@@ -329,6 +329,76 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_task_run_logs ON task_run_logs(task_id, run_at);
   `);
 
+  // Loop Engineering tables (v41)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS loop_runs (
+      id TEXT PRIMARY KEY,
+      owner_user_id TEXT NOT NULL,
+      group_folder TEXT NOT NULL,
+      chat_jid TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('goal','loop','schedule','proactive')),
+      goal_text TEXT NOT NULL,
+      success_criteria TEXT,
+      max_turns INTEGER NOT NULL DEFAULT 5,
+      current_turn INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending','running','reviewing','iterating','completed','failed','cancelled')),
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      total_input_tokens INTEGER NOT NULL DEFAULT 0,
+      total_output_tokens INTEGER NOT NULL DEFAULT 0,
+      total_cost_usd REAL NOT NULL DEFAULT 0,
+      root_prompt TEXT,
+      scheduled_task_id TEXT,
+      workflow_mode TEXT,
+      cancel_reason TEXT,
+      FOREIGN KEY (owner_user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_owner ON loop_runs(owner_user_id, started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_status ON loop_runs(status);
+
+    CREATE TABLE IF NOT EXISTS loop_iterations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      loop_run_id TEXT NOT NULL,
+      turn_index INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running'
+        CHECK(status IN ('running','completed','failed','skipped')),
+      agent_session_id TEXT,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      cost_usd REAL NOT NULL DEFAULT 0,
+      review_result TEXT CHECK(review_result IN ('pass','fail','needs_improvement','skipped')),
+      review_reason TEXT,
+      agent_output TEXT,
+      FOREIGN KEY (loop_run_id) REFERENCES loop_runs(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_loop_iterations_run ON loop_iterations(loop_run_id, turn_index);
+
+    CREATE TABLE IF NOT EXISTS loop_trace_nodes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      loop_run_id TEXT NOT NULL,
+      iteration_id INTEGER,
+      node_type TEXT NOT NULL CHECK(node_type IN ('turn','tool','review','goal_check','skill','subagent')),
+      parent_node_id INTEGER,
+      tool_name TEXT,
+      tool_use_id TEXT,
+      title TEXT,
+      input_summary TEXT,
+      output_summary TEXT,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      tokens INTEGER NOT NULL DEFAULT 0,
+      status TEXT,
+      FOREIGN KEY (loop_run_id) REFERENCES loop_runs(id),
+      FOREIGN KEY (iteration_id) REFERENCES loop_iterations(id),
+      FOREIGN KEY (parent_node_id) REFERENCES loop_trace_nodes(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_loop_trace_run ON loop_trace_nodes(loop_run_id, started_at);
+    CREATE INDEX IF NOT EXISTS idx_loop_trace_parent ON loop_trace_nodes(parent_node_id);
+  `);
+
   // State tables (replacing JSON files)
   db.exec(`
     CREATE TABLE IF NOT EXISTS router_state (
@@ -1361,7 +1431,28 @@ export function initDatabase(): void {
     }
   }
 
-  const SCHEMA_VERSION = '40';
+  // v40 → v41: Loop Engineering — add loop_kind/loop_run_id to scheduled_tasks
+  // and ensure loop_runs/loop_iterations/loop_trace_nodes tables exist (CREATE
+  // TABLE IF NOT EXISTS in the schema block above already handles new tables;
+  // ALTER TABLE below extends the existing scheduled_tasks table in-place).
+  if (
+    !db
+      .prepare("PRAGMA table_info('scheduled_tasks')")
+      .all()
+      .some((c: any) => c.name === 'loop_kind')
+  ) {
+    db.exec('ALTER TABLE scheduled_tasks ADD COLUMN loop_kind TEXT');
+  }
+  if (
+    !db
+      .prepare("PRAGMA table_info('scheduled_tasks')")
+      .all()
+      .some((c: any) => c.name === 'loop_run_id')
+  ) {
+    db.exec('ALTER TABLE scheduled_tasks ADD COLUMN loop_run_id TEXT');
+  }
+
+  const SCHEMA_VERSION = '41';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -2085,12 +2176,15 @@ export function getMessagesSince(
 }
 
 export function createTask(
-  task: Omit<ScheduledTask, 'last_run' | 'last_result'>,
+  task: Omit<ScheduledTask, 'last_run' | 'last_result'> & {
+    loop_kind?: string | null;
+    loop_run_id?: string | null;
+  },
 ): void {
   db.prepare(
     `
-    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, execution_type, script_command, execution_mode, next_run, status, created_at, created_by, notify_channels)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, execution_type, script_command, execution_mode, next_run, status, created_at, created_by, notify_channels, loop_kind, loop_run_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     task.id,
@@ -2110,6 +2204,8 @@ export function createTask(
     task.created_at,
     task.created_by ?? null,
     task.notify_channels != null ? JSON.stringify(task.notify_channels) : null,
+    task.loop_kind ?? null,
+    task.loop_run_id ?? null,
   );
 }
 
@@ -2409,6 +2505,273 @@ export function cleanupOldBillingAuditLog(retentionDays = 365): number {
   ).toISOString();
   const result = db
     .prepare('DELETE FROM billing_audit_log WHERE created_at < ?')
+    .run(cutoff);
+  return result.changes;
+}
+
+// --- Loop Engineering CRUD ---
+
+export interface LoopRunRow {
+  id: string;
+  owner_user_id: string;
+  group_folder: string;
+  chat_jid: string;
+  kind: 'goal' | 'loop' | 'schedule' | 'proactive';
+  goal_text: string;
+  success_criteria: string | null;
+  max_turns: number;
+  current_turn: number;
+  status: 'pending' | 'running' | 'reviewing' | 'iterating' | 'completed' | 'failed' | 'cancelled';
+  started_at: string;
+  ended_at: string | null;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_usd: number;
+  root_prompt: string | null;
+  scheduled_task_id: string | null;
+  workflow_mode: string | null;
+  cancel_reason: string | null;
+}
+
+export interface LoopIterationRow {
+  id: number;
+  loop_run_id: string;
+  turn_index: number;
+  status: 'running' | 'completed' | 'failed' | 'skipped';
+  agent_session_id: string | null;
+  started_at: string;
+  ended_at: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  review_result: 'pass' | 'fail' | 'needs_improvement' | 'skipped' | null;
+  review_reason: string | null;
+  agent_output: string | null;
+}
+
+export interface LoopTraceNodeRow {
+  id: number;
+  loop_run_id: string;
+  iteration_id: number | null;
+  node_type: 'turn' | 'tool' | 'review' | 'goal_check' | 'skill' | 'subagent';
+  parent_node_id: number | null;
+  tool_name: string | null;
+  tool_use_id: string | null;
+  title: string | null;
+  input_summary: string | null;
+  output_summary: string | null;
+  started_at: string;
+  ended_at: string | null;
+  tokens: number;
+  status: string | null;
+}
+
+export function createLoopRun(row: Partial<LoopRunRow> & {
+  id: string;
+  owner_user_id: string;
+  group_folder: string;
+  chat_jid: string;
+  kind: LoopRunRow['kind'];
+  goal_text: string;
+  max_turns: number;
+  started_at: string;
+}): string {
+  const id = row.id;
+  db.prepare(
+    `INSERT INTO loop_runs
+      (id, owner_user_id, group_folder, chat_jid, kind, goal_text, success_criteria,
+       max_turns, current_turn, status, started_at, total_input_tokens, total_output_tokens,
+       total_cost_usd, root_prompt, scheduled_task_id, workflow_mode)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, 0, 0, ?, ?, ?)`,
+  ).run(
+    id,
+    row.owner_user_id,
+    row.group_folder,
+    row.chat_jid,
+    row.kind,
+    row.goal_text,
+    row.success_criteria ?? null,
+    row.max_turns,
+    row.status ?? 'pending',
+    row.started_at,
+    row.root_prompt ?? null,
+    row.scheduled_task_id ?? null,
+    row.workflow_mode ?? null,
+  );
+  return id;
+}
+
+export function getLoopRun(id: string): LoopRunRow | undefined {
+  return db.prepare('SELECT * FROM loop_runs WHERE id = ?').get(id) as
+    | LoopRunRow
+    | undefined;
+}
+
+export function listLoopRuns(
+  ownerUserId: string,
+  opts: { status?: string; kind?: string; limit?: number; offset?: number } = {},
+): LoopRunRow[] {
+  const where: string[] = ['owner_user_id = ?'];
+  const params: (string | number)[] = [ownerUserId];
+  if (opts.status) {
+    where.push('status = ?');
+    params.push(opts.status);
+  }
+  if (opts.kind) {
+    where.push('kind = ?');
+    params.push(opts.kind);
+  }
+  params.push(opts.limit ?? 50);
+  params.push(opts.offset ?? 0);
+  return db
+    .prepare(
+      `SELECT * FROM loop_runs WHERE ${where.join(' AND ')} ORDER BY started_at DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...params) as LoopRunRow[];
+}
+
+export function updateLoopRunStatus(
+  id: string,
+  status: LoopRunRow['status'],
+  extra?: { currentTurn?: number; endedAt?: string; cancelReason?: string },
+): void {
+  if (extra) {
+    db.prepare(
+      `UPDATE loop_runs SET status = ?, current_turn = COALESCE(?, current_turn),
+       ended_at = COALESCE(?, ended_at), cancel_reason = COALESCE(?, cancel_reason) WHERE id = ?`,
+    ).run(
+      status,
+      extra.currentTurn ?? null,
+      extra.endedAt ?? null,
+      extra.cancelReason ?? null,
+      id,
+    );
+  } else {
+    db.prepare('UPDATE loop_runs SET status = ? WHERE id = ?').run(status, id);
+  }
+}
+
+export function addLoopRunUsage(
+  id: string,
+  inputTokens: number,
+  outputTokens: number,
+  costUsd: number,
+): void {
+  db.prepare(
+    `UPDATE loop_runs SET
+      total_input_tokens = total_input_tokens + ?,
+      total_output_tokens = total_output_tokens + ?,
+      total_cost_usd = total_cost_usd + ?
+    WHERE id = ?`,
+  ).run(inputTokens, outputTokens, costUsd, id);
+}
+
+export function createLoopIteration(
+  loopRunId: string,
+  turnIndex: number,
+  startedAt: string,
+): number {
+  const result = db
+    .prepare(
+      `INSERT INTO loop_iterations (loop_run_id, turn_index, status, started_at)
+       VALUES (?, ?, 'running', ?)`,
+    )
+    .run(loopRunId, turnIndex, startedAt);
+  return Number(result.lastInsertRowid);
+}
+
+export function updateLoopIteration(
+  id: number,
+  updates: Partial<Pick<LoopIterationRow, 'status' | 'agent_session_id' | 'ended_at' | 'input_tokens' | 'output_tokens' | 'cost_usd' | 'review_result' | 'review_reason' | 'agent_output'>>,
+): void {
+  const fields: string[] = [];
+  const values: (string | number | null)[] = [];
+  for (const [k, v] of Object.entries(updates)) {
+    if (v === undefined) continue;
+    fields.push(`${k} = ?`);
+    values.push(v as string | number | null);
+  }
+  if (fields.length === 0) return;
+  values.push(id);
+  db.prepare(`UPDATE loop_iterations SET ${fields.join(', ')} WHERE id = ?`).run(
+    ...values,
+  );
+}
+
+export function listLoopIterations(loopRunId: string): LoopIterationRow[] {
+  return db
+    .prepare(
+      'SELECT * FROM loop_iterations WHERE loop_run_id = ? ORDER BY turn_index ASC',
+    )
+    .all(loopRunId) as LoopIterationRow[];
+}
+
+export function createLoopTraceNode(
+  row: Partial<Omit<LoopTraceNodeRow, 'id'>> & {
+    loop_run_id: string;
+    node_type: LoopTraceNodeRow['node_type'];
+    started_at: string;
+  },
+): number {
+  const result = db
+    .prepare(
+      `INSERT INTO loop_trace_nodes
+       (loop_run_id, iteration_id, node_type, parent_node_id, tool_name, tool_use_id,
+        title, input_summary, output_summary, started_at, ended_at, tokens, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      row.loop_run_id,
+      row.iteration_id ?? null,
+      row.node_type,
+      row.parent_node_id ?? null,
+      row.tool_name ?? null,
+      row.tool_use_id ?? null,
+      row.title ?? null,
+      row.input_summary ?? null,
+      row.output_summary ?? null,
+      row.started_at,
+      row.ended_at ?? null,
+      row.tokens ?? 0,
+      row.status ?? null,
+    );
+  return Number(result.lastInsertRowid);
+}
+
+export function updateLoopTraceNode(
+  id: number,
+  updates: Partial<Pick<LoopTraceNodeRow, 'ended_at' | 'output_summary' | 'tokens' | 'status'>>,
+): void {
+  const fields: string[] = [];
+  const values: (string | number | null)[] = [];
+  for (const [k, v] of Object.entries(updates)) {
+    if (v === undefined) continue;
+    fields.push(`${k} = ?`);
+    values.push(v as string | number | null);
+  }
+  if (fields.length === 0) return;
+  values.push(id);
+  db.prepare(`UPDATE loop_trace_nodes SET ${fields.join(', ')} WHERE id = ?`).run(
+    ...values,
+  );
+}
+
+export function listLoopTraceNodes(loopRunId: string): LoopTraceNodeRow[] {
+  return db
+    .prepare(
+      'SELECT * FROM loop_trace_nodes WHERE loop_run_id = ? ORDER BY started_at ASC',
+    )
+    .all(loopRunId) as LoopTraceNodeRow[];
+}
+
+export function cleanupOldLoopRuns(retentionDays = 30): number {
+  const cutoff = new Date(
+    Date.now() - retentionDays * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const result = db
+    .prepare(
+      `DELETE FROM loop_runs WHERE status IN ('completed','failed','cancelled') AND started_at < ?`,
+    )
     .run(cutoff);
   return result.changes;
 }

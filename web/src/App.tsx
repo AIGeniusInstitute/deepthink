@@ -19,6 +19,7 @@ import { Toaster } from '@/components/ui/sonner';
 const ChatPage = lazy(() => import('./pages/ChatPage').then(m => ({ default: m.ChatPage })));
 const TasksPage = lazy(() => import('./pages/TasksPage').then(m => ({ default: m.TasksPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const LoopsPage = lazy(() => import('./pages/LoopsPage').then(m => ({ default: m.LoopsPage })));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
 
 export function App() {
@@ -60,6 +61,7 @@ export function App() {
           <Route path="/chat/:groupFolder?" element={<Suspense fallback={null}><ChatPage /></Suspense>} />
           <Route path="/groups" element={<Navigate to="/settings?tab=groups" replace />} />
           <Route path="/tasks" element={<Suspense fallback={null}><TasksPage /></Suspense>} />
+          <Route path="/loops" element={<Suspense fallback={null}><LoopsPage /></Suspense>} />
           <Route path="/monitor" element={<Navigate to="/settings?tab=monitor" replace />} />
           <Route path="/usage" element={<Navigate to="/settings?tab=usage" replace />} />
           <Route path="/billing" element={<Suspense fallback={null}><BillingPage /></Suspense>} />
