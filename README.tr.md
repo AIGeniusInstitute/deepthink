@@ -7,7 +7,7 @@
 <h1 align="center">DeepThink</h1>
 
 <p align="center">
-  Kendi kendine barındırılan çok kullanıcılı yerel AI Agent Loop Engineering sistemi (masaüstü + tarayıcı + mobil) / AI Genius Institute tarafından geliştirilmiştir
+  Self-hosted çok kullanıcılı yerel AI Agent Loop Engineering sistemi (masaüstü + tarayıcı + mobil) / Powered By AI Genius Institute
 </p>
 
 <p align="center">
@@ -19,69 +19,69 @@
 
 ---
 
-## DeepThink nedir?
+## DeepThink Nedir
 
-DeepThink, [Claude Agent SDK](https://github.com/anthropics/claude-code/tree/main/packages/claude-agent-sdk) üzerine inşa edilmiş, kendi kendine barındırılan çok kullanıcılı bir AI Agent sistemidir. Tam Claude Code çalışma zamanını Feishu, Telegram, QQ, DingTalk, WeChat ve Web arayüzünden erişilebilen bir hizmete sarar; dosya okuma/yazma, terminal işlemleri, tarayıcı otomasyonu, çok turlu akıl yürütme ve MCP araç ekosistemi desteğiyle.
+DeepThink, [Claude Agent SDK](https://github.com/anthropics/claude-code/tree/main/packages/claude-agent-sdk) üzerinde inşa edilmiş self-hosted çok kullanıcılı AI Agent sistemidir. Tam Claude Code runtime'ını Feishu, Telegram, QQ, DingTalk, WeChat ve web arayüzünden erişilebilen bir hizmet olarak paketler. Dosya okuma/yazma, terminal kontrolü, tarayıcı otomasyonu, çok turlu akıl yürütme ve MCP araç ekosistemini destekler.
 
-Temel tasarım ilkesi: **Agent yeteneklerini yeniden uygulamayın, Claude Code'u doğrudan yeniden kullanın**. Arka planda çağrılan şey tam Claude Code CLI çalışma zamanıdır, bir API sarmalayıcısı veya istem zinciri değil. Claude Code'un her yükseltmesi — yeni araçlar, daha güçlü akıl yürütme, daha fazla MCP desteği — DeepThink'e uyarlama olmadan otomatik olarak yarar sağlar.
+Tasarım ilkesi: **Agent yeteneklerini yeniden implement etme, bunun yerine Claude Code'u doğrudan yeniden kullan**. Kaputun altında tam Claude Code CLI runtime'ı çalışır, API sarmalayıcı veya prompt zinciri değildir. Claude Code yükseltmeleri (yeni araçlar, daha güçlü akıl yürütme, daha fazla MCP desteği) adaptör olmadan otomatik olarak DeepThink'e yansır.
 
-### Temel özellikler
+### Ana özellikler
 
-- **Doğal Claude Code güdümlü** — Claude Agent SDK tabanlı, alt çalışma zamanı tam Claude Code CLI, tüm yeteneklerini miras alır
-- **Çok kullanıcılı izolasyon** — Kullanıcı başına çalışma alanı, kullanıcı başına IM kanalları, RBAC izin sistemi, davet kodu kaydı, denetim günlükleri
-- **Altı kanalın birleştirilmiş yönlendirilmesi** — Feishu WebSocket, Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, Web arayüzü
-- **Çok sağlayıcılı yük dengeleme** — birden fazla Claude API sağlayıcısı, üç strateji (round-robin / weighted / failover) otomatik sağlık kontrolüyle
-- **Faturalandırma ve kullanım istatistikleri** — tam faturalandırma sistemi (abonelik planları, cüzdan bakiyesi, kullanım kodları), model başına token takibi ve grafik görselleştirme
-- **Mobil PWA** — mobil için derin optimize, masaüstüne tek tıkla kurulum, iOS / Android uyumlu
+- **Yerel Claude Code motoru** — Claude Agent SDK tabanlı, iç runtime tam Claude Code CLI, tüm yetenekleri miras alır
+- **Çok kullanıcılı izolasyon** — kullanıcı başına workspace, kullanıcı başına IM kanalları, RBAC yetki sistemi, davet kodu kaydı, denetim günlüğü
+- **Altı kanal yönlendirme** — Feishu WebSocket, Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, web arayüzü
+- **Çok-sağlayıcı yük dengeleme** — birden fazla Claude API sağlayıcısı, üç strateji (round-robin / weighted / failover) otomatik sağlık kontrolü ile
+- **Faturalama ve kullanım istatistikleri** — tam faturalama sistemi (abonelik, cüzdan, kullanım kodları), model başına token takibi grafiklerle
+- **Mobil PWA** — mobil için optimize, tek tıkla ana ekrana kurulum, hem iOS hem Android desteği
 
-## Hızlı başlangıç
+## Hızlı Başlangıç
 
-### Önkoşullar
+### Ön koşullar
 
-**Zorunlu**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (konteyner modu için; admin yalnızca host modunda gerekmez), ve bir Claude API anahtarı (resmi Anthropic veya uyumlu aktarma hizmeti).
+**Zorunlu**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (container modu için; admin host modu için gerekli değil), Claude API anahtarı (resmi Anthropic veya uyumlu relay servisi).
 
-**İsteğe bağlı**: Feishu kurumsal uygulama kimlik bilgileri, Telegram Bot Token, QQ Bot kimlik bilgileri, DingTalk kimlik bilgileri, WeChat iLink token — yalnızca IM entegrasyonları istiyorsanız.
+**İsteğe bağlı**: Feishu kurumsal uygulama kimlik bilgileri, Telegram Bot Token, QQ Bot kimlik bilgileri, DingTalk kimlik bilgileri, WeChat iLink token — yalnızca IM entegrasyonu gerekliyse.
 
-> Claude Code CLI'ı manuel olarak kurmanıza gerek yok — projenin Claude Agent SDK bağımlılığı tam CLI çalışma zamanını içerir, `make start` ilk çalıştırmada otomatik kurulur.
+> Claude Code CLI'ı manuel olarak kurmanız gerekmez — projenin Claude Agent SDK bağımlılığı tam CLI runtime'ını içerir ve ilk `make start`'ta otomatik kurulur.
 
 ### Kurulum ve başlatma
 
 ```bash
-# 1. Depoyu klonla
+# 1. Repoyu klonla
 git clone https://github.com/AIGeniusInstitute/deep-think.git
 cd deepthink
 
-# 2. Tek komutla başlat (ilk seferde bağımlılıkları yükler ve derler)
+# 2. Tek komutla başlat (ilk seferde bağımlılıkları kurar + derler)
 make start
 ```
 
-http://localhost:3000 adresini ziyaret edin ve kurulum sihirbazını izleyin: yönetici oluşturun (varsayılan hesap yok), Claude API'yi yapılandırın ve isteğe bağlı olarak IM kanallarını yapılandırın. Tüm yapılandırma Web arayüzünden yapılır, hiçbir yapılandırma dosyası gerektirmez. API anahtarları AES-256-GCM ile şifrelenmiş olarak saklanır.
+http://localhost:3000 adresini açın ve kurulum sihirbazını izleyin: yönetici oluşturun (varsayılan hesap yok), Claude API'yi yapılandırın ve gerekirse IM kanallarını ayarlayın. Her şey web arayüzünden yapılandırılır, yapılandırma dosyası gerekmez. API anahtarları AES-256-GCM ile şifrelenir.
 
-### Konteyner modunu etkinleştir
+### Container modunu etkinleştirme
 
-Admin kullanıcısı varsayılan olarak host modunu kullanır (Docker gerekmez). Konteyner moduna ihtiyacınız varsa (member kullanıcılar kayıttan sonra otomatik kullanır):
+Admin kullanıcısı varsayılan olarak host modunu (Docker olmadan) kullanır. Container modu member kullanıcıları için gerekir (kayıttan sonra otomatik etkinleşir):
 
 ```bash
 ./container/build.sh
 ```
 
-Kayıttan sonra, her yeni kullanıcı otomatik olarak konteyner modunda bir ana çalışma alanı (`home-{userId}`) alır, ek yapılandırma olmadan.
+Yeni kullanıcı kaydından sonra, container modunun ana workspace'i (`home-{userId}`) otomatik olarak oluşturulur, ek yapılandırma olmadan.
 
-## Mimari genel bakış
+## Mimariye Genel Bakış
 
 DeepThink üç bağımsız Node.js projesinden oluşur:
 
-- **Arka uç** (Node.js 22 + TypeScript 5.9 + Hono): Mesaj yönlendirici (2s yoklama + dedup), eşzamanlılık kuyruğu (en fazla 20 konteyner + 5 host süreci), görev zamanlayıcı (cron / interval / once), gerçek zamanlı akış ve terminal için WebSocket sunucusu, bcrypt + HMAC Cookie kimlik doğrulama, RBAC ve AES-256-GCM şifreli yapılandırma yönetimi ile ana hizmet. Veriler SQLite'ta (WAL modu, şema v1→v33).
-- **Ön uç** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, react-markdown, mermaid, recharts, xterm.js ve mobil PWA ile.
-- **Agent Runner** (`container/agent-runner/`): Bir Docker konteynerinde veya host süreci olarak çalışan yürütme motoru; Claude Agent SDK'nın `query()`sini çağırır, 14 StreamEvent türü yayar ve atomik yazma ile dosya tabanlı IPC kanalları üzerinden 12 MCP aracını ana sürece sağlar.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): mesaj yönlendirici (2s polling + yinelenenleri kaldırma), eşzamanlı kuyruk (en fazla 20 container + 5 host süreci), görev zamanlayıcı (cron / interval / once), gerçek zamanlı akış ve terminal için WebSocket sunucusu, bcrypt + HMAC Cookie kimlik doğrulama, RBAC, AES-256-GCM şifreli yapılandırma. Veriler SQLite (WAL modu, şema v1→v33).
+- **Frontend** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, react-markdown, mermaid, recharts, xterm.js, mobil PWA.
+- **Agent Runner** (`container/agent-runner/`): Docker container'ında veya host süreci olarak çalışan yürütme motoru. Claude Agent SDK'nın `query()` fonksiyonunu çağırır, 14 tür StreamEvent yayar ve atomik yazılı dosya IPC üzerinden 12 MCP aracını üst sürece sağlar.
 
-Altı IM kanalı (Feishu, Telegram, QQ, DingTalk, WeChat, Web) yönlendiriciye girer, deduplanir ve kuyruğa yönlendirilir; kuyruk ProviderPool üzerinden API anahtarını seçer ve konteyner veya host sürecini başlatır. Akış olayları WebSocket ile Web istemcisine veya IM API'leriyle her kanala geri gönderilir.
+Altı IM kanalı yönlendiriciye girer, yinelenenlerden arındırılır ve kuyruğa alınır, ProviderPool API anahtarını seçer ve container veya host sürecini başlatır. Akış olayları WebSocket ile web istemcilerine veya IM API ile kanallara geri gönderilir.
 
-## Tam dokümantasyon
+## Tam Dokümantasyon
 
-Tam rehber için bkz.:
+Tam kılavuzu burada bulabilirsiniz:
 
-- [Tam İngilizce sürüm](README.md)
+- [İngilizce tam sürüm](README.md)
 - [简体中文 tam sürüm](README.zh-CN.md)
 
 ---
