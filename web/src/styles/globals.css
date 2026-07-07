@@ -1,0 +1,994 @@
+@import "tailwindcss";
+@import "shadcn/tailwind.css";
+/* DM Sans is the primary UI font — loaded locally below (no CDN dependency) */
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:is(.dark *));
+
+/* DM Sans — primary UI font (local, no CDN dependency) */
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/DMSans-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/DMSans-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Alibaba PuHuiTi 3.0 — Chinese text fallback */
+@font-face {
+  font-family: 'Alibaba PuHuiTi 3';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/AlibabaPuHuiTi-3-55-Regular.woff2') format('woff2');
+  unicode-range: U+4E00-9FFF, U+3400-4DBF, U+3000-303F, U+FF00-FFEF, U+2E80-2EFF, U+3100-312F, U+FE30-FE4F, U+F900-FAFF, U+2F800-2FA1F;
+}
+@font-face {
+  font-family: 'Alibaba PuHuiTi 3';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/AlibabaPuHuiTi-3-65-Medium.woff2') format('woff2');
+  unicode-range: U+4E00-9FFF, U+3400-4DBF, U+3000-303F, U+FF00-FFEF, U+2E80-2EFF, U+3100-312F, U+FE30-FE4F, U+F900-FAFF, U+2F800-2FA1F;
+}
+@font-face {
+  font-family: 'Alibaba PuHuiTi 3';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/AlibabaPuHuiTi-3-75-SemiBold.woff2') format('woff2');
+  unicode-range: U+4E00-9FFF, U+3400-4DBF, U+3000-303F, U+FF00-FFEF, U+2E80-2EFF, U+3100-312F, U+FE30-FE4F, U+F900-FAFF, U+2F800-2FA1F;
+}
+
+/* =====================================================
+   Tailwind CSS 4 Theme — shadcn/ui CSS variable mapping
+   Maps semantic CSS variables → Tailwind utility classes
+   e.g. --color-primary → bg-primary, text-primary, etc.
+   ===================================================== */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar-background);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Brand color scale — available as bg-brand-500, text-brand-300, etc. */
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+
+  /* Feedback semantic colors — bg-success, text-warning, etc. */
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-error: var(--error);
+  --color-error-bg: var(--error-bg);
+  --color-surface: var(--surface);
+  --shadow-card: var(--card-shadow);
+
+  /* Border radius tokens */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: 'DM Sans', 'Alibaba PuHuiTi 3', -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-serif: 'DM Sans', 'Alibaba PuHuiTi 3', -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* =====================================================
+   Design Token values — Moonwhite & Qindai Black (极简月白青黛黑)
+   Background: #E8EEF2 (月白) | Foreground: #1F2937 (青黛黑)
+   Minimalist monochrome palette — no colorful accent
+   ===================================================== */
+:root {
+  /* shadcn/ui semantic tokens */
+  --background: #E8EEF2;
+  --foreground: #1F2937;
+  --card: #F4F7FA;
+  --card-foreground: #1F2937;
+  --popover: #FFFFFF;
+  --popover-foreground: #1F2937;
+  --primary: #1F2937;
+  --primary-foreground: #E8EEF2;
+  --secondary: #D6DEE5;
+  --secondary-foreground: #1F2937;
+  --muted: #D6DEE5;
+  --muted-foreground: #6B7785;
+  --accent: #C8D2DA;
+  --accent-foreground: #1F2937;
+  --destructive: #B91C1C;
+  --destructive-foreground: #FFFFFF;
+  --border: #C8D2DA;
+  --input: #C8D2DA;
+  --ring: #1F2937;
+  --radius: 0.625rem;
+
+  /* Brand color scale — Qindai monochrome (light → dark) */
+  --brand-50: #F4F7FA;
+  --brand-100: #E8EEF2;
+  --brand-200: #D6DEE5;
+  --brand-300: #B8C3CC;
+  --brand-400: #8B96A0;
+  --brand-500: #4A5563;
+  --brand-600: #2F3744;
+  --brand-700: #1F2937;
+
+  /* Chart colors — muted Qindai spectrum */
+  --chart-1: #1F2937;
+  --chart-2: #4A5563;
+  --chart-3: #6B7785;
+  --chart-4: #8B96A0;
+  --chart-5: #B8C3CC;
+
+  /* Sidebar */
+  --sidebar-background: #F4F7FA;
+  --sidebar-foreground: #1F2937;
+  --sidebar-primary: #1F2937;
+  --sidebar-primary-foreground: #E8EEF2;
+  --sidebar-accent: #D6DEE5;
+  --sidebar-accent-foreground: #1F2937;
+  --sidebar-border: #C8D2DA;
+  --sidebar-ring: #1F2937;
+
+  /* Feedback colors */
+  --success: #15803D;
+  --success-bg: #DCFCE7;
+  --warning: #B45309;
+  --warning-bg: #FEF3C7;
+  --error: #B91C1C;
+  --error-bg: #FEE2E2;
+
+  /* Elevated surface — cards that need to stand out from page background */
+  --surface: #F4F7FA;
+
+  /* Code colors */
+  --code-block-bg: #D6DEE5;
+  --inline-code-bg: rgba(31, 41, 55, 0.08);
+  --inline-code-text: #1F2937;
+
+  /* AI message card shadow */
+  --card-shadow: 0 1px 2px rgba(31, 41, 55, 0.04);
+
+  /* iOS keyboard height */
+  --keyboard-height: 0px;
+
+  /* Liquid Glass design tokens */
+  --glass-blur: 20px;
+  --glass-saturate: 1.4;
+  --glass-bg: rgba(244, 247, 250, 0.65);
+  --glass-bg-heavy: rgba(244, 247, 250, 0.85);
+  --glass-border: rgba(200, 210, 218, 0.5);
+  --glass-shadow: 0 8px 32px rgba(31, 41, 55, 0.06);
+  --glass-highlight: linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 60%);
+  --glass-inner-shadow: inset 0 1px 1px rgba(255,255,255,0.7);
+  --sidebar: #F4F7FA;
+}
+
+/* =====================================================
+   Neutral theme — white/gray based design system
+   html prefix ensures specificity beats :root (0,1,0)
+   ===================================================== */
+html.theme-neutral {
+  --background: #ffffff;
+  --foreground: #18181b;
+  --card: #f4f4f5;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+  --primary: #52525b;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #a1a1aa;
+  --brand-50: #fafafa;  --brand-100: #f4f4f5;  --brand-200: #e4e4e7;
+  --brand-300: #d4d4d8;  --brand-400: #a1a1aa;  --brand-500: #71717a;
+  --brand-600: #52525b;  --brand-700: #3f3f46;
+  --surface: #ffffff;
+  --sidebar-background: #fafafa;  --sidebar-foreground: #18181b;
+  --sidebar-primary: #52525b;  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f4f4f5;  --sidebar-accent-foreground: #18181b;
+  --sidebar-border: #e4e4e7;  --sidebar-ring: #a1a1aa;  --sidebar: #fafafa;
+  --glass-bg: rgba(255,255,255,0.65);  --glass-bg-heavy: rgba(255,255,255,0.85);
+  --glass-border: rgba(228,228,231,0.5);
+}
+
+html.dark.theme-neutral {
+  --background: #09090b;  --foreground: #fafafa;
+  --card: #18181b;  --card-foreground: #fafafa;
+  --popover: #18181b;  --popover-foreground: #fafafa;
+  --primary: #a1a1aa;  --primary-foreground: #09090b;
+  --secondary: #27272a;  --secondary-foreground: #fafafa;
+  --muted: #27272a;  --muted-foreground: #a1a1aa;
+  --accent: #27272a;  --accent-foreground: #fafafa;
+  --border: #27272a;  --input: #27272a;  --ring: #52525b;
+  --brand-50: #18181b;  --brand-100: #27272a;  --brand-200: #3f3f46;
+  --brand-300: #52525b;  --brand-400: #71717a;  --brand-500: #a1a1aa;
+  --brand-600: #d4d4d8;  --brand-700: #e4e4e7;
+  --surface: #18181b;
+  --sidebar-background: #09090b;  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #a1a1aa;  --sidebar-primary-foreground: #09090b;
+  --sidebar-accent: #27272a;  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #27272a;  --sidebar-ring: #52525b;  --sidebar: #09090b;
+  --glass-bg: rgba(9,9,11,0.55);  --glass-bg-heavy: rgba(9,9,11,0.80);
+  --glass-border: rgba(255,255,255,0.08);
+}
+
+/* =====================================================
+   Orange theme — warm orange accent
+   Primary: Orange | Base: Warm Neutral
+   ===================================================== */
+html.theme-orange {
+  --background: #FAF9F5;
+  --foreground: #141413;
+  --card: #F0EEE6;
+  --card-foreground: #141413;
+  --popover: #F0EEE6;
+  --popover-foreground: #141413;
+  --primary: oklch(0.553 0.195 38.402);
+  --primary-foreground: oklch(0.98 0.016 73.684);
+  --secondary: #F0EEE6;
+  --secondary-foreground: #141413;
+  --muted: #F0EEE6;
+  --muted-foreground: #8b857d;
+  --accent: #F0EEE6;
+  --accent-foreground: #141413;
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: #ffffff;
+  --border: #DAD9D5;
+  --input: #DAD9D5;
+  --ring: oklch(0.708 0 0);
+  --brand-50: #fff7ed;  --brand-100: #ffedd5;  --brand-200: #fed7aa;
+  --brand-300: #fdba74;  --brand-400: #fb923c;  --brand-500: #f97316;
+  --brand-600: #ea580c;  --brand-700: #c2410c;
+  --chart-1: oklch(0.837 0.128 66.29);  --chart-2: oklch(0.705 0.213 47.604);
+  --chart-3: oklch(0.646 0.222 41.116);  --chart-4: oklch(0.553 0.195 38.402);
+  --chart-5: oklch(0.47 0.157 37.304);
+  --surface: #FDFCFA;
+  --sidebar-background: #FAF9F6;  --sidebar-foreground: #141413;
+  --sidebar-primary: oklch(0.646 0.222 41.116);
+  --sidebar-primary-foreground: oklch(0.98 0.016 73.684);
+  --sidebar-accent: #F0EEE6;  --sidebar-accent-foreground: #141413;
+  --sidebar-border: #DAD9D5;  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.985 0 0);
+  --code-block-bg: rgba(61, 61, 58, 0.05);
+  --inline-code-bg: rgba(61, 61, 58, 0.05);
+  --inline-code-text: rgb(138, 36, 36);
+  --glass-bg: rgba(250, 249, 245, 0.65);  --glass-bg-heavy: rgba(250, 249, 245, 0.85);
+  --glass-border: rgba(218, 217, 213, 0.5);
+}
+
+html.dark.theme-orange {
+  --background: oklch(0.145 0 0);  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.47 0.157 37.304);  --primary-foreground: oklch(0.98 0.016 73.684);
+  --secondary: oklch(0.274 0.006 286.033);  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);  --destructive-foreground: #ffffff;
+  --border: oklch(1 0 0 / 10%);  --input: oklch(1 0 0 / 15%);  --ring: oklch(0.556 0 0);
+  --sidebar-background: #0f172a;  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.705 0.213 47.604);
+  --sidebar-primary-foreground: oklch(0.98 0.016 73.684);
+  --sidebar-accent: oklch(0.269 0 0);  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);  --sidebar-ring: oklch(0.556 0 0);
+  --surface: oklch(0.205 0 0);
+  --code-block-bg: rgba(200, 200, 195, 0.08);
+  --inline-code-bg: rgba(200, 200, 195, 0.1);
+  --inline-code-text: rgb(220, 140, 140);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  /* Brand color scale (Orange) — inverted for dark mode */
+  --brand-50: #431407;  --brand-100: #7c2d12;  --brand-200: #9a3412;
+  --brand-300: #c2410c;  --brand-400: #ea580c;  --brand-500: #f97316;
+  --brand-600: #fb923c;  --brand-700: #fdba74;
+
+  --chart-1: oklch(0.837 0.128 66.29);  --chart-2: oklch(0.705 0.213 47.604);
+  --chart-3: oklch(0.646 0.222 41.116);  --chart-4: oklch(0.553 0.195 38.402);
+  --chart-5: oklch(0.47 0.157 37.304);
+  --sidebar: oklch(0.205 0 0);
+  --glass-bg: rgba(15, 23, 42, 0.55);  --glass-bg-heavy: rgba(15, 23, 42, 0.80);
+  --glass-border: rgba(255, 255, 255, 0.08);
+}
+
+/* Orange floating nav active state */
+html.theme-orange .floating-nav-item.active {
+  background: rgba(249, 115, 22, 0.15);
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.15),
+              var(--glass-inner-shadow);
+}
+html.theme-orange .floating-nav-item.active::before {
+  background: radial-gradient(circle, rgba(249, 115, 22, 0.2) 0%, transparent 70%);
+}
+
+/* =====================================================
+   Anthropic font style — serif AI responses
+   Uses direct font-family overrides because @theme inline
+   bakes values into utilities at build time.
+   ===================================================== */
+html.font-anthropic body,
+html.font-anthropic input,
+html.font-anthropic textarea,
+html.font-anthropic button {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Alibaba PuHuiTi 3', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+}
+html.font-anthropic .font-serif {
+  font-family: Georgia, 'Noto Serif SC', 'Times New Roman', serif;
+}
+html.font-anthropic code,
+html.font-anthropic pre,
+html.font-anthropic .font-mono {
+  font-family: 'Fira Code', ui-monospace, monospace;
+}
+
+/* AI response typography: semibold (600) instead of bold (700) for cleaner readability */
+.font-serif strong,
+.font-serif b {
+  font-weight: 600;
+}
+
+/* =====================================================
+   Dark mode token overrides — Qindai Ink (深青黛)
+   ===================================================== */
+.dark {
+  --background: #0F1E2E;
+  --foreground: #E8EEF2;
+  --card: #1A2B3E;
+  --card-foreground: #E8EEF2;
+  --popover: #1A2B3E;
+  --popover-foreground: #E8EEF2;
+  --primary: #E8EEF2;
+  --primary-foreground: #0F1E2E;
+  --secondary: #243447;
+  --secondary-foreground: #E8EEF2;
+  --muted: #243447;
+  --muted-foreground: #8B96A0;
+  --accent: #2F4358;
+  --accent-foreground: #E8EEF2;
+  --destructive: #F87171;
+  --destructive-foreground: #0F1E2E;
+  --border: #2F4358;
+  --input: #2F4358;
+  --ring: #E8EEF2;
+
+  --sidebar-background: #0F1E2E;
+  --sidebar-foreground: #B8C3CC;
+  --sidebar-primary: #E8EEF2;
+  --sidebar-primary-foreground: #0F1E2E;
+  --sidebar-accent: #1A2B3E;
+  --sidebar-accent-foreground: #B8C3CC;
+  --sidebar-border: #1A2B3E;
+  --sidebar-ring: #E8EEF2;
+
+  --success: #4ADE80;
+  --success-bg: #14532D;
+  --warning: #FBBF24;
+  --warning-bg: #451A03;
+  --error: #F87171;
+  --error-bg: #450A0A;
+
+  --surface: #1A2B3E;
+
+  --code-block-bg: #1A2B3E;
+  --inline-code-bg: rgba(232, 238, 242, 0.12);
+  --inline-code-text: #E8EEF2;
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+
+  --glass-bg: rgba(15, 30, 46, 0.55);
+  --glass-bg-heavy: rgba(15, 30, 46, 0.80);
+  --glass-border: rgba(232, 238, 242, 0.08);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --glass-highlight: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 60%);
+  --glass-inner-shadow: inset 0 1px 1px rgba(255,255,255,0.06);
+  /* Brand color scale — inverted for dark mode */
+  --brand-50: #0F1E2E;  --brand-100: #1A2B3E;  --brand-200: #243447;
+  --brand-300: #2F4358;  --brand-400: #4A5563;  --brand-500: #6B7785;
+  --brand-600: #B8C3CC;  --brand-700: #E8EEF2;
+
+  --chart-1: #E8EEF2;
+  --chart-2: #B8C3CC;
+  --chart-3: #8B96A0;
+  --chart-4: #6B7785;
+  --chart-5: #4A5563;
+  --sidebar: #0F1E2E;
+}
+
+/* =====================================================
+   Base styles
+   ===================================================== */
+
+/* Tailwind v4 默认 border 使用 currentColor（黑色），
+   覆盖为设计系统的 border 色 */
+*,
+::after,
+::before,
+::backdrop,
+::file-selector-button {
+  border-color: var(--border, #e2e8f0);
+}
+
+/* Lucide icons: nav items set strokeWidth inline (1.75 default, 2 active).
+   No global CSS override — it would conflict with inline SVG attributes. */
+
+/* Welcome avatar animations */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50% { transform: scale(1.25); opacity: 0.15; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[breathe_3s_ease-in-out_infinite\],
+  .animate-\[float_4s_ease-in-out_infinite\],
+  .animate-\[orbit_6s_linear_infinite\] {
+    animation: none !important;
+  }
+}
+
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  height: 100%;
+  overflow: hidden;
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Code highlighting theme override — GitHub light */
+pre code.hljs {
+  background: #f6f8fa !important;
+  border-radius: 8px;
+  padding: 16px !important;
+}
+
+/* Dark mode syntax highlighting — GitHub Dark Dimmed */
+.dark pre code.hljs {
+  background: #22272e !important;
+  color: #adbac7 !important;
+}
+.dark .hljs-doctag,
+.dark .hljs-keyword,
+.dark .hljs-meta .hljs-keyword,
+.dark .hljs-template-tag,
+.dark .hljs-template-variable,
+.dark .hljs-type,
+.dark .hljs-variable.language_ { color: #f47067 !important; }
+.dark .hljs-title,
+.dark .hljs-title.class_,
+.dark .hljs-title.class_.inherited__,
+.dark .hljs-title\.function_ { color: #dcbdfb !important; }
+.dark .hljs-attr,
+.dark .hljs-attribute,
+.dark .hljs-literal,
+.dark .hljs-meta,
+.dark .hljs-number,
+.dark .hljs-operator,
+.dark .hljs-variable,
+.dark .hljs-selector-attr,
+.dark .hljs-selector-class,
+.dark .hljs-selector-id { color: #6cb6ff !important; }
+.dark .hljs-regexp,
+.dark .hljs-string,
+.dark .hljs-meta .hljs-string { color: #96d0ff !important; }
+.dark .hljs-built_in,
+.dark .hljs-symbol { color: #f69d50 !important; }
+.dark .hljs-comment,
+.dark .hljs-code,
+.dark .hljs-formula { color: #768390 !important; }
+.dark .hljs-name,
+.dark .hljs-quote,
+.dark .hljs-selector-tag,
+.dark .hljs-selector-pseudo { color: #8ddb8c !important; }
+.dark .hljs-subst { color: #adbac7 !important; }
+.dark .hljs-section { color: #316dca !important; font-weight: bold; }
+.dark .hljs-bullet { color: #eac55f !important; }
+.dark .hljs-emphasis { color: #adbac7 !important; font-style: italic; }
+.dark .hljs-strong { color: #adbac7 !important; font-weight: bold; }
+.dark .hljs-addition { color: #b4f1b4 !important; background-color: #1b4721 !important; }
+.dark .hljs-deletion { color: #ffd8d3 !important; background-color: #78191b !important; }
+
+/* KaTeX dark mode — inherit text color from theme */
+.dark .katex { color: inherit; }
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Safe area insets for iOS */
+@supports (padding: env(safe-area-inset-top)) {
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* =====================================================
+   iOS PWA: 防止底部 TabBar 触发 Safari 工具栏
+
+   问题根因：
+   1. URL 变化（History API）会触发工具栏
+   2. 底部边缘触摸会触发系统工具栏（iOS 保留区域）
+
+   核心策略：
+   - 底部边缘是 iOS 系统保留区域，Web 无法完全阻止
+   - 解决方案：将交互元素移离底部边缘 + 触摸吸收层
+   - TabBar 内容必须完全在安全区域内（距底部 > 44px）
+   ===================================================== */
+
+/* PWA standalone 模式专用优化 */
+@media all and (display-mode: standalone) {
+  /* 全局禁止双击缩放 */
+  body {
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+
+  /*
+   * 关键方案：底部触摸吸收层
+   * 这个透明层位于屏幕最底部，高度 44px（iOS 手势区域高度）
+   * 它会拦截所有底部边缘的触摸事件，防止触发系统工具栏
+   */
+  .pwa-bottom-guard {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-bottom, 0px);
+    background: transparent;
+    touch-action: manipulation;
+    z-index: 9999;
+    pointer-events: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+}
+
+/* Bottom padding for content above floating nav — accounts for safe area */
+.pb-nav-safe {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Floating Navigation (Liquid Glass Capsule) */
+.floating-nav-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.floating-nav-container.compact {
+  transform: translateX(-50%) scale(0.85) translateY(8px);
+  opacity: 0.7;
+}
+
+.floating-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px) saturate(1.8);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  box-shadow: var(--glass-shadow),
+              var(--glass-inner-shadow);
+  pointer-events: auto;
+}
+
+.floating-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 44px;
+  border-radius: 9999px;
+  color: rgba(100, 116, 139, 0.7);
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.floating-nav-item:active { transform: scale(0.92); }
+
+.floating-nav-item.active {
+  background: rgba(31, 41, 55, 0.12);
+  color: var(--primary);
+  box-shadow: 0 2px 8px rgba(31, 41, 55, 0.10),
+              var(--glass-inner-shadow);
+  transition: all 350ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform: scale(1.08);
+}
+
+.floating-nav-item.active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(31, 41, 55, 0.15) 0%, transparent 70%);
+  animation: glass-ripple 400ms ease-out;
+}
+
+@keyframes glass-ripple {
+  from { transform: scale(0.8); opacity: 0.8; }
+  to { transform: scale(1.2); opacity: 0; }
+}
+
+@media (min-width: 1024px) {
+  .floating-nav-container { display: none; }
+}
+
+@supports (padding: env(safe-area-inset-bottom)) {
+  .floating-nav-container {
+    bottom: max(24px, env(safe-area-inset-bottom));
+  }
+}
+
+/* Terminal visual safety: avoid last line clipping at the bottom edge */
+.terminal-panel .xterm-viewport {
+  padding-bottom: 8px;
+  box-sizing: border-box;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* =====================================================
+   Landing Page — Hero, Glass Cards, Animations
+   Scoped orange theme: override tokens inside .landing-page
+   so buttons, links, badges, icons all render orange
+   regardless of the global theme setting.
+
+   注意：登录页作为品牌入口固定使用橙色配色，不随用户主题
+   偏好切换。这是产品决策，不要将这些 token 改回依赖 :root。
+   ===================================================== */
+
+/* Landing-page scoped orange tokens (light mode) */
+.landing-page {
+  --background: #FFFBF5;
+  --foreground: #1C1210;
+  --primary: #f97316;
+  --primary-foreground: #ffffff;
+  --ring: #f97316;
+  --muted: #F5EDE4;
+  --muted-foreground: #8b7b6b;
+  --border: #EDE3D8;
+  --input: #EDE3D8;
+  --brand-50: #fff7ed;
+  --brand-100: #ffedd5;
+  --brand-200: #fed7aa;
+  --brand-300: #fdba74;
+  --brand-400: #fb923c;
+  --brand-500: #f97316;
+  --brand-600: #ea580c;
+  --brand-700: #c2410c;
+  --glass-bg: rgba(255, 251, 245, 0.60);
+  --glass-bg-heavy: rgba(255, 251, 245, 0.80);
+  --glass-border: rgba(237, 227, 216, 0.60);
+  --glass-shadow: 0 8px 32px rgba(180, 120, 60, 0.06);
+  --glass-inner-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.7);
+  --glass-blur: 20px;
+  --glass-saturate: 1.8;
+  --error: #dc2626;
+  --error-bg: #fee2e2;
+}
+
+/* Landing-page scoped orange tokens (dark mode) */
+.dark .landing-page {
+  --background: #1A1210;
+  --foreground: #F5EDE4;
+  --primary: #fb923c;
+  --primary-foreground: #1A1210;
+  --ring: #fb923c;
+  --muted: #2A2018;
+  --muted-foreground: #A08B7A;
+  --border: #3A2A1E;
+  --input: #3A2A1E;
+  --brand-50: #431407;
+  --brand-100: #7c2d12;
+  --brand-200: #9a3412;
+  --brand-300: #c2410c;
+  --brand-400: #ea580c;
+  --brand-500: #f97316;
+  --brand-600: #fb923c;
+  --brand-700: #fdba74;
+  --glass-bg: rgba(26, 18, 16, 0.60);
+  --glass-bg-heavy: rgba(26, 18, 16, 0.80);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --glass-inner-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.06);
+  --error: #f87171;
+  --error-bg: #450a0a;
+}
+
+/* Aurora mesh background — organic blobs with noise overlay */
+.landing-gradient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+/* Noise grain overlay — coarse texture */
+.landing-gradient-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+  pointer-events: none;
+}
+
+.dark .landing-gradient-bg::after {
+  opacity: 0.08;
+}
+
+/* Aurora blobs container */
+.landing-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  filter: blur(100px) saturate(1.6);
+}
+
+.dark .landing-aurora {
+  filter: blur(100px) saturate(1.3);
+}
+
+.landing-aurora-blob {
+  position: absolute;
+  /* border-radius 保持静态值，避免 keyframes 中 animate border-radius
+     触发 paint —— 配合 100px blur + 大尺寸元素会在低端设备掉帧。
+     每个 blob 的具体 border-radius 在下面的 .landing-aurora-blob-N 中设置 */
+}
+
+/* Blob 1: warm peach-orange — top left */
+.landing-aurora-blob-1 {
+  width: 70vw; height: 65vh;
+  top: -20%; left: -15%;
+  background: rgba(251, 146, 60, 0.12);
+  border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+  animation: aurora-morph-1 20s ease-in-out infinite;
+}
+
+/* Blob 2: soft violet — bottom right */
+.landing-aurora-blob-2 {
+  width: 60vw; height: 55vh;
+  bottom: -15%; right: -10%;
+  background: rgba(167, 139, 250, 0.10);
+  border-radius: 50% 50% 30% 70% / 40% 60% 40% 60%;
+  animation: aurora-morph-2 25s ease-in-out infinite;
+}
+
+/* Blob 3: sky blue — center */
+.landing-aurora-blob-3 {
+  width: 50vw; height: 45vh;
+  top: 35%; left: 25%;
+  background: rgba(56, 189, 248, 0.08);
+  border-radius: 40% 60% 50% 50% / 60% 40% 60% 40%;
+  animation: aurora-morph-3 22s ease-in-out infinite;
+}
+
+/* Blob 4: rose pink — top right */
+.landing-aurora-blob-4 {
+  width: 45vw; height: 40vh;
+  top: -10%; right: 5%;
+  background: rgba(251, 113, 133, 0.08);
+  border-radius: 50% 50% 30% 70% / 40% 60% 40% 60%;
+  animation: aurora-morph-2 28s ease-in-out infinite reverse;
+}
+
+.dark .landing-aurora-blob-1 {
+  background: rgba(251, 146, 60, 0.08);
+}
+.dark .landing-aurora-blob-2 {
+  background: rgba(167, 139, 250, 0.07);
+}
+.dark .landing-aurora-blob-3 {
+  background: rgba(56, 189, 248, 0.05);
+}
+.dark .landing-aurora-blob-4 {
+  background: rgba(251, 113, 133, 0.05);
+}
+
+/* Mobile: scale blobs to cover small screens */
+@media (max-width: 640px) {
+  .landing-aurora-blob-1 {
+    width: 120vw; height: 50vh;
+    top: -10%; left: -30%;
+  }
+  .landing-aurora-blob-2 {
+    width: 100vw; height: 45vh;
+    bottom: -5%; right: -20%;
+  }
+  .landing-aurora-blob-3 {
+    width: 80vw; height: 40vh;
+    top: 30%; left: 10%;
+  }
+  .landing-aurora-blob-4 {
+    width: 90vw; height: 35vh;
+    top: -5%; right: -15%;
+  }
+}
+
+/* Aurora keyframes 只 animate transform（composite layer），
+   border-radius 保持静态，避免触发 paint。 */
+@keyframes aurora-morph-1 {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+  33% {
+    transform: translate(5%, 8%) rotate(60deg) scale(1.1);
+  }
+  66% {
+    transform: translate(-3%, -5%) rotate(120deg) scale(0.95);
+  }
+}
+
+@keyframes aurora-morph-2 {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+  33% {
+    transform: translate(-6%, 4%) rotate(-90deg) scale(1.05);
+  }
+  66% {
+    transform: translate(4%, -6%) rotate(-180deg) scale(0.9);
+  }
+}
+
+@keyframes aurora-morph-3 {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translate(3%, -4%) rotate(45deg) scale(1.08);
+  }
+}
+
+/* Badge */
+.landing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--primary);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Gradient text — orange spectrum */
+.landing-gradient-text {
+  background: linear-gradient(135deg, #ea580c 0%, #fb923c 50%, #f97316 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: landing-text-shimmer 6s ease-in-out infinite;
+}
+
+@keyframes landing-text-shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Glass login card */
+.landing-glass-card {
+  padding: 2rem;
+  border-radius: 1.25rem;
+  background: var(--glass-bg-heavy);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .landing-gradient-bg,
+  .landing-aurora-blob,
+  .landing-gradient-text {
+    animation: none !important;
+  }
+}

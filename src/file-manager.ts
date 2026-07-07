@@ -1,0 +1,365 @@
+import path from 'path';
+import fs from 'fs';
+import { DATA_DIR, GROUPS_DIR, MAX_FILE_SIZE } from './config.js';
+import { deleteContainerEnvConfig } from './runtime-config.js';
+import { logger } from './logger.js';
+
+// --- Storage usage cache (5 minute TTL) ---
+const _storageCache = new Map<string, { bytes: number; expires: number }>();
+const STORAGE_CACHE_TTL = 5 * 60 * 1000;
+
+function getStorageCacheKey(folder: string, rootOverride?: string): string {
+  return getFileRoot(folder, rootOverride);
+}
+
+// 类型
+export interface FileEntry {
+  name: string;
+  path: string; // 相对于 data/groups/{folder}/ 的路径
+  type: 'file' | 'directory';
+  size: number;
+  modifiedAt: string;
+  isSystem: boolean;
+  absolutePath?: string; // Agent 视角的绝对路径（container 模式为 /workspace/group/...，host 模式为宿主机路径）
+}
+
+// 常量
+// MAX_FILE_SIZE 统一由 config.ts 定义（可通过 MAX_FILE_SIZE_MB 环境变量配置），
+// 此处 re-export 保持既有 import 路径不变。
+export { MAX_FILE_SIZE };
+const SYSTEM_PATHS = ['logs', 'CLAUDE.md', '.claude', 'conversations'];
+// 预先转小写一次，匹配大小写不敏感文件系统（macOS APFS / Windows NTFS）。
+const SYSTEM_PATHS_LOWER = SYSTEM_PATHS.map((p) => p.toLowerCase());
+
+// 仅在大小写不敏感的平台启用 lowercased 比较。case-sensitive Linux 上
+// 'Logs/' 与 'logs/' 是不同 inode，全局 toLowerCase 会误杀合法文件名。
+// macOS / Windows 默认大小写不敏感（APFS / NTFS）→ 使用 lowercased 路径。
+// 其它平台保留 strict ===。
+const CASE_INSENSITIVE_FS =
+  process.platform === 'darwin' || process.platform === 'win32';
+
+/**
+ * 获取会话流的文件根目录
+ * @param folder 会话流文件夹名（如 main）
+ * @param rootOverride 可选的自定义根目录（绝对路径），用于宿主机模式 customCwd
+ * @returns 绝对路径
+ */
+export function getFileRoot(folder: string, rootOverride?: string): string {
+  if (rootOverride && path.isAbsolute(rootOverride)) {
+    return rootOverride;
+  }
+  return path.join(GROUPS_DIR, folder);
+}
+
+/**
+ * 安全路径解析：防止路径遍历攻击
+ * @param folder 会话流文件夹名
+ * @param relativePath 用户提供的相对路径
+ * @param rootOverride 可选的自定义根目录（绝对路径）
+ * @returns 验证后的绝对路径
+ * @throws 路径越界时抛出异常
+ */
+export function validateAndResolvePath(
+  folder: string,
+  relativePath: string,
+  rootOverride?: string,
+): string {
+  const root = getFileRoot(folder, rootOverride);
+  const normalized = path.normalize(relativePath);
+  const resolved = path.resolve(root, normalized);
+
+  // 使用 path.relative 检查是否在根目录内
+  const relative = path.relative(root, resolved);
+
+  if (relative.startsWith('..')) {
+    throw new Error('Path traversal detected');
+  }
+
+  // 解析符号链接：沿路径向上找到最近的已存在祖先，确保其 realpath 仍在根目录内。
+  // 这防止了"父级是 symlink、末级还不存在"的绕过场景。
+  const realRoot = fs.existsSync(root) ? fs.realpathSync(root) : root;
+  let checkPath = resolved;
+  while (checkPath !== root && checkPath !== path.dirname(checkPath)) {
+    if (fs.existsSync(checkPath)) {
+      const realPath = fs.realpathSync(checkPath);
+      if (realPath !== realRoot && !realPath.startsWith(realRoot + path.sep)) {
+        throw new Error('Symlink traversal detected');
+      }
+      break;
+    }
+    checkPath = path.dirname(checkPath);
+  }
+
+  return resolved;
+}
+
+/**
+ * 判断路径是否为系统路径（禁止删除）
+ * @param relativePath 相对路径
+ * @returns 是否为系统路径
+ *
+ * 平台敏感：APFS（macOS 默认）/ NTFS 上 `Logs` 与 `logs` 同 inode，必须
+ * 大小写不敏感比较否则攻击者可通过大写绕过。case-sensitive Linux 上
+ * 这种攻击不可达，强行 lowercased 反而误杀合法的 'Logs/' 等文件。
+ */
+export function isSystemPath(relativePath: string): boolean {
+  const normalized = path.normalize(relativePath);
+  const segments = normalized.split(path.sep).filter(Boolean);
+
+  if (segments.length === 0) return false;
+
+  // '.' alone is not a system path (root guard lives in deleteFile)
+  if (segments.length === 1 && segments[0] === '.') return false;
+
+  if (CASE_INSENSITIVE_FS) {
+    const firstSegmentLower = segments[0].toLowerCase();
+    const normalizedLower = normalized.toLowerCase();
+    return SYSTEM_PATHS_LOWER.some(
+      (sysPath) =>
+        firstSegmentLower === sysPath || normalizedLower === sysPath,
+    );
+  }
+  // case-sensitive 平台保持 strict 比较
+  const firstSegment = segments[0];
+  return SYSTEM_PATHS.some(
+    (sysPath) => firstSegment === sysPath || normalized === sysPath,
+  );
+}
+
+/**
+ * 列出目录内容
+ * @param folder 会话流文件夹名
+ * @param subPath 可选的子路径
+ * @param rootOverride 可选的自定义根目录（绝对路径）
+ * @returns 文件列表和当前路径
+ */
+export function listFiles(
+  folder: string,
+  subPath?: string,
+  rootOverride?: string,
+): { files: FileEntry[]; currentPath: string } {
+  const relativePath = subPath || '';
+  const absolutePath = validateAndResolvePath(
+    folder,
+    relativePath,
+    rootOverride,
+  );
+
+  // 目录不存在时返回空列表，不自动创建（避免 GET 请求产生写副作用）
+  if (!fs.existsSync(absolutePath)) {
+    return { files: [], currentPath: relativePath };
+  }
+
+  const stat = fs.statSync(absolutePath);
+  if (!stat.isDirectory()) {
+    throw new Error('Path is not a directory');
+  }
+
+  const entries = fs.readdirSync(absolutePath, { withFileTypes: true });
+  const files: FileEntry[] = [];
+
+  for (const entry of entries) {
+    const name = entry.name;
+    const entryPath = path.join(absolutePath, name);
+    const entryRelativePath = path.join(relativePath, name);
+
+    let stats: fs.Stats;
+    try {
+      stats = fs.statSync(entryPath);
+    } catch {
+      // Broken symlink or unreadable entry — skip rather than failing the whole
+      // listing. statSync follows symlinks, so a dangling link throws ENOENT and
+      // would otherwise 500 the entire directory (agent-triggerable DoS).
+      continue;
+    }
+
+    files.push({
+      name,
+      path: entryRelativePath,
+      type: stats.isDirectory() ? 'directory' : 'file',
+      size: stats.size,
+      modifiedAt: stats.mtime.toISOString(),
+      isSystem: isSystemPath(entryRelativePath),
+    });
+  }
+
+  // 文件夹在前，文件在后，按名称排序
+  files.sort((a, b) => {
+    if (a.type !== b.type) {
+      return a.type === 'directory' ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
+  return {
+    files,
+    currentPath: relativePath,
+  };
+}
+
+/**
+ * 删除文件或目录
+ * @param folder 会话流文件夹名
+ * @param relativePath 相对路径
+ * @param rootOverride 可选的自定义根目录（绝对路径）
+ * @throws 系统路径或路径不存在时抛出异常
+ */
+export function deleteFile(
+  folder: string,
+  relativePath: string,
+  rootOverride?: string,
+): void {
+  // Reject empty / root-equivalent paths explicitly
+  if (!relativePath || relativePath === '.' || relativePath === '/') {
+    throw new Error('Cannot delete root directory');
+  }
+
+  // 检查是否为系统路径
+  if (isSystemPath(relativePath)) {
+    throw new Error('Cannot delete system path');
+  }
+
+  const absolutePath = validateAndResolvePath(
+    folder,
+    relativePath,
+    rootOverride,
+  );
+  const root = getFileRoot(folder, rootOverride);
+
+  // Double-check: never delete the group root itself
+  if (path.resolve(absolutePath) === path.resolve(root)) {
+    throw new Error('Cannot delete root directory');
+  }
+
+  if (!fs.existsSync(absolutePath)) {
+    throw new Error('File or directory not found');
+  }
+
+  // Re-verify realpath right before destructive operation (TOCTOU defense-in-depth)
+  const realRoot = fs.realpathSync(root);
+  const realPath = fs.realpathSync(absolutePath);
+  if (realPath !== realRoot && !realPath.startsWith(realRoot + path.sep)) {
+    throw new Error('Symlink traversal detected');
+  }
+  if (realPath === realRoot) {
+    throw new Error('Cannot delete root directory');
+  }
+
+  const stats = fs.statSync(absolutePath);
+  if (stats.isDirectory()) {
+    fs.rmSync(absolutePath, { recursive: true, force: true });
+  } else {
+    fs.unlinkSync(absolutePath);
+  }
+}
+
+/**
+ * 创建目录
+ * @param folder 会话流文件夹名
+ * @param parentPath 父目录相对路径
+ * @param name 新目录名称
+ * @param rootOverride 可选的自定义根目录（绝对路径）
+ * @throws 目录已存在时抛出异常
+ */
+export function createDirectory(
+  folder: string,
+  parentPath: string,
+  name: string,
+  rootOverride?: string,
+): void {
+  const targetPath = path.join(parentPath, name);
+
+  // 禁止在系统路径下创建目录
+  if (isSystemPath(targetPath)) {
+    throw new Error('Cannot create directory in system path');
+  }
+
+  const absolutePath = validateAndResolvePath(folder, targetPath, rootOverride);
+
+  if (fs.existsSync(absolutePath)) {
+    throw new Error('Directory already exists');
+  }
+
+  fs.mkdirSync(absolutePath, { recursive: true });
+  // chmod 0o777 确保容器（node/1000）与宿主机用户均可读写
+  // 与 container-runner.ts 的 mkdirForContainer() 行为一致
+  try {
+    fs.chmodSync(absolutePath, 0o777);
+  } catch {
+    /* 忽略只读文件系统 */
+  }
+}
+
+/**
+ * 递归计算目录总大小（字节），带 5 分钟缓存
+ */
+export function getGroupStorageUsage(
+  folder: string,
+  rootOverride?: string,
+): number {
+  const cacheKey = getStorageCacheKey(folder, rootOverride);
+  const cached = _storageCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) {
+    return cached.bytes;
+  }
+
+  const root = getFileRoot(folder, rootOverride);
+  if (!fs.existsSync(root)) return 0;
+
+  let totalBytes = 0;
+  try {
+    totalBytes = calculateDirSize(root);
+  } catch (err) {
+    logger.warn({ err, folder }, 'Failed to calculate storage usage');
+  }
+
+  _storageCache.set(cacheKey, {
+    bytes: totalBytes,
+    expires: Date.now() + STORAGE_CACHE_TTL,
+  });
+  return totalBytes;
+}
+
+export function invalidateGroupStorageUsage(
+  folder: string,
+  rootOverride?: string,
+): void {
+  _storageCache.delete(getStorageCacheKey(folder, rootOverride));
+}
+
+const MAX_DIR_DEPTH = 20;
+
+function calculateDirSize(dirPath: string, depth = 0): number {
+  if (depth > MAX_DIR_DEPTH) return 0;
+  let total = 0;
+  let entries;
+  try {
+    entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const entry of entries) {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isSymbolicLink()) continue; // skip symlinks to avoid loops
+    if (entry.isDirectory()) {
+      total += calculateDirSize(fullPath, depth + 1);
+    } else if (entry.isFile()) {
+      try {
+        total += fs.statSync(fullPath).size;
+      } catch {
+        /* skip unreadable files */
+      }
+    }
+  }
+  return total;
+}
+
+/** Remove all runtime artifacts for a group folder (workspace, sessions, ipc, env, memory). */
+export function removeFlowArtifacts(folder: string): void {
+  fs.rmSync(path.join(GROUPS_DIR, folder), { recursive: true, force: true });
+  fs.rmSync(path.join(DATA_DIR, 'sessions', folder), { recursive: true, force: true });
+  fs.rmSync(path.join(DATA_DIR, 'ipc', folder), { recursive: true, force: true });
+  fs.rmSync(path.join(DATA_DIR, 'env', folder), { recursive: true, force: true });
+  fs.rmSync(path.join(DATA_DIR, 'memory', folder), { recursive: true, force: true });
+  deleteContainerEnvConfig(folder);
+}

@@ -1,0 +1,27 @@
+{
+  "name": "deepthink-desktop",
+  "version": "1.0.0",
+  "description": "DeepThink desktop shell — Electron wrapper for DeepThink backend",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc && electron .",
+    "start": "electron .",
+    "pack:mac": "tsc && electron-builder --config build/mac.json",
+    "pack:win": "tsc && electron-builder --config build/win.json",
+    "pack:linux": "tsc && electron-builder --config build/linux.json"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "32.3.3",
+    "electron-builder": "25.1.8",
+    "typescript": "^5.9.3",
+    "@types/node": "^22.10.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

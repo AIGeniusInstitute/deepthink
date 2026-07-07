@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="180" viewBox="0 0 640 180">
+  <style>
+    @keyframes wave {
+      0%, 100% { transform: translateY(0); }
+      25% { transform: translateY(-14px); }
+      50% { transform: translateY(0); }
+    }
+    .letter { animation: wave 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; display: inline-block; }
+    .l0 { animation-delay: 0.00s; }
+    .l1 { animation-delay: 0.08s; }
+    .l2 { animation-delay: 0.16s; }
+    .l3 { animation-delay: 0.24s; }
+    .l4 { animation-delay: 0.32s; }
+    .l5 { animation-delay: 0.40s; }
+    .l6 { animation-delay: 0.48s; }
+    .l7 { animation-delay: 0.56s; }
+    .l8 { animation-delay: 0.64s; }
+    @media (prefers-reduced-motion: reduce) {
+      .letter { animation: none; }
+    }
+  </style>
+  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central"
+        font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="124" font-weight="800" letter-spacing="-2"
+        fill="#1F2937">
+    <tspan class="letter l0">D</tspan><tspan class="letter l1">e</tspan><tspan class="letter l2">e</tspan><tspan class="letter l3">p</tspan><tspan class="letter l4">T</tspan><tspan class="letter l5">h</tspan><tspan class="letter l6">i</tspan><tspan class="letter l7">n</tspan><tspan class="letter l8">k</tspan>
+  </text>
+</svg>

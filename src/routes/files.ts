@@ -1,0 +1,1021 @@
+import { Hono } from 'hono';
+import type { Variables } from '../web-context.js';
+import { authMiddleware } from '../middleware/auth.js';
+import {
+  isHostExecutionGroup,
+  hasHostExecutionPermission,
+  canAccessGroup,
+} from '../web-context.js';
+import type { AuthUser } from '../types.js';
+import type { RegisteredGroup } from '../types.js';
+import { getRegisteredGroup } from '../db.js';
+import { logger } from '../logger.js';
+import {
+  listFiles,
+  validateAndResolvePath,
+  deleteFile,
+  createDirectory,
+  isSystemPath,
+  MAX_FILE_SIZE,
+  getGroupStorageUsage,
+  invalidateGroupStorageUsage,
+  getFileRoot,
+} from '../file-manager.js';
+import { checkStorageLimit, isBillingEnabled } from '../billing.js';
+import { MAX_FILE_SIZE_MB } from '../config.js';
+import { execFile } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { Readable } from 'node:stream';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
+
+// MIME 类型映射（预览和编辑端点共用）
+const MIME_MAP: Record<string, string> = {
+  // 图片
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  svg: 'image/svg+xml',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  ico: 'image/x-icon',
+  // 文本和代码
+  txt: 'text/plain',
+  md: 'text/markdown',
+  json: 'application/json',
+  js: 'text/javascript',
+  ts: 'text/typescript',
+  jsx: 'text/javascript',
+  tsx: 'text/typescript',
+  css: 'text/css',
+  html: 'text/html',
+  xml: 'application/xml',
+  py: 'text/x-python',
+  go: 'text/x-go',
+  rs: 'text/x-rust',
+  java: 'text/x-java',
+  c: 'text/x-c',
+  cpp: 'text/x-c++',
+  h: 'text/x-c',
+  sh: 'text/x-sh',
+  yaml: 'text/yaml',
+  yml: 'text/yaml',
+  toml: 'text/x-toml',
+  ini: 'text/plain',
+  conf: 'text/plain',
+  log: 'text/plain',
+  csv: 'text/csv',
+  // PDF
+  pdf: 'application/pdf',
+  // 视频
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  avi: 'video/x-msvideo',
+  mkv: 'video/x-matroska',
+  // 音频
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  aac: 'audio/aac',
+  m4a: 'audio/mp4',
+  flac: 'audio/flac',
+  // 压缩文件
+  zip: 'application/zip',
+  tar: 'application/x-tar',
+  gz: 'application/gzip',
+  '7z': 'application/x-7z-compressed',
+};
+
+// 文本文件扩展名（用于编辑端点判断）
+const TEXT_EXTENSIONS = new Set([
+  'txt',
+  'md',
+  'json',
+  'js',
+  'ts',
+  'jsx',
+  'tsx',
+  'css',
+  'html',
+  'xml',
+  'py',
+  'go',
+  'rs',
+  'java',
+  'c',
+  'cpp',
+  'h',
+  'sh',
+  'yaml',
+  'yml',
+  'toml',
+  'ini',
+  'conf',
+  'log',
+  'csv',
+  'svg',
+]);
+
+// 不安全的扩展名（HTML/SVG 有 XSS 风险，压缩包不可预览）
+const UNSAFE_PREVIEW_EXTENSIONS = new Set(['html', 'svg', 'zip', 'tar', 'gz', '7z']);
+
+// 允许 inline 预览的安全 MIME 类型（从 MIME_MAP 中排除不安全扩展名自动推导）
+const SAFE_PREVIEW_MIME_TYPES = new Set(
+  Object.entries(MIME_MAP)
+    .filter(([ext]) => !UNSAFE_PREVIEW_EXTENSIONS.has(ext))
+    .map(([, mime]) => mime),
+);
+
+/**
+ * 获取文件操作的根目录覆盖。
+ * 宿主机模式下设置了 customCwd 时，文件面板以 customCwd 为根。
+ */
+function getFileRootOverride(group: RegisteredGroup): string | undefined {
+  return group.executionMode === 'host' && group.customCwd
+    ? group.customCwd
+    : undefined;
+}
+
+/**
+ * 计算 Agent 视角的绝对路径（供前端"复制路径"功能使用）。
+ * - container 模式：容器内挂载路径 /workspace/group/<relative>
+ * - host 模式：宿主机绝对路径（customCwd 或 data/groups/{folder}）+ relative
+ */
+function getAgentAbsolutePath(
+  group: RegisteredGroup,
+  relativePath: string,
+): string {
+  if (group.executionMode === 'host') {
+    const base = getFileRoot(group.folder, getFileRootOverride(group));
+    return relativePath ? path.join(base, relativePath) : base;
+  }
+  return relativePath
+    ? path.posix.join('/workspace/group', relativePath)
+    : '/workspace/group';
+}
+
+function buildAttachmentContentDisposition(fileName: string): string {
+  const sanitized = fileName.replace(/["\\\r\n]/g, '_');
+  const asciiFallback = sanitized.replace(/[^\x20-\x7E]/g, '_') || 'download';
+  const encoded = encodeURIComponent(fileName);
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+}
+
+function parseSingleRange(
+  rangeHeader: string,
+  fileSize: number,
+): { start: number; end: number } | null {
+  if (fileSize <= 0) return null;
+
+  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+  if (!match) return null;
+
+  const [, rawStart, rawEnd] = match;
+  if (!rawStart && !rawEnd) return null;
+
+  // Suffix bytes range (e.g. bytes=-500)
+  if (!rawStart) {
+    const suffixLength = Number(rawEnd);
+    if (!Number.isInteger(suffixLength) || suffixLength <= 0) return null;
+    if (suffixLength >= fileSize) return { start: 0, end: fileSize - 1 };
+    return { start: fileSize - suffixLength, end: fileSize - 1 };
+  }
+
+  const start = Number(rawStart);
+  if (!Number.isInteger(start) || start < 0 || start >= fileSize) return null;
+
+  const parsedEnd = rawEnd ? Number(rawEnd) : fileSize - 1;
+  if (!Number.isInteger(parsedEnd) || parsedEnd < start) return null;
+
+  return { start, end: Math.min(parsedEnd, fileSize - 1) };
+}
+
+async function openDirectoryInFileManager(targetDir: string): Promise<void> {
+  const attempts: Array<{ cmd: string; args: string[] }> = (() => {
+    if (process.platform === 'darwin') {
+      return [{ cmd: 'open', args: [targetDir] }];
+    }
+    if (process.platform === 'win32') {
+      return [{ cmd: 'explorer', args: [targetDir] }];
+    }
+    // Linux 桌面环境兼容：优先 xdg-open，失败后回退到常见 opener
+    return [
+      { cmd: 'xdg-open', args: [targetDir] },
+      { cmd: 'gio', args: ['open', targetDir] },
+      { cmd: 'kde-open5', args: [targetDir] },
+      { cmd: 'kde-open', args: [targetDir] },
+    ];
+  })();
+
+  const failureCodes: string[] = [];
+  for (const attempt of attempts) {
+    try {
+      await execFileAsync(attempt.cmd, attempt.args, { timeout: 10_000 });
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      // 命令不存在：继续尝试下一个 opener
+      if (code === 'ENOENT') {
+        failureCodes.push(`${attempt.cmd}:ENOENT`);
+        continue;
+      }
+      failureCodes.push(`${attempt.cmd}:${code || 'ERROR'}`);
+    }
+  }
+
+  const err = new Error('No compatible desktop opener available');
+  (err as Error & { code?: string; detail?: string[] }).code = 'NO_FILE_OPENER';
+  (err as Error & { code?: string; detail?: string[] }).detail = failureCodes;
+  throw err;
+}
+
+const fileRoutes = new Hono<{ Variables: Variables }>();
+
+// GET /api/groups/:jid/files?path= - 列出文件
+fileRoutes.get('/:jid/files', authMiddleware, (c) => {
+  const jid = c.req.param('jid');
+  const subPath = c.req.query('path') || '';
+
+  const group = getRegisteredGroup(jid);
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json(
+      { error: 'Insufficient permissions for host execution mode' },
+      403,
+    );
+  }
+
+  try {
+    const result = listFiles(group.folder, subPath, getFileRootOverride(group));
+    const files = result.files.map((entry) => ({
+      ...entry,
+      absolutePath: getAgentAbsolutePath(group, entry.path),
+    }));
+    return c.json({ ...result, files });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to list files for ${jid}`);
+    return c.json({ error: 'Failed to list files' }, 500);
+  }
+});
+
+// POST /api/groups/:jid/files - 上传文件
+fileRoutes.post('/:jid/files', authMiddleware, async (c) => {
+  const jid = c.req.param('jid');
+
+  const group = getRegisteredGroup(jid);
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json(
+      { error: 'Insufficient permissions for host execution mode' },
+      403,
+    );
+  }
+
+  const rootOverride = getFileRootOverride(group);
+
+  try {
+    const body = await c.req.parseBody({ all: true });
+    const targetPath = (typeof body.path === 'string' ? body.path : '') || '';
+    const files = body.files;
+
+    if (!files) {
+      return c.json({ error: 'No files provided' }, 400);
+    }
+
+    // 支持单文件和多文件上传
+    const fileList = Array.isArray(files) ? files : [files];
+    const uploadedFiles: string[] = [];
+
+    // Billing: check storage limit before uploading
+    if (isBillingEnabled() && group.created_by) {
+      const totalUploadSize = fileList.reduce(
+        (sum, f) => sum + (f instanceof File ? f.size : 0),
+        0,
+      );
+      const currentUsage = getGroupStorageUsage(group.folder, rootOverride);
+      const storageCheck = checkStorageLimit(
+        group.created_by,
+        authUser.role,
+        currentUsage,
+        totalUploadSize,
+      );
+      if (!storageCheck.allowed) {
+        return c.json({ error: storageCheck.reason }, 403);
+      }
+    }
+
+    for (const file of fileList) {
+      if (!(file instanceof File)) continue;
+
+      // 检查文件大小
+      if (file.size > MAX_FILE_SIZE) {
+        return c.json(
+          {
+            error: `File ${file.name} exceeds maximum size of ${MAX_FILE_SIZE_MB}MB`,
+          },
+          400,
+        );
+      }
+
+      // 验证文件名，防止路径遍历攻击
+      if (file.name.includes('..') || file.name.startsWith('/')) {
+        return c.json({ error: `Invalid file name: ${file.name}` }, 400);
+      }
+
+      // 禁止写入系统路径
+      const relativeFilePath = path.join(targetPath, file.name);
+      if (isSystemPath(targetPath) || isSystemPath(relativeFilePath)) {
+        return c.json({ error: 'Cannot upload to system path' }, 403);
+      }
+
+      // 验证目标路径 + 文件名的完整路径（防止 file.name 含 ../../ 绕过）
+      const fullRelativePath = path.join(targetPath, file.name);
+      const targetFilePath = validateAndResolvePath(
+        group.folder,
+        fullRelativePath,
+        rootOverride,
+      );
+      const targetDir = path.dirname(targetFilePath);
+
+      // 确保目标目录存在
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+
+      // 写入文件：用 O_NOFOLLOW 防 leaf TOCTOU——validateAndResolvePath 与
+      // writeFileSync 之间，对 RW 工作区有写权限的 agent 可以临时把
+      // targetFilePath 替换成符号链接指向系统敏感路径，让上传的内容写到
+      // workspace 之外。父目录被换成 symlink 的场景仍依赖 validateAndResolvePath
+      // 的 ancestor realpath 校验拦截，但 leaf 由 O_NOFOLLOW 强保护。
+      // 用 fs.writeFileSync(fd, ...) 让 Node 内置循环处理 short-write。
+      const buffer = await file.arrayBuffer();
+      const data = Buffer.from(buffer);
+      const noFollowFlag = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW;
+      if (noFollowFlag !== undefined) {
+        const flags =
+          fs.constants.O_WRONLY |
+          fs.constants.O_CREAT |
+          fs.constants.O_TRUNC |
+          noFollowFlag;
+        let fd: number | null = null;
+        try {
+          fd = fs.openSync(targetFilePath, flags, 0o644);
+          fs.writeFileSync(fd, data);
+        } finally {
+          if (fd !== null) {
+            try { fs.closeSync(fd); } catch { /* ignore */ }
+          }
+        }
+      } else {
+        fs.writeFileSync(targetFilePath, data);
+      }
+
+      uploadedFiles.push(file.name);
+    }
+
+    invalidateGroupStorageUsage(group.folder, rootOverride);
+    return c.json({ success: true, files: uploadedFiles });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to upload files for ${jid}`);
+    return c.json({ error: 'Failed to upload files' }, 500);
+  }
+});
+
+// POST /api/groups/:jid/files/open-directory - 在本地文件管理器中打开目录
+fileRoutes.post('/:jid/files/open-directory', authMiddleware, async (c) => {
+  const jid = c.req.param('jid');
+
+  const group = getRegisteredGroup(jid);
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  // 打开本地目录属于宿主机操作，限制为有宿主机权限的用户
+  if (!hasHostExecutionPermission(authUser)) {
+    return c.json(
+      { error: 'Insufficient permissions to open local directory' },
+      403,
+    );
+  }
+
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const targetPath = typeof body.path === 'string' ? body.path : '';
+    const absolutePath = validateAndResolvePath(
+      group.folder,
+      targetPath,
+      getFileRootOverride(group),
+    );
+
+    if (!fs.existsSync(absolutePath)) {
+      return c.json({ error: 'Directory not found' }, 404);
+    }
+
+    const stats = fs.statSync(absolutePath);
+    const targetDir = stats.isDirectory()
+      ? absolutePath
+      : path.dirname(absolutePath);
+
+    await openDirectoryInFileManager(targetDir);
+    return c.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to open local directory for ${jid}`);
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'NO_FILE_OPENER') {
+      return c.json({ error: 'No desktop opener available on server' }, 503);
+    }
+    const msg = (error as Error).message;
+    const safeMessages = [
+      'Path traversal detected',
+      'Symlink traversal detected',
+    ];
+    const publicMsg = safeMessages.includes(msg)
+      ? msg
+      : 'Failed to open local directory';
+    const status = safeMessages.includes(msg) ? 400 : 500;
+    return c.json({ error: publicMsg }, status);
+  }
+});
+
+// GET /api/groups/:jid/files/download/:path - 下载文件
+fileRoutes.get('/:jid/files/download/:path', authMiddleware, (c) => {
+  const jid = c.req.param('jid');
+  const encodedPath = c.req.param('path');
+
+  const group = getRegisteredGroup(jid);
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json(
+      { error: 'Insufficient permissions for host execution mode' },
+      403,
+    );
+  }
+
+  try {
+    // 解码 base64url 路径
+    const relativePath = Buffer.from(encodedPath, 'base64url').toString(
+      'utf-8',
+    );
+    const absolutePath = validateAndResolvePath(
+      group.folder,
+      relativePath,
+      getFileRootOverride(group),
+    );
+
+    if (!fs.existsSync(absolutePath)) {
+      return c.json({ error: 'File not found' }, 404);
+    }
+
+    const stats = fs.statSync(absolutePath);
+    if (stats.isDirectory()) {
+      return c.json({ error: 'Cannot download directory' }, 400);
+    }
+
+    const fileName = path.basename(absolutePath);
+    const fileSize = stats.size;
+    const commonHeaders = {
+      'Content-Disposition': buildAttachmentContentDisposition(fileName),
+      'Content-Type': 'application/octet-stream',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'Accept-Ranges': 'bytes',
+    };
+
+    const rangeHeader = c.req.header('range');
+    if (rangeHeader) {
+      const normalizedRange = rangeHeader.trim();
+      const isBytesRange = normalizedRange.toLowerCase().startsWith('bytes=');
+      const isMultiRange = isBytesRange && normalizedRange.includes(',');
+
+      // 多区间请求当前未实现 multipart/byteranges，回退为完整下载响应
+      if (isBytesRange && !isMultiRange) {
+        const parsedRange = parseSingleRange(normalizedRange, fileSize);
+        if (!parsedRange) {
+          return new Response(null, {
+            status: 416,
+            headers: {
+              ...commonHeaders,
+              'Content-Range': `bytes */${fileSize}`,
+            },
+          });
+        }
+
+        const { start, end } = parsedRange;
+        const stream = Readable.toWeb(
+          fs.createReadStream(absolutePath, { start, end }),
+        ) as ReadableStream<Uint8Array>;
+        return new Response(stream, {
+          status: 206,
+          headers: {
+            ...commonHeaders,
+            'Content-Length': String(end - start + 1),
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          },
+        });
+      }
+    }
+
+    const stream = Readable.toWeb(
+      fs.createReadStream(absolutePath),
+    ) as ReadableStream<Uint8Array>;
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        ...commonHeaders,
+        'Content-Length': String(fileSize),
+      },
+    });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to download file for ${jid}`);
+    return c.json({ error: 'Failed to download file' }, 500);
+  }
+});
+
+// GET /api/groups/:jid/files/preview/:path - 预览文件
+fileRoutes.get('/:jid/files/preview/:path', authMiddleware, (c) => {
+  const jid = c.req.param('jid');
+  const encodedPath = c.req.param('path');
+
+  const group = getRegisteredGroup(jid);
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json(
+      { error: 'Insufficient permissions for host execution mode' },
+      403,
+    );
+  }
+
+  try {
+    // 解码 base64url 路径
+    const relativePath = Buffer.from(encodedPath, 'base64url').toString(
+      'utf-8',
+    );
+    const absolutePath = validateAndResolvePath(
+      group.folder,
+      relativePath,
+      getFileRootOverride(group),
+    );
+
+    if (!fs.existsSync(absolutePath)) {
+      return c.json({ error: 'File not found' }, 404);
+    }
+
+    const stats = fs.statSync(absolutePath);
+    if (stats.isDirectory()) {
+      return c.json({ error: 'Cannot preview directory' }, 400);
+    }
+
+    // 检测 MIME 类型（基于扩展名）
+    const ext = path.extname(absolutePath).slice(1).toLowerCase();
+    const mimeType = MIME_MAP[ext] || 'application/octet-stream';
+    const fileName = path.basename(absolutePath);
+    const fileSize = stats.size;
+
+    // 判断是否为流媒体类型（视频/音频），需支持 Range 请求
+    const isStreamable =
+      mimeType.startsWith('video/') || mimeType.startsWith('audio/');
+
+    // 安全头
+    const securityHeaders: Record<string, string> = {
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'X-Content-Type-Options': 'nosniff',
+    };
+
+    // Content-Type 和 Content-Disposition
+    let contentType: string;
+    let disposition: string;
+    if (SAFE_PREVIEW_MIME_TYPES.has(mimeType)) {
+      contentType = mimeType;
+      disposition = 'inline';
+    } else {
+      contentType = 'application/octet-stream';
+      disposition = `attachment; filename="${encodeURIComponent(fileName)}"`;
+    }
+
+    const commonHeaders = {
+      ...securityHeaders,
+      'Content-Type': contentType,
+      'Content-Disposition': disposition,
+    };
+
+    // 流媒体类型：支持 Range 请求（浏览器 <video>/<audio> seek 依赖此机制）
+    if (isStreamable) {
+      const rangeHeader = c.req.header('range');
+      if (rangeHeader) {
+        const normalizedRange = rangeHeader.trim();
+        const isBytesRange =
+          normalizedRange.toLowerCase().startsWith('bytes=');
+        const isMultiRange = isBytesRange && normalizedRange.includes(',');
+
+        if (isBytesRange && !isMultiRange) {
+          const parsedRange = parseSingleRange(normalizedRange, fileSize);
+          if (!parsedRange) {
+            return new Response(null, {
+              status: 416,
+              headers: {
+                ...commonHeaders,
+                'Content-Range': `bytes */${fileSize}`,
+              },
+            });
+          }
+
+          const { start, end } = parsedRange;
+          const stream = Readable.toWeb(
+            fs.createReadStream(absolutePath, { start, end }),
+          ) as ReadableStream<Uint8Array>;
+          return new Response(stream, {
+            status: 206,
+            headers: {
+              ...commonHeaders,
+              'Accept-Ranges': 'bytes',
+              'Content-Length': String(end - start + 1),
+              'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            },
+          });
+        }
+      }
+
+      // 无 Range 或多区间回退：流式返回完整文件
+      const stream = Readable.toWeb(
+        fs.createReadStream(absolutePath),
+      ) as ReadableStream<Uint8Array>;
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          ...commonHeaders,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': String(fileSize),
+        },
+      });
+    }
+
+    // 非流媒体类型：也使用流式响应避免大文件占满内存
+    const stream = Readable.toWeb(
+      fs.createReadStream(absolutePath),
+    ) as ReadableStream<Uint8Array>;
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        ...commonHeaders,
+        'Content-Length': String(fileSize),
+      },
+    });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to preview file for ${jid}`);
+    return c.json({ error: 'Failed to preview file' }, 500);
+  }
+});
+
+// GET /api/groups/:jid/files/content/:path - 读取文本文件内容
+fileRoutes.get('/:jid/files/content/:path', authMiddleware, (c) => {
+  const jid = c.req.param('jid');
+  const encodedPath = c.req.param('path');
+
+  const group = getRegisteredGroup(jid);
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json(
+      { error: 'Insufficient permissions for host execution mode' },
+      403,
+    );
+  }
+
+  try {
+    const rootOverride = getFileRootOverride(group);
+    const relativePath = Buffer.from(encodedPath, 'base64url').toString(
+      'utf-8',
+    );
+    const absolutePath = validateAndResolvePath(
+      group.folder,
+      relativePath,
+      rootOverride,
+    );
+
+    if (!fs.existsSync(absolutePath)) {
+      return c.json({ error: 'File not found' }, 404);
+    }
+
+    const stats = fs.statSync(absolutePath);
+    if (stats.isDirectory()) {
+      return c.json({ error: 'Cannot read directory content' }, 400);
+    }
+
+    // 仅允许文本文件
+    const ext = path.extname(absolutePath).slice(1).toLowerCase();
+    if (!TEXT_EXTENSIONS.has(ext)) {
+      return c.json(
+        { error: 'File type not supported for content reading' },
+        400,
+      );
+    }
+
+    // 限制文件大小（10MB）
+    if (stats.size > 10 * 1024 * 1024) {
+      return c.json({ error: 'File too large to read (max 10MB)' }, 400);
+    }
+
+    const content = fs.readFileSync(absolutePath, 'utf-8');
+    return c.json({ content, size: stats.size });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to read file content for ${jid}`);
+    return c.json({ error: 'Failed to read file content' }, 500);
+  }
+});
+
+// PUT /api/groups/:jid/files/content/:path - 保存文本文件内容
+fileRoutes.put('/:jid/files/content/:path', authMiddleware, async (c) => {
+  const jid = c.req.param('jid');
+  const encodedPath = c.req.param('path');
+
+  const group = getRegisteredGroup(jid);
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json(
+      { error: 'Insufficient permissions for host execution mode' },
+      403,
+    );
+  }
+
+  try {
+    const rootOverride = getFileRootOverride(group);
+    const relativePath = Buffer.from(encodedPath, 'base64url').toString(
+      'utf-8',
+    );
+
+    // 禁止写入系统路径
+    if (isSystemPath(relativePath)) {
+      return c.json({ error: 'Cannot edit system file' }, 403);
+    }
+
+    const absolutePath = validateAndResolvePath(
+      group.folder,
+      relativePath,
+      rootOverride,
+    );
+
+    if (!fs.existsSync(absolutePath)) {
+      return c.json({ error: 'File not found' }, 404);
+    }
+
+    const stats = fs.statSync(absolutePath);
+    if (stats.isDirectory()) {
+      return c.json({ error: 'Cannot edit directory content' }, 400);
+    }
+
+    // 仅允许文本文件
+    const ext = path.extname(absolutePath).slice(1).toLowerCase();
+    if (!TEXT_EXTENSIONS.has(ext)) {
+      return c.json({ error: 'File type not supported for editing' }, 400);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    if (typeof body.content !== 'string') {
+      return c.json({ error: 'Content field is required' }, 400);
+    }
+
+    // 限制内容大小（10MB）
+    if (Buffer.byteLength(body.content, 'utf-8') > 10 * 1024 * 1024) {
+      return c.json({ error: 'Content too large (max 10MB)' }, 400);
+    }
+
+    if (isBillingEnabled() && group.created_by) {
+      const nextSize = Buffer.byteLength(body.content, 'utf-8');
+      const additionalBytes = Math.max(0, nextSize - stats.size);
+      if (additionalBytes > 0) {
+        const currentUsage = getGroupStorageUsage(group.folder, rootOverride);
+        const storageCheck = checkStorageLimit(
+          group.created_by,
+          authUser.role,
+          currentUsage,
+          additionalBytes,
+        );
+        if (!storageCheck.allowed) {
+          return c.json({ error: storageCheck.reason }, 403);
+        }
+      }
+    }
+
+    // 原子写入：先 lstat 检查目标如已存在则不能是 symlink（防 TOCTOU 把
+    // absolutePath 替换成指向系统路径的链接 → rename 走的是目录项替换不会
+    // 跟随，但若先存在 symlink 时仍会替换它本身，对调用方语义没有破坏；
+    // 但仍然 lstat 校验目录祖先没被偷换）。
+    try {
+      const lst = fs.lstatSync(absolutePath);
+      if (lst.isSymbolicLink()) {
+        return c.json({ error: 'Refusing to overwrite symbolic link' }, 403);
+      }
+    } catch (err: any) {
+      if (err && err.code !== 'ENOENT') throw err;
+    }
+    const tmp = `${absolutePath}.tmp`;
+    // 用 fs.writeFileSync(fd, ...) 让 Node 内置循环处理 partial-write
+    // (NFS / 容器 IO 限流 / 磁盘满边界都可能 short-write 导致内容截断)。
+    // 配合 O_NOFOLLOW + O_EXCL 防 symlink 预放（Windows 不支持 NOFOLLOW，
+    // 走 fallback writeFileSync，由前置 lstat 守住 leaf）。
+    // tmp 失败务必 unlink，否则下次同文件 PUT 在 O_EXCL 处永久 EEXIST 锁死；
+    // rename 阶段失败也走 finally 清理。
+    const noFollowFlag = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW;
+    let renameOk = false;
+    try {
+      if (noFollowFlag !== undefined) {
+        const flags =
+          fs.constants.O_WRONLY |
+          fs.constants.O_CREAT |
+          fs.constants.O_TRUNC |
+          fs.constants.O_EXCL |
+          noFollowFlag;
+        let fd: number | null = null;
+        try {
+          fd = fs.openSync(tmp, flags, 0o644);
+          // writeFileSync 接受 fd，内部循环处理 short-write
+          fs.writeFileSync(fd, body.content, 'utf-8');
+        } finally {
+          if (fd !== null) {
+            try { fs.closeSync(fd); } catch { /* ignore */ }
+          }
+        }
+      } else {
+        // Windows fallback：用 'wx' 等价的 O_EXCL 创建避免覆写预放 symlink。
+        try {
+          fs.writeFileSync(tmp, body.content, { encoding: 'utf-8', flag: 'wx', mode: 0o644 });
+        } catch (err: any) {
+          if (err && err.code === 'EEXIST') {
+            // 旧 tmp 残留：删后重试一次。
+            fs.unlinkSync(tmp);
+            fs.writeFileSync(tmp, body.content, { encoding: 'utf-8', flag: 'wx', mode: 0o644 });
+          } else {
+            throw err;
+          }
+        }
+      }
+      fs.renameSync(tmp, absolutePath);
+      renameOk = true;
+    } finally {
+      if (!renameOk) {
+        try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+      }
+    }
+
+    invalidateGroupStorageUsage(group.folder, rootOverride);
+    return c.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to save file content for ${jid}`);
+    return c.json({ error: 'Failed to save file content' }, 500);
+  }
+});
+
+// DELETE /api/groups/:jid/files/:path - 删除文件
+fileRoutes.delete('/:jid/files/:path', authMiddleware, (c) => {
+  const jid = c.req.param('jid');
+  const encodedPath = c.req.param('path');
+
+  const group = getRegisteredGroup(jid);
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json(
+      { error: 'Insufficient permissions for host execution mode' },
+      403,
+    );
+  }
+
+  try {
+    const rootOverride = getFileRootOverride(group);
+    // 解码 base64url 路径
+    const relativePath = Buffer.from(encodedPath, 'base64url').toString(
+      'utf-8',
+    );
+    deleteFile(group.folder, relativePath, rootOverride);
+    invalidateGroupStorageUsage(group.folder, rootOverride);
+
+    return c.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to delete file for ${jid}`);
+    const msg = (error as Error).message;
+    // Only expose known safe error messages, not internal paths
+    const safeMessages = [
+      'Cannot delete system path',
+      'Cannot delete root directory',
+      'File or directory not found',
+      'Path traversal detected',
+      'Symlink traversal detected',
+    ];
+    const publicMsg = safeMessages.includes(msg)
+      ? msg
+      : 'Failed to delete file';
+    return c.json({ error: publicMsg }, 400);
+  }
+});
+
+// POST /api/groups/:jid/directories - 创建目录
+fileRoutes.post('/:jid/directories', authMiddleware, async (c) => {
+  const jid = c.req.param('jid');
+
+  const group = getRegisteredGroup(jid);
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json(
+      { error: 'Insufficient permissions for host execution mode' },
+      403,
+    );
+  }
+
+  try {
+    const body = await c.req.json();
+    const { path: parentPath, name } = body;
+
+    if (!name || typeof name !== 'string') {
+      return c.json({ error: 'Directory name is required' }, 400);
+    }
+
+    createDirectory(
+      group.folder,
+      parentPath || '',
+      name,
+      getFileRootOverride(group),
+    );
+
+    return c.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to create directory for ${jid}`);
+    const msg = (error as Error).message;
+    const safeMessages = [
+      'Cannot create system path',
+      'Cannot create root directory',
+      'Directory already exists',
+      'Path traversal detected',
+      'Symlink traversal detected',
+      'Directory name is required',
+      'Invalid directory name',
+    ];
+    const publicMsg = safeMessages.includes(msg)
+      ? msg
+      : 'Failed to create directory';
+    return c.json({ error: publicMsg }, 400);
+  }
+});
+
+export default fileRoutes;

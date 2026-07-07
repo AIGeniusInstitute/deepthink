@@ -1,0 +1,11 @@
+{
+  "allowedRoots": [
+    {
+      "path": "~",
+      "allowReadWrite": true,
+      "description": "Full home directory access"
+    }
+  ],
+  "blockedPatterns": [],
+  "nonMainReadOnly": true
+}
