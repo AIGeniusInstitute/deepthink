@@ -104,7 +104,7 @@ export function SettingsPage() {
   }, [activeTab]);
 
   const sectionTitle: Record<SettingsTab, string> = {
-    claude: 'Claude 提供商',
+    claude: '模型服务商',
     registration: '注册管理',
     appearance: '全局外观',
     system: '系统参数',
