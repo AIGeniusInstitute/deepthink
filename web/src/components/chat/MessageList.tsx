@@ -8,7 +8,6 @@ import { EmojiAvatar } from '../common/EmojiAvatar';
 import { ErrorBoundary } from '../common';
 import { Loader2, ChevronUp, ChevronDown, AlertTriangle, Square, Code2, Zap, BookOpen, Wrench } from 'lucide-react';
 import { useDisplayMode } from '../../hooks/useDisplayMode';
-import { resolveSystemMessage } from '../../lib/system-message-registry';
 
 interface MessageListProps {
   messages: Message[];
@@ -118,12 +117,9 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
       items.push({ type: 'date', content: date });
       msgs.forEach((msg) => {
         if (msg.sender === '__system__') {
-          if (msg.content.startsWith('context_overflow:')) {
-            items.push({ type: 'message', content: msg });
-          } else {
-            const resolved = resolveSystemMessage(msg.content);
-            items.push({ type: resolved.style, content: resolved.text });
-          }
+          // 所有系统消息统一走 MessageBubble 渲染（含 context_overflow / agent_error / agent_max_retries / system_error / context_reset / system_info / query_interrupted）
+          // MessageBubble 内部用 resolveSystemMessage 提取文本并挂上 MessageContextMenu（含删除入口）
+          items.push({ type: 'message', content: msg });
         } else if (!msg.is_from_me && /^\/(sw|spawn)\s+/i.test(msg.content)) {
           // /sw or /spawn commands render as compact spawn-task cards
           items.push({ type: 'spawn', content: msg.content.replace(/^\/(sw|spawn)\s+/i, '') });
