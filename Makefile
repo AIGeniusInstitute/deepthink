@@ -366,7 +366,7 @@ desktop-pack-mac-x64: desktop-build desktop-rebuild-natives ## 打包 macOS .dmg
 	cd $(DESKTOP_DIR) && npx electron-builder --config build/mac.json --x64
 
 desktop-pack-mac-all: desktop-build desktop-rebuild-natives ## 打包 macOS .dmg（arm64 + x64 双架构，发布用）
-	cd $(DESKTOP_DIR) && npx electron-builder --config build/mac.json
+	cd $(DESKTOP_DIR) && npx electron-builder --config build/mac.json --arm64 --x64
 
 desktop-pack-win: desktop-build desktop-rebuild-natives ## 打包 Windows .exe（在 Windows runner 上执行）
 	TARGET_PLATFORM=win ARCH=x64 NODE_VERSION=$(DESKTOP_NODE_VERSION) node scripts/fetch-node-binary.js
