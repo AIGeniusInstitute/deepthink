@@ -864,3 +864,25 @@ Commit message 使用简体中文，格式：`类型: 描述`
 ## 许可证
 
 [MIT](LICENSE)
+
+
+
+## About Author
+
+- [AI光剑的博客](https://blog.csdn.net/universsky2015)
+
+- [Github](https://jason-chen-2017.github.io/Jason-Chen-2017/)
+
+- [光剑图书馆: 全球免费开放的电子图书馆 World Free eBook](https://universsky.github.io/)
+
+
+---
+
+## 捐赠
+
+> Donate to AI Genius Institute:
+
+
+| 微信                                                    | 支付宝                                                  |
+| ------------------------------------------------------- | ------------------------------------------------------- |
+| <img src="static/wechat.jpeg" width="300" height="350"> | <img src="static/alipay.jpeg" width="300" height="350"> |
