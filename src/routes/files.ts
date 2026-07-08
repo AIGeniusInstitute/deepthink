@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
+import { convertToPdf, isConvertibleToPdf, isLibreOfficeAvailable } from '../office-converter.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -45,6 +46,7 @@ const MIME_MAP: Record<string, string> = {
   // 文本和代码
   txt: 'text/plain',
   md: 'text/markdown',
+  markdown: 'text/markdown',
   json: 'application/json',
   js: 'text/javascript',
   ts: 'text/typescript',
@@ -52,6 +54,7 @@ const MIME_MAP: Record<string, string> = {
   tsx: 'text/typescript',
   css: 'text/css',
   html: 'text/html',
+  htm: 'text/html',
   xml: 'application/xml',
   py: 'text/x-python',
   go: 'text/x-go',
@@ -60,7 +63,12 @@ const MIME_MAP: Record<string, string> = {
   c: 'text/x-c',
   cpp: 'text/x-c++',
   h: 'text/x-c',
+  hpp: 'text/x-c++',
+  cc: 'text/x-c++',
+  cxx: 'text/x-c++',
   sh: 'text/x-sh',
+  bash: 'text/x-sh',
+  zsh: 'text/x-sh',
   yaml: 'text/yaml',
   yml: 'text/yaml',
   toml: 'text/x-toml',
@@ -68,6 +76,19 @@ const MIME_MAP: Record<string, string> = {
   conf: 'text/plain',
   log: 'text/plain',
   csv: 'text/csv',
+  sql: 'application/sql',
+  php: 'text/x-php',
+  rb: 'text/x-ruby',
+  kt: 'text/x-kotlin',
+  swift: 'text/x-swift',
+  scala: 'text/x-scala',
+  lua: 'text/x-lua',
+  r: 'text/x-r',
+  dart: 'text/x-dart',
+  vue: 'text/x-vue',
+  svelte: 'text/x-svelte',
+  perl: 'text/x-perl',
+  pl: 'text/x-perl',
   // PDF
   pdf: 'application/pdf',
   // 视频
@@ -94,6 +115,7 @@ const MIME_MAP: Record<string, string> = {
 const TEXT_EXTENSIONS = new Set([
   'txt',
   'md',
+  'markdown',
   'json',
   'js',
   'ts',
@@ -101,6 +123,7 @@ const TEXT_EXTENSIONS = new Set([
   'tsx',
   'css',
   'html',
+  'htm',
   'xml',
   'py',
   'go',
@@ -109,7 +132,12 @@ const TEXT_EXTENSIONS = new Set([
   'c',
   'cpp',
   'h',
+  'hpp',
+  'cc',
+  'cxx',
   'sh',
+  'bash',
+  'zsh',
   'yaml',
   'yml',
   'toml',
@@ -117,11 +145,24 @@ const TEXT_EXTENSIONS = new Set([
   'conf',
   'log',
   'csv',
+  'sql',
+  'php',
+  'rb',
+  'kt',
+  'swift',
+  'scala',
+  'lua',
+  'r',
+  'dart',
+  'vue',
+  'svelte',
+  'perl',
+  'pl',
   'svg',
 ]);
 
-// 不安全的扩展名（HTML/SVG 有 XSS 风险，压缩包不可预览）
-const UNSAFE_PREVIEW_EXTENSIONS = new Set(['html', 'svg', 'zip', 'tar', 'gz', '7z']);
+// 不安全的扩展名（压缩包不可预览；HTML/SVG 在 /preview 端点中通过 sandbox + CSP 保护下 inline 返回）
+const UNSAFE_PREVIEW_EXTENSIONS = new Set(['zip', 'tar', 'gz', '7z']);
 
 // 允许 inline 预览的安全 MIME 类型（从 MIME_MAP 中排除不安全扩展名自动推导）
 const SAFE_PREVIEW_MIME_TYPES = new Set(
@@ -611,9 +652,16 @@ fileRoutes.get('/:jid/files/preview/:path', authMiddleware, (c) => {
     const isStreamable =
       mimeType.startsWith('video/') || mimeType.startsWith('audio/');
 
-    // 安全头
+    // 安全头：HTML/SVG 需要在浏览器 sandbox iframe 内执行 inline 脚本，因此
+    // 放宽 CSP 到允许 unsafe-inline 脚本与样式（仍然 default-src 'none' 阻断
+    // 外部资源加载）。其他类型保持 default-src 'none'。
+    const isHtmlLike =
+      mimeType === 'text/html' || mimeType === 'image/svg+xml';
+    const csp = isHtmlLike
+      ? "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'unsafe-inline' data: blob:; img-src data: blob:; font-src data: blob:; connect-src 'none'; frame-ancestors 'none'"
+      : "default-src 'none'; sandbox";
     const securityHeaders: Record<string, string> = {
-      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'Content-Security-Policy': csp,
       'X-Content-Type-Options': 'nosniff',
     };
 
@@ -699,6 +747,131 @@ fileRoutes.get('/:jid/files/preview/:path', authMiddleware, (c) => {
   } catch (error) {
     logger.error({ err: error }, `Failed to preview file for ${jid}`);
     return c.json({ error: 'Failed to preview file' }, 500);
+  }
+});
+
+// GET /api/groups/:jid/files/convert/:path - 将 Office 文档转为 PDF（缓存到 data/cache/office-preview/）
+fileRoutes.get('/:jid/files/convert/:path', authMiddleware, async (c) => {
+  const jid = c.req.param('jid');
+  const encodedPath = c.req.param('path');
+
+  const group = getRegisteredGroup(jid);
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json(
+      { error: 'Insufficient permissions for host execution mode' },
+      403,
+    );
+  }
+
+  try {
+    const relativePath = Buffer.from(encodedPath, 'base64url').toString('utf-8');
+    const absolutePath = validateAndResolvePath(
+      group.folder,
+      relativePath,
+      getFileRootOverride(group),
+    );
+
+    if (!fs.existsSync(absolutePath)) {
+      return c.json({ error: 'File not found' }, 404);
+    }
+    const stats = fs.statSync(absolutePath);
+    if (stats.isDirectory()) {
+      return c.json({ error: 'Cannot convert directory' }, 400);
+    }
+
+    const ext = path.extname(absolutePath).slice(1).toLowerCase();
+    if (!isConvertibleToPdf(ext)) {
+      return c.json({ error: `Unsupported source format: ${ext}` }, 400);
+    }
+
+    const cachedPdfPath = await convertToPdf(absolutePath);
+    const pdfStats = fs.statSync(cachedPdfPath);
+
+    // Range 支持（PDF Viewer 可能请求分段）
+    const rangeHeader = c.req.header('range');
+    const commonHeaders = {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${encodeURIComponent(path.basename(cachedPdfPath))}"`,
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'X-Content-Type-Options': 'nosniff',
+      'Accept-Ranges': 'bytes',
+    };
+
+    if (rangeHeader) {
+      const normalizedRange = rangeHeader.trim();
+      const isBytesRange = normalizedRange.toLowerCase().startsWith('bytes=');
+      const isMultiRange = isBytesRange && normalizedRange.includes(',');
+      if (isBytesRange && !isMultiRange) {
+        const parsedRange = parseSingleRange(normalizedRange, pdfStats.size);
+        if (!parsedRange) {
+          return new Response(null, {
+            status: 416,
+            headers: {
+              ...commonHeaders,
+              'Content-Range': `bytes */${pdfStats.size}`,
+            },
+          });
+        }
+        const { start, end } = parsedRange;
+        const stream = Readable.toWeb(
+          fs.createReadStream(cachedPdfPath, { start, end }),
+        ) as ReadableStream<Uint8Array>;
+        return new Response(stream, {
+          status: 206,
+          headers: {
+            ...commonHeaders,
+            'Content-Length': String(end - start + 1),
+            'Content-Range': `bytes ${start}-${end}/${pdfStats.size}`,
+          },
+        });
+      }
+    }
+
+    const stream = Readable.toWeb(
+      fs.createReadStream(cachedPdfPath),
+    ) as ReadableStream<Uint8Array>;
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        ...commonHeaders,
+        'Content-Length': String(pdfStats.size),
+      },
+    });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to convert file for ${jid}`);
+    const message = error instanceof Error ? error.message : 'Conversion failed';
+    if (message.includes('LibreOffice not installed')) {
+      return c.json({ error: 'LibreOffice not installed on the server', code: 'no_libreoffice' }, 501);
+    }
+    return c.json({ error: message }, 500);
+  }
+});
+
+// GET /api/groups/:jid/files/libreoffice-status - 查询 LibreOffice 是否可用（前端用于决定 PPTX 渲染策略）
+fileRoutes.get('/:jid/files/libreoffice-status', authMiddleware, async (c) => {
+  const jid = c.req.param('jid');
+  const group = getRegisteredGroup(jid);
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  try {
+    const available = await isLibreOfficeAvailable();
+    return c.json({ available });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to check LibreOffice status for ${jid}`);
+    return c.json({ available: false });
   }
 });
 

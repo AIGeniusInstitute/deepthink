@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Loader2, Send, X } from 'lucide-react';
+import { useDisplayMode } from '../../hooks/useDisplayMode';
 
 export type LoopMode = 'chat' | 'goal' | 'time' | 'proactive' | 'adaptive' | 'skill_evolution';
 
@@ -27,8 +28,10 @@ export function LoopModeSwitcher({
   mode: LoopMode;
   onChange: (m: LoopMode) => void;
 }) {
+  const { mode: displayMode } = useDisplayMode();
+  const alignCls = displayMode === 'compact' ? 'mx-auto px-4' : 'max-w-4xl mx-auto px-4 lg:pl-[60px]';
   return (
-    <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-1">
+    <div className={`${alignCls} flex items-center gap-1 overflow-x-auto no-scrollbar pb-1`}>
       {CHIP_ORDER.map((m) => {
         const cfg = MODES[m];
         const active = mode === m;
@@ -71,6 +74,8 @@ const inputCls =
   'w-full mt-0.5 px-2 py-1.5 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary';
 
 export function LoopForm({ mode, onSend, onCancel }: LoopFormProps) {
+  const { mode: displayMode } = useDisplayMode();
+  const alignCls = displayMode === 'compact' ? 'mx-auto px-4' : 'max-w-4xl mx-auto px-4 lg:pl-[60px]';
   const [goal, setGoal] = useState('');
   const [successCriteria, setSuccessCriteria] = useState('');
   const [maxTurns, setMaxTurns] = useState('5');
@@ -125,7 +130,8 @@ export function LoopForm({ mode, onSend, onCancel }: LoopFormProps) {
   };
 
   return (
-    <div className="bg-surface rounded-2xl border border-border shadow-sm p-3 space-y-2">
+    <div className={alignCls}>
+      <div className="bg-surface rounded-2xl border border-border shadow-sm p-3 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">
           {MODES[mode].emoji} {MODES[mode].label}
@@ -229,6 +235,7 @@ export function LoopForm({ mode, onSend, onCancel }: LoopFormProps) {
           {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           启动循环
         </button>
+      </div>
       </div>
     </div>
   );

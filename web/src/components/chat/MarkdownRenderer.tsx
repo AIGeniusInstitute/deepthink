@@ -10,6 +10,8 @@ import React, { useState, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { Copy, Check } from 'lucide-react';
 import { MermaidDiagram } from './MermaidDiagram';
+import { ArtifactRenderer } from './artifacts/ArtifactRenderer';
+import { detectInlineKind, EXTENSION_TO_KIND, getExt } from './artifacts/types';
 import { toBase64Url } from '../../stores/files';
 import { withBasePath } from '../../utils/url';
 import 'highlight.js/styles/github.css';
@@ -125,8 +127,9 @@ function CodeBlock({
   className,
   children,
   variant = 'chat',
+  groupJid,
   ...props
-}: React.ComponentPropsWithoutRef<'code'> & { className?: string; variant?: 'chat' | 'docs' }) {
+}: React.ComponentPropsWithoutRef<'code'> & { className?: string; variant?: 'chat' | 'docs'; groupJid?: string }) {
   const [copied, setCopied] = useState(false);
   const match = /language-(\w+)/.exec(className || '');
   const lang = match?.[1];
@@ -135,6 +138,22 @@ function CodeBlock({
 
   if (lang === 'mermaid') {
     return <MermaidDiagram code={codeString} />;
+  }
+
+  // Inline artifact languages (svg/html) — render via ArtifactRenderer
+  const inlineKind = detectInlineKind(lang);
+  if (isBlock && inlineKind && inlineKind !== 'mermaid') {
+    return (
+      <ArtifactRenderer
+        kind={inlineKind}
+        source={{
+          inlineContent: codeString,
+          fileName: `artifact.${lang}`,
+          groupJid,
+        }}
+        groupJid={groupJid}
+      />
+    );
   }
 
   const handleCopy = () => {
@@ -225,18 +244,58 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, groupJ
         remarkPlugins={remarkPluginsList as any}
         rehypePlugins={rehypePluginsList as any}
         components={{
-          code: (props) => <CodeBlock {...props} variant={variant} />,
-          img: ({ src, alt }) => <MarkdownImage src={src ? resolveImageSrc(src, groupJid) : undefined} alt={alt} loading={eagerImages ? 'eager' : 'lazy'} />,
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:text-primary underline break-all"
-            >
-              {children}
-            </a>
-          ),
+          code: (props) => <CodeBlock {...props} variant={variant} groupJid={groupJid} />,
+          img: ({ src, alt }) => {
+            const ext = getExt(src);
+            const kind = ext ? EXTENSION_TO_KIND[ext] : undefined;
+            // Plain images (png/jpg/gif/webp/bmp/ico + unknown) use MarkdownImage
+            if (!kind || kind === 'image') {
+              return <MarkdownImage src={src ? resolveImageSrc(src, groupJid) : undefined} alt={alt} loading={eagerImages ? 'eager' : 'lazy'} />;
+            }
+            // Non-image artifact referenced as a markdown image
+            if (typeof src !== 'string' || !src) return null;
+            return (
+              <ArtifactRenderer
+                kind={kind}
+                source={{
+                  filePath: src,
+                  fileName: alt || src.split('/').pop() || src,
+                  groupJid,
+                  alt: alt || undefined,
+                }}
+                groupJid={groupJid}
+              />
+            );
+          },
+          a: ({ href, children }) => {
+            const ext = getExt(href);
+            const kind = ext ? EXTENSION_TO_KIND[ext] : undefined;
+            // Artifact link: render inline for non-text kinds (text falls back to plain anchor)
+            if (kind && kind !== 'text' && typeof href === 'string' && href) {
+              const label = extractText(children) || href.split('/').pop() || href;
+              return (
+                <ArtifactRenderer
+                  kind={kind}
+                  source={{
+                    filePath: href,
+                    fileName: label,
+                    groupJid,
+                  }}
+                  groupJid={groupJid}
+                />
+              );
+            }
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:text-primary underline break-all"
+              >
+                {children}
+              </a>
+            );
+          },
           table: ({ children }) => (
             <div
               className="my-4 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch] [touch-action:pan-x_pan-y]"
