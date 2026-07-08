@@ -2,7 +2,12 @@
  * Detail panel for a single DAG node. Shows full context state and supports:
  *   - Editing input_summary / output_summary (saved as annotations)
  *   - "Rerun this node" — sends node.input as a new user message
- *   - "Continue from here" — same as rerun but with a `[continue]` prefix
+ *   - "Continue from here" — sends a context-augmented message that
+ *     includes the node's input, output, and parent chain so the agent
+ *     can actually resume execution from this point rather than re-running
+ *     it blind. The context is injected as plain text in the message —
+ *     the agent reads it like any other user instruction, no special
+ *     agent-runner side handling required.
  *
  * Rerun is implemented client-side: the input text is sent through the
  * existing /api/messages pipeline via chat store's sendMessage action. No
@@ -33,6 +38,7 @@ export function DagNodeDetail({ chatJid, node }: DagNodeDetailProps) {
   const setSelectedNodeId = useChatStore((s) => s.setSelectedTraceNodeId);
   const saveAnnotation = useChatStore((s) => s.saveTraceNodeAnnotation);
   const sendMessage = useChatStore((s) => s.sendMessage);
+  const traceNodesMap = useChatStore((s) => s.traceNodes);
 
   const [annotationInput, setAnnotationInput] = useState('');
   const [annotationOutput, setAnnotationOutput] = useState('');
@@ -55,14 +61,85 @@ export function DagNodeDetail({ chatJid, node }: DagNodeDetailProps) {
     }
   };
 
+  /**
+   * Build a context-augmented message for "continue from here". Includes:
+   *   - The node's own input/output (so the agent knows what was done)
+   *   - Parent chain up to the root turn (so the agent knows where it sits)
+   *   - Sibling nodes that ran before this one (skipped — too noisy for now)
+   *
+   * The agent reads this like a normal user message — no agent-runner side
+   * branching logic required.
+   */
+  const buildContinueMessage = (): string => {
+    const allNodes = traceNodesMap[chatJid] ?? [];
+    const lines: string[] = [];
+    lines.push(`[从节点 #${node.id} 续跑]`);
+    lines.push('');
+    lines.push('## 当前节点');
+    lines.push(`- 节点 ID: #${node.id}`);
+    lines.push(`- 类型: ${NODE_TYPE_LABELS[node.node_type]}`);
+    if (node.title) lines.push(`- 标题: ${node.title}`);
+    lines.push(`- 状态: ${node.status ?? '未知'}`);
+    if (node.tokens && node.tokens > 0) lines.push(`- Tokens: ${node.tokens}`);
+
+    // Walk up the parent chain
+    const chain: TraceNodeEntry[] = [];
+    let cur: TraceNodeEntry | undefined = node;
+    const seen = new Set<number>([node.id]);
+    while (cur?.parent_node_id != null) {
+      const parent = allNodes.find((n) => n.id === cur!.parent_node_id);
+      if (!parent || seen.has(parent.id)) break;
+      seen.add(parent.id);
+      chain.unshift(parent);
+      cur = parent;
+    }
+    if (chain.length > 0) {
+      lines.push('');
+      lines.push('## 父节点链路（从根到当前）');
+      chain.forEach((n, i) => {
+        lines.push(`${i + 1}. #${n.id} [${NODE_TYPE_LABELS[n.node_type]}] ${n.title ?? ''}`.trim());
+        if (n.input_summary) {
+          lines.push(`   输入: ${n.input_summary.slice(0, 200)}`);
+        }
+        if (n.output_summary) {
+          lines.push(`   输出: ${n.output_summary.slice(0, 200)}`);
+        }
+      });
+    }
+
+    lines.push('');
+    lines.push('## 当前节点的输入与输出');
+    const inputForResume = (node.annotation_input ?? node.input_summary ?? '').trim();
+    const outputForResume = (node.annotation_output ?? node.output_summary ?? '').trim();
+    if (inputForResume) {
+      lines.push('### 输入');
+      lines.push('```');
+      lines.push(inputForResume);
+      lines.push('```');
+    }
+    if (outputForResume) {
+      lines.push('### 已完成的输出');
+      lines.push('```');
+      lines.push(outputForResume);
+      lines.push('```');
+    }
+
+    lines.push('');
+    lines.push('## 续跑指令');
+    lines.push('请基于上述节点上下文，从此节点继续执行后续任务。若该节点是工具调用，请检查其输出并决定下一步；若该节点是子 Agent，请继续其未完成的工作。');
+    return lines.join('\n');
+  };
+
   const handleRerun = async (mode: 'rerun' | 'continue') => {
     const inputText = (node.annotation_input ?? node.input_summary ?? '').trim();
     if (!inputText) {
       toast.error('该节点没有可重跑的输入');
       return;
     }
-    const prefix = mode === 'continue' ? `[从节点 #${node.id} 续跑]` : `[重跑节点 #${node.id}]`;
-    const message = `${prefix}\n\n${inputText}`;
+    const message =
+      mode === 'continue'
+        ? buildContinueMessage()
+        : `[重跑节点 #${node.id}]\n\n${inputText}`;
     if (!window.confirm(`确定${mode === 'continue' ? '从该节点续跑' : '重跑该节点'}？将作为新消息发送到当前会话。`)) {
       return;
     }

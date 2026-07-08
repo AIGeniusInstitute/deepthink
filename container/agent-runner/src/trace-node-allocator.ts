@@ -64,11 +64,18 @@ export class TraceNodeAllocator {
         if (event.toolUseId) {
           this.toolByUseId.set(event.toolUseId, { nodeId, parentTurnId });
         }
+        // Skill invocations come through as a Skill tool_use — reclassify
+        // them as 'skill' node type so the DAG canvas can color them
+        // distinctly from regular tools. Falls back to 'tool' if the
+        // skillName couldn't be extracted.
+        const isSkill = event.toolName === 'Skill' || !!event.skillName;
         event.traceNode = {
           nodeId,
-          nodeType: 'tool',
+          nodeType: isSkill ? 'skill' : 'tool',
           parentNodeId: parentTurnId,
-          title: event.toolName ?? undefined,
+          title: isSkill
+            ? `Skill:${event.skillName ?? 'unknown'}`
+            : (event.toolName ?? undefined),
           inputSummary: event.toolInputSummary ?? undefined,
           status: 'running',
         };
