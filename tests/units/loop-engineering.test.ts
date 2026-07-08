@@ -3,10 +3,13 @@ import { describe, expect, test } from 'vitest';
 import {
   parseInterval,
   isValidCron,
+  parseMaxTurns,
+  parseWorkflow,
 } from '../../src/loop-commands.js';
 import {
   clampMaxTurns,
   parseReviewResult,
+  parseSuggestedExt,
 } from '../../src/loop-orchestrator.js';
 
 describe('loop-commands: parseInterval', () => {
@@ -95,5 +98,59 @@ describe('loop-orchestrator: parseReviewResult', () => {
     const longReason = 'x'.repeat(3000);
     const r = parseReviewResult(`{"result":"fail","reason":"${longReason}"}`);
     expect(r.reason.length).toBeLessThanOrEqual(2000);
+  });
+});
+
+describe('loop-commands: parseMaxTurns', () => {
+  test('parses explicit max_turns=N', () => {
+    const r = parseMaxTurns('some goal max_turns=7');
+    expect(r.maxTurns).toBe(7);
+    expect(r.rest).toBe('some goal');
+  });
+  test('defaults to 5 when absent', () => {
+    const r = parseMaxTurns('some goal');
+    expect(r.maxTurns).toBe(5);
+    expect(r.rest).toBe('some goal');
+  });
+  test('clamps 0 to 1', () => {
+    const r = parseMaxTurns('goal max_turns=0');
+    expect(r.maxTurns).toBe(1);
+  });
+  test('clamps over-limit to 10', () => {
+    const r = parseMaxTurns('goal max_turns=99');
+    expect(r.maxTurns).toBe(10);
+  });
+});
+
+describe('loop-commands: parseWorkflow', () => {
+  test('parses parallel', () => {
+    const r = parseWorkflow('goal workflow=parallel');
+    expect(r.mode).toBe('parallel');
+    expect(r.rest).toBe('goal');
+  });
+  test('parses sequential', () => {
+    const r = parseWorkflow('goal workflow=sequential');
+    expect(r.mode).toBe('sequential');
+    expect(r.rest).toBe('goal');
+  });
+  test('defaults to sequential', () => {
+    const r = parseWorkflow('goal');
+    expect(r.mode).toBe('sequential');
+    expect(r.rest).toBe('goal');
+  });
+});
+
+describe('loop-orchestrator: parseSuggestedExt', () => {
+  test('parses next_turns=3', () => {
+    expect(parseSuggestedExt('next_turns=3')).toBe(3);
+  });
+  test('parses numeric prefix', () => {
+    expect(parseSuggestedExt('2 more turns')).toBe(2);
+  });
+  test('returns 0 for empty', () => {
+    expect(parseSuggestedExt('')).toBe(0);
+  });
+  test('returns 0 for invalid', () => {
+    expect(parseSuggestedExt('no number here')).toBe(0);
   });
 });

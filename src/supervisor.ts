@@ -55,7 +55,7 @@ export async function runSupervisorPreDispatch(
   }
 }
 
-function parseDecision(raw: string): SupervisorDecision | null {
+export function parseDecision(raw: string): SupervisorDecision | null {
   const cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*$/g, '').trim();
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
