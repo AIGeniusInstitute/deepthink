@@ -1,0 +1,19 @@
+case_id: bug-fix
+name: Bug 定位
+prompt: |
+  下面这段 Python 代码有一个 bug，请指出问题并给出修复方案：
+
+  def divide(a, b):
+      return a / b
+
+  result = divide(10, 0)
+  print(result)
+
+  只输出问题原因和修复代码，不要多余解释。
+assertions:
+  - { kind: contains, value: "ZeroDivision" }
+  - { kind: regex, value: "if\\s+b\\s*==\\s*0|try\\s*:|or\\s+b\\s*==" }
+  - { kind: not_contains, value: "I cannot" }
+rubric:
+  weights: { default: 1.0 }
+  pass_threshold: 1.0

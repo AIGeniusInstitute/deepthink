@@ -253,6 +253,7 @@ import { makeExpandContext } from './plugin-expander-context.js';
 import type { ExpandContext } from './plugin-expander-context.js';
 import { persistPluginExpansion } from './plugin-expander-store.js';
 import { persistTraceNodeFromStreamEvent } from './chat-trace-persist.js';
+import { loadAndSyncEvalCases } from './harness-eval.js';
 
 // Set timezone so all child processes (host agents, containers) inherit it
 process.env.TZ = process.env.TZ || TIMEZONE;
@@ -10060,6 +10061,16 @@ async function main(): Promise<void> {
   migrateDataDirectories();
   initDatabase();
   logger.info('Database initialized');
+
+  // Sync harness eval cases from data/harness/eval-cases/ into DB on startup.
+  try {
+    const synced = loadAndSyncEvalCases();
+    if (synced.length > 0) {
+      logger.info({ count: synced.length }, 'Harness eval cases synced');
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to sync harness eval cases');
+  }
 
   // Clean up stale completed agents (task + spawn, older than 1 hour) to prevent DB bloat
   try {

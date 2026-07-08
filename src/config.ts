@@ -17,6 +17,15 @@ export const MOUNT_ALLOWLIST_PATH = path.resolve(
   'config',
   'mount-allowlist.json',
 );
+
+// Tracked source-of-truth for harness eval cases (committed to git).
+// Runtime copy lives under DATA_DIR/harness/eval-cases/ (synced on startup).
+export const HARNESS_EVAL_CASES_SRC_DIR = path.resolve(
+  PROJECT_ROOT,
+  'config',
+  'harness',
+  'eval-cases',
+);
 export const DATA_DIR = process.env.DEEPTHINK_DATA_DIR
   ? path.resolve(process.env.DEEPTHINK_DATA_DIR)
   : path.resolve(PROJECT_ROOT, 'data');

@@ -1,0 +1,14 @@
+case_id: tool-invocation
+name: 工具选择
+prompt: |
+  你是 AI Agent，有这些工具：Read（读文件）、Write（写文件）、Bash（执行命令）、WebSearch（搜索网页）。
+
+  用户要求："帮我查一下 2026 年 Python 最新版本是多少。"
+
+  请只输出你会调用的工具名称（一个词，不要解释）。
+assertions:
+  - { kind: regex, value: "WebSearch|web_search|websearch" }
+  - { kind: not_contains, value: "I cannot" }
+rubric:
+  weights: { default: 1.0 }
+  pass_threshold: 1.0

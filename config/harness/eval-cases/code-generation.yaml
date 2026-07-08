@@ -1,0 +1,11 @@
+case_id: code-generation
+name: 代码生成基础
+prompt: |
+  写一个 Python 函数 add(a, b) 返回两数之和。只输出代码，不要解释。
+assertions:
+  - { kind: contains, value: "def add" }
+  - { kind: regex, value: "return\\s+a\\s*\\+\\s*b" }
+  - { kind: not_contains, value: "I cannot" }
+rubric:
+  weights: { default: 1.0 }
+  pass_threshold: 1.0
