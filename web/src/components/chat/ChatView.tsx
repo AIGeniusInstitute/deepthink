@@ -25,6 +25,9 @@ import { ImBindingDialog } from './ImBindingDialog';
 import { TopicSidebar } from './TopicSidebar';
 import { showToast } from '../../utils/toast';
 import { getWorkspaceLastAgent, setWorkspaceLastAgent } from '../../utils/workspaceLastAgent';
+import { SloganRotator, isDefaultHomeName } from './SloganRotator';
+import { LoopModeSwitcher, LoopForm, type LoopMode } from './LoopModeSwitcher';
+import { SupervisorToggle } from './SupervisorToggle';
 /** Sentinel value for binding the main conversation (vs. a specific agent) */
 const MAIN_BINDING = '__main__' as const;
 
@@ -59,6 +62,7 @@ export function ChatView({ groupJid, onBack, headerLeft }: ChatViewProps) {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('files');
   const [panelOpen, setPanelOpen] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [loopMode, setLoopMode] = useState<LoopMode>('chat');
   const [resetLoading, setResetLoading] = useState(false);
   const [resetAgentId, setResetAgentId] = useState<string | null>(null);
   // Desktop: visible controls panel height, mounted controls terminal lifecycle.
@@ -561,7 +565,18 @@ export function ChatView({ groupJid, onBack, headerLeft }: ChatViewProps) {
         )}
         {headerLeft}
         <div className="flex-1 min-w-0">
-          <h2 className="font-semibold text-foreground text-[16px] tracking-tight truncate">{group.name}</h2>
+          {isDefaultHomeName(group.name, currentUser?.username) ? (
+            <h2 className="font-semibold text-foreground text-[16px] tracking-tight truncate">
+              <SloganRotator />
+            </h2>
+          ) : (
+            <div className="min-w-0">
+              <h2 className="font-semibold text-foreground text-[16px] tracking-tight truncate">{group.name}</h2>
+              <div className="text-[11px] text-muted-foreground/80 truncate">
+                <SloganRotator />
+              </div>
+            </div>
+          )}
           {isWaiting && (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span className="w-1 h-1 rounded-full bg-foreground/60 animate-pulse" />
@@ -569,6 +584,8 @@ export function ChatView({ groupJid, onBack, headerLeft }: ChatViewProps) {
             </div>
           )}
         </div>
+        {/* Desktop: toggle Supervisor */}
+        <SupervisorToggle chatJid={groupJid} />
         {/* Desktop: toggle theme (light → dark → system) */}
         <button
           onClick={toggleTheme}
@@ -773,12 +790,21 @@ export function ChatView({ groupJid, onBack, headerLeft }: ChatViewProps) {
                 onInterrupt={mainInterrupted ? undefined : () => interruptQuery(groupJid)}
                 onSend={(content) => handleSend(content)}
               />
-              <MessageInput
-                onSend={handleSend}
-                groupJid={groupJid}
-                onResetSession={canModifyWorkspaceConfig ? () => { setResetAgentId(null); setShowResetConfirm(true); } : undefined}
-                onToggleTerminal={canUseTerminal ? handleTerminalToggle : undefined}
-              />
+              <LoopModeSwitcher mode={loopMode} onChange={setLoopMode} />
+              {loopMode === 'chat' ? (
+                <MessageInput
+                  onSend={handleSend}
+                  groupJid={groupJid}
+                  onResetSession={canModifyWorkspaceConfig ? () => { setResetAgentId(null); setShowResetConfirm(true); } : undefined}
+                  onToggleTerminal={canUseTerminal ? handleTerminalToggle : undefined}
+                />
+              ) : (
+                <LoopForm
+                  mode={loopMode}
+                  onSend={(cmd) => handleSend(cmd)}
+                  onCancel={() => setLoopMode('chat')}
+                />
+              )}
             </>
           )}
         </div>

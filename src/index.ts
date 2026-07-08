@@ -224,6 +224,8 @@ import {
   handleScheduleCommand,
   handleProactiveCommand,
   handleCancelCommand,
+  handleAdaptiveCommand,
+  handleSkillEvolutionCommand,
   handleListLoopsCommand as handleListLoopsCmd,
 } from './loop-commands.js';
 import {
@@ -1504,6 +1506,10 @@ async function handleCommand(
       return handleScheduleLoopCommand(chatJid, rawArgs, senderImId);
     case 'proactive':
       return handleProactiveLoopCommand(chatJid, rawArgs, senderImId);
+    case 'adaptive':
+      return handleAdaptiveLoopCommand(chatJid, rawArgs, senderImId);
+    case 'skill_evolution':
+      return handleSkillEvolutionLoopCommand(chatJid, rawArgs, senderImId);
     case 'cancel':
       return handleCancelLoopCommand(chatJid, rawArgs, senderImId);
     case 'loops':
@@ -2158,6 +2164,26 @@ async function handleProactiveLoopCommand(
   const resolved = resolveLoopCommandDeps(chatJid, senderImId);
   if (!resolved.ok) return resolved.reply;
   return handleProactiveCommand(rawArgs, resolved.deps);
+}
+
+async function handleAdaptiveLoopCommand(
+  chatJid: string,
+  rawArgs: string,
+  senderImId?: string,
+): Promise<string> {
+  const resolved = resolveLoopCommandDeps(chatJid, senderImId);
+  if (!resolved.ok) return resolved.reply;
+  return handleAdaptiveCommand(rawArgs, resolved.deps);
+}
+
+async function handleSkillEvolutionLoopCommand(
+  chatJid: string,
+  rawArgs: string,
+  senderImId?: string,
+): Promise<string> {
+  const resolved = resolveLoopCommandDeps(chatJid, senderImId);
+  if (!resolved.ok) return resolved.reply;
+  return handleSkillEvolutionCommand(rawArgs, resolved.deps);
 }
 
 async function handleCancelLoopCommand(
@@ -10549,6 +10575,39 @@ async function main(): Promise<void> {
       const user = getUserById(id);
       if (!user) return null;
       return { id: user.id, status: user.status, role: user.role };
+    },
+    dispatchSlashCommand: async (chatJid, content, _userId) => {
+      const trimmed = content.trim();
+      if (!trimmed.startsWith('/')) return null;
+      const fullCmd = trimmed.slice(1); // e.g. "goal fix readme max_turns=5"
+      const parts = fullCmd.split(/\s+/);
+      const cmd = parts[0].toLowerCase();
+      try {
+        const reply = await handleCommand(chatJid, fullCmd, _userId);
+        if (reply == null) return { reply: null };
+        let loopRunId: string | undefined;
+        let taskId: string | undefined;
+        const loopMatch = reply.match(/循环 ID:\s*([A-Za-z0-9_-]+)/);
+        const taskMatch = reply.match(/任务 ID:\s*([A-Za-z0-9_-]+)/);
+        if (cmd === 'goal' || cmd === 'adaptive' || cmd === 'skill_evolution') {
+          loopRunId = loopMatch?.[1];
+        } else if (cmd === 'loop' || cmd === 'schedule' || cmd === 'proactive') {
+          taskId = taskMatch?.[1];
+        }
+        return { reply, loopRunId, taskId };
+      } catch (err) {
+        logger.error({ err, chatJid, cmd }, 'dispatchSlashCommand failed');
+        return { reply: `命令执行失败: ${(err as Error).message}` };
+      }
+    },
+    runSupervisorPreDispatch: async (userMessage, userLanguage) => {
+      try {
+        const { runSupervisorPreDispatch } = await import('./supervisor.js');
+        return runSupervisorPreDispatch(userMessage, userLanguage);
+      } catch (err) {
+        logger.error({ err }, 'runSupervisorPreDispatch wiring failed');
+        return null;
+      }
     },
   });
 

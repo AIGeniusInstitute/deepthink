@@ -164,6 +164,35 @@ export interface WebDeps {
     isHome: boolean;
   };
   /**
+   * Dispatch a slash command from the Web channel. Returns the reply text and
+   * an optional loopRunId when the command kicked off a loop_run (goal /
+   * adaptive / skill_evolution). Web /api/messages calls this before queueing
+   * the message to the agent — without it, /goal etc. would be sent to the
+   * agent as a plain prompt and never reach loop-orchestrator (#loop-eng-v2).
+   */
+  dispatchSlashCommand?: (
+    chatJid: string,
+    content: string,
+    userId: string,
+  ) => Promise<{ reply: string | null; loopRunId?: string; taskId?: string } | null>;
+  /**
+   * Run the Supervisor SubAgent on a user message to decide pre-dispatch
+   * action (clarify / delegate / auto). Returns null if the call fails.
+   * Used by /api/messages when the group has Supervisor enabled.
+   */
+  runSupervisorPreDispatch?: (
+    userMessage: string,
+    userLanguage: string,
+  ) => Promise<
+    | {
+        action: 'clarify' | 'delegate' | 'auto' | 'accept' | 'retry';
+        instruction?: string;
+        question?: string;
+        reason?: string;
+      }
+    | null
+  >;
+  /**
    * User-by-id lookup used by plugin-runtime owner resolution. Web eager-expand
    * delegates to `resolvePerMessageRuntimeOwner` (#24 round-16 P2-1) so the
    * web fast-path applies the same admin-gating as the cold-start path —

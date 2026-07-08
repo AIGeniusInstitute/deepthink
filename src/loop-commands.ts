@@ -24,6 +24,8 @@ import {
   clampMaxTurns,
   createLoopRunRecord,
   executeGoalLoop,
+  executeAdaptiveLoop,
+  executeSkillEvolutionLoop,
   generateLoopRunId,
   type LoopDeps,
   type LoopRunContext,
@@ -126,6 +128,80 @@ export async function handleGoalCommand(
   });
 
   return `🎯 已启动目标循环\n\n循环 ID: ${loopRunId}\n目标: ${goalText}\n最大轮次: ${maxTurns}\n\n用 /cancel ${loopRunId} 取消\n用 /loops 查看活跃循环`;
+}
+
+/** /adaptive <goal> [max_turns=N] — 自适应循环，max_turns 动态调整 */
+export async function handleAdaptiveCommand(
+  args: string,
+  deps: LoopCommandDeps,
+): Promise<string> {
+  if (!args.trim()) {
+    return '用法：/adaptive <目标描述> [max_turns=N]\n示例：/adaptive 探索一个排序算法 max_turns=6';
+  }
+  const { maxTurns, rest: goalText } = parseMaxTurns(args);
+  if (!goalText) {
+    return '❌ 目标描述不能为空';
+  }
+
+  const loopRunId = generateLoopRunId();
+  const ctx: LoopRunContext = {
+    loopRunId,
+    ownerUserId: deps.ownerUserId,
+    groupFolder: deps.groupFolder,
+    chatJid: deps.chatJid,
+    kind: 'adaptive',
+    goalText,
+    maxTurns,
+    rootPrompt: args,
+  };
+  createLoopRunRecord(ctx);
+
+  executeAdaptiveLoop(ctx, deps.loopDeps).catch((err) => {
+    logger.error({ err, loopRunId }, 'Adaptive loop failed in background');
+  });
+
+  return `🧬 已启动自适应循环\n\n循环 ID: ${loopRunId}\n目标: ${goalText}\n初始轮次: ${maxTurns}（可动态扩展，上限 10）\n\n用 /cancel ${loopRunId} 取消\n用 /loops 查看活跃循环`;
+}
+
+/** /skill_evolution <skill_path> "<test_cmd>" [max_turns=N] — 技能自进化循环 */
+export async function handleSkillEvolutionCommand(
+  args: string,
+  deps: LoopCommandDeps,
+): Promise<string> {
+  const trimmed = args.trim();
+  if (!trimmed) {
+    return '用法：/skill_evolution <skill 路径> "<测试命令>" [max_turns=N]\n示例：/skill_evolution tests/skills/demo.test.js "node tests/skills/demo.test.js" max_turns=5';
+  }
+  // Parse: <skill_path> "<test_cmd>" [max_turns=N]
+  const quotedMatch = trimmed.match(/^(\S+)\s+"([^"]+)"(.*)$/);
+  if (!quotedMatch) {
+    return '❌ 参数格式错误。需要：<skill 路径> "<测试命令>" [max_turns=N]';
+  }
+  const skillPath = quotedMatch[1];
+  const testCmd = quotedMatch[2];
+  const tail = quotedMatch[3] ?? '';
+  const { maxTurns } = parseMaxTurns(`max_turns=5 ${tail}`.trim());
+  const maxTurnsFinal = tail.includes('max_turns=') ? maxTurns : 5;
+
+  const loopRunId = generateLoopRunId();
+  const ctx: LoopRunContext = {
+    loopRunId,
+    ownerUserId: deps.ownerUserId,
+    groupFolder: deps.groupFolder,
+    chatJid: deps.chatJid,
+    kind: 'skill_evolution',
+    goalText: skillPath,
+    successCriteria: testCmd,
+    maxTurns: maxTurnsFinal,
+    rootPrompt: args,
+  };
+  createLoopRunRecord(ctx);
+
+  executeSkillEvolutionLoop(ctx, deps.loopDeps).catch((err) => {
+    logger.error({ err, loopRunId }, 'Skill evolution loop failed in background');
+  });
+
+  return `🧪 已启动技能自进化循环\n\n循环 ID: ${loopRunId}\nSkill: ${skillPath}\n测试: ${testCmd}\n最大轮次: ${maxTurnsFinal}\n\n用 /cancel ${loopRunId} 取消\n用 /loops 查看活跃循环`;
 }
 
 /** /loop <interval> <text> */

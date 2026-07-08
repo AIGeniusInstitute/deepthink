@@ -164,7 +164,7 @@ export interface StreamEvent {
    *  emitted while ContainerInput.loopRunId is set. */
   loop?: {
     loopRunId: string;
-    kind: 'goal' | 'loop' | 'schedule' | 'proactive';
+    kind: 'goal' | 'loop' | 'schedule' | 'proactive' | 'adaptive' | 'skill_evolution';
     iteration?: number;
     goalText?: string;
     successCriteria?: string;

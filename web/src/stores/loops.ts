@@ -6,7 +6,7 @@ export interface LoopRun {
   owner_user_id: string;
   group_folder: string;
   chat_jid: string;
-  kind: 'goal' | 'loop' | 'schedule' | 'proactive';
+  kind: 'goal' | 'loop' | 'schedule' | 'proactive' | 'adaptive' | 'skill_evolution';
   goal_text: string;
   success_criteria: string | null;
   max_turns: number;
@@ -108,4 +108,15 @@ export async function fetchLoopTraceTree(id: string): Promise<{ loop_run_id: str
 
 export async function cancelLoop(id: string): Promise<{ ok: boolean }> {
   return apiFetch(`/api/loops/${id}/cancel`, { method: 'POST' });
+}
+
+export async function editTraceNode(
+  loopId: string,
+  nodeId: number,
+  outputSummary: string,
+): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/loops/${loopId}/trace/${nodeId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ output_summary: outputSummary }),
+  });
 }

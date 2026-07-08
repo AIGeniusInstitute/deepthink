@@ -8,6 +8,7 @@ import {
   listLoopRuns,
   listLoopIterations,
   listLoopTraceNodes,
+  updateLoopTraceNode,
 } from '../db.js';
 import { cancelLoopRun } from '../loop-orchestrator.js';
 import { logger } from '../logger.js';
@@ -119,6 +120,41 @@ loopsRoutes.get('/:id/trace', (c) => {
     }
   }
   return c.json({ loop_run_id: id, roots });
+});
+
+/** PATCH /api/loops/:id/trace/:nodeId — edit a trace node's output_summary.
+ *  Only allowed when the owning loop_run is in a terminal state (completed /
+ *  failed / cancelled), to avoid polluting an active execution. Records
+ *  edited_at so the original value can be surfaced if needed. */
+loopsRoutes.patch('/:id/trace/:nodeId', async (c) => {
+  const authUser = c.get('user') as import('../types.js').AuthUser;
+  const id = c.req.param('id');
+  const nodeId = parseInt(c.req.param('nodeId'), 10);
+  const run = getLoopRun(id);
+  if (!run) {
+    return c.json({ error: 'Loop not found' }, 404);
+  }
+  if (run.owner_user_id !== authUser.id && authUser.role !== 'admin') {
+    return c.json({ error: 'Loop not found' }, 404);
+  }
+  if (run.status !== 'completed' && run.status !== 'failed' && run.status !== 'cancelled') {
+    return c.json({ error: '只能编辑已结束循环的 trace 节点' }, 400);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const outputSummary = typeof body.output_summary === 'string' ? body.output_summary.slice(0, 8000) : null;
+  if (outputSummary === null) {
+    return c.json({ error: 'output_summary 字段必填' }, 400);
+  }
+  try {
+    updateLoopTraceNode(nodeId, {
+      output_summary: outputSummary,
+      edited_at: new Date().toISOString(),
+    });
+    return c.json({ ok: true, nodeId });
+  } catch (err) {
+    logger.error({ err, loopRunId: id, nodeId }, 'Failed to edit trace node');
+    return c.json({ error: (err as Error).message }, 500);
+  }
 });
 
 export default loopsRoutes;

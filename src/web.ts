@@ -396,6 +396,116 @@ async function handleWebUserMessage(
 
   ensureChatExists(chatJid);
 
+  // Loop Engineering slash-command dispatch (web path).
+  //
+  // The web /api/messages route only specially handled /clear before; every
+  // other slash command (e.g. /goal, /adaptive) was piped to the agent as a
+  // plain prompt and never reached loop-orchestrator — the root cause of
+  // "Loop Engineering 菜单啥功能都没有" (#loop-eng-v2).
+  //
+  // Now: if the content starts with '/', dispatch via deps.dispatchSlashCommand
+  // (which delegates to handleCommand). /clear is still handled above. Other
+  // recognized commands get their reply stored as a bot message with the
+  // loop_run_id (when present) attached as a loop_card attachment so the
+  // frontend renders an inline LoopRunCard.
+  const trimmedContent = content.trim();
+  if (
+    trimmedContent.startsWith('/')
+    && !isClearCommand(content)
+    && deps.dispatchSlashCommand
+  ) {
+    const dispatched = await deps.dispatchSlashCommand(chatJid, content, userId);
+    if (dispatched && dispatched.reply != null) {
+      const replyText = dispatched.reply;
+      const botMsgId = crypto.randomUUID();
+      const botTs = new Date().toISOString();
+      const loopAttachment =
+        dispatched.loopRunId || dispatched.taskId
+          ? JSON.stringify([
+              {
+                type: 'loop_card',
+                loop_run_id: dispatched.loopRunId,
+                task_id: dispatched.taskId,
+              },
+            ])
+          : undefined;
+      storeMessageDirect(
+        botMsgId,
+        chatJid,
+        '__loop__',
+        ASSISTANT_NAME,
+        replyText,
+        botTs,
+        true,
+        { attachments: loopAttachment },
+      );
+      broadcastNewMessage(chatJid, {
+        id: botMsgId,
+        chat_jid: chatJid,
+        sender: '__loop__',
+        sender_name: ASSISTANT_NAME,
+        content: replyText,
+        timestamp: botTs,
+        is_from_me: true,
+        attachments: loopAttachment,
+      });
+      deps.setLastAgentTimestamp(chatJid, { timestamp: botTs, id: botMsgId });
+      deps.advanceGlobalCursor({ timestamp: botTs, id: botMsgId });
+      return { ok: true, messageId: botMsgId, timestamp: botTs };
+    }
+    // reply == null → command unrecognized, fall through to agent as prompt
+  }
+
+  // Supervisor pre-dispatch: if the group has Supervisor enabled, route the
+  // user message through the Supervisor SubAgent first. The Supervisor can
+  // intercept with a clarifying question (stored as a supervisor message,
+  // agent not run). delegate/auto fall through to normal agent queue.
+  //
+  // (The full review/retry loop is deferred — this MVP implements the
+  // intent-parsing interception, which is the highest-value half.)
+  if (!trimmedContent.startsWith('/') && deps.runSupervisorPreDispatch) {
+    let supervisorEnabled = false;
+    try {
+      const { isChatSupervisorEnabled } = await import('./supervisor.js');
+      supervisorEnabled = await isChatSupervisorEnabled(chatJid);
+    } catch {
+      // supervisor module not loaded — skip
+    }
+    if (supervisorEnabled) {
+      const owner = group.created_by ? getUserById(group.created_by) : null;
+      const userLanguage = owner?.language ?? 'zh-CN';
+      const decision = await deps.runSupervisorPreDispatch(content, userLanguage);
+      if (decision?.action === 'clarify' && decision.question) {
+        const supMsgId = crypto.randomUUID();
+        const supTs = new Date().toISOString();
+        const supText = `🧭 Supervisor 提问：\n\n${decision.question}`;
+        storeMessageDirect(
+          supMsgId,
+          chatJid,
+          '__supervisor__',
+          ASSISTANT_NAME,
+          supText,
+          supTs,
+          true,
+          { meta: { sourceKind: 'supervisor' } },
+        );
+        broadcastNewMessage(chatJid, {
+          id: supMsgId,
+          chat_jid: chatJid,
+          sender: '__supervisor__',
+          sender_name: ASSISTANT_NAME,
+          content: supText,
+          timestamp: supTs,
+          is_from_me: true,
+        });
+        deps.setLastAgentTimestamp(chatJid, { timestamp: supTs, id: supMsgId });
+        deps.advanceGlobalCursor({ timestamp: supTs, id: supMsgId });
+        return { ok: true, messageId: supMsgId, timestamp: supTs };
+      }
+      // delegate/auto → fall through, queue original content to agent
+    }
+  }
+
   const messageId = crypto.randomUUID();
   const timestamp = new Date().toISOString();
   const normalizedAttachments = normalizeImageAttachments(attachments, {

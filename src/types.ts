@@ -110,7 +110,9 @@ export type MessageSourceKind =
   | 'scheduled_task_prompt'
   | 'legacy'
   | 'auto_continue'
-  | 'truncation_continue';
+  | 'truncation_continue'
+  | 'supervisor'
+  | 'loop_card';
 
 export type MessageFinalizationReason =
   | 'completed'
