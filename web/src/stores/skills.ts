@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api } from '../api/client';
+import { api, apiFetch } from '../api/client';
 
 export interface Skill {
   id: string;
@@ -57,6 +57,20 @@ interface SkillsState {
   getSkillDetail: (id: string) => Promise<SkillDetail>;
   searchSkills: (query: string) => Promise<void>;
   fetchSearchDetail: (result: SearchResult) => Promise<void>;
+
+  // Upgraded actions
+  createSkill: (descriptionPrompt: string, name?: string) => Promise<Skill>;
+  saveSkillContent: (id: string, content: string) => Promise<Skill>;
+  optimizeSkill: (
+    id: string,
+    feedback?: string,
+  ) => Promise<{ optimized_content: string; original_content: string }>;
+  applyOptimizedSkill: (id: string, content: string) => Promise<void>;
+  uploadSkillZip: (file: File) => Promise<Skill>;
+  debugSkill: (
+    id: string,
+    testInput: string,
+  ) => Promise<{ output: string; duration_ms: number }>;
 }
 
 export const useSkillsStore = create<SkillsState>((set, get) => ({
@@ -184,5 +198,73 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         searchDetailLoading: { ...get().searchDetailLoading, [key]: false },
       });
     }
+  },
+
+  // --- Upgraded actions ---
+
+  createSkill: async (descriptionPrompt: string, name?: string) => {
+    set({ installing: true, error: null });
+    try {
+      const data = await api.post<{ skill_id: string; skill: Skill }>(
+        '/api/skills/create',
+        { description_prompt: descriptionPrompt, name },
+        150_000,
+      );
+      await get().loadSkills();
+      return data.skill;
+    } catch (err: any) {
+      set({ error: err?.message || 'AI 生成技能失败' });
+      throw err;
+    } finally {
+      set({ installing: false });
+    }
+  },
+
+  saveSkillContent: async (id: string, content: string) => {
+    const data = await api.put<{ skill: Skill }>(`/api/skills/${id}/content`, { content });
+    await get().loadSkills();
+    return data.skill;
+  },
+
+  optimizeSkill: async (id: string, feedback?: string) => {
+    const data = await api.post<{ optimized_content: string; original_content: string }>(
+      `/api/skills/${id}/optimize`,
+      { feedback },
+      150_000,
+    );
+    return data;
+  },
+
+  applyOptimizedSkill: async (id: string, content: string) => {
+    await api.post(`/api/skills/${id}/optimize/apply`, { content });
+    await get().loadSkills();
+  },
+
+  uploadSkillZip: async (file: File) => {
+    set({ installing: true, error: null });
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const data = await apiFetch<{ skill_id: string; skill: Skill }>(
+        '/api/skills/upload',
+        { method: 'POST', body: formData, headers: {}, timeoutMs: 60_000 },
+      );
+      await get().loadSkills();
+      return data.skill;
+    } catch (err: any) {
+      set({ error: err?.message || '上传技能失败' });
+      throw err;
+    } finally {
+      set({ installing: false });
+    }
+  },
+
+  debugSkill: async (id: string, testInput: string) => {
+    const data = await api.post<{ output: string; duration_ms: number }>(
+      `/api/skills/${id}/debug`,
+      { test_input: testInput },
+      90_000,
+    );
+    return data;
   },
 }));

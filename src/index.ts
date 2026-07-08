@@ -215,6 +215,17 @@ import {
   installSkillForUser,
   deleteSkillForUser,
 } from './routes/skills.js';
+import {
+  generateSkillContent,
+} from './skill-ai.js';
+import {
+  slugifySkillName,
+  resolveSkillIdConflict,
+  validateSkillContent,
+  writeSkillContent,
+  getUserSkillsDir,
+  getSkillContentPath,
+} from './skill-content-utils.js';
 import { verifyPairingCode } from './telegram-pairing.js';
 import { sdkQuery } from './sdk-query.js';
 import { executeSessionReset } from './commands.js';
@@ -5949,10 +5960,11 @@ async function processTaskIpc(
     folder?: string;
     containerConfig?: RegisteredGroup['containerConfig'];
     executionMode?: string;
-    // For install_skill / uninstall_skill
+    // For install_skill / uninstall_skill / create_skill
     package?: string;
     requestId?: string;
     skillId?: string;
+    descriptionPrompt?: string;
     // For send_file
     filePath?: string;
     fileName?: string;
@@ -6595,6 +6607,126 @@ async function processTaskIpc(
         logger.warn(
           { data },
           'Invalid uninstall_skill request - missing required fields',
+        );
+      }
+      break;
+
+    case 'create_skill':
+      if (data.descriptionPrompt && data.requestId) {
+        const descriptionPrompt = data.descriptionPrompt as string;
+        const suggestedName = typeof data.name === 'string' ? data.name : undefined;
+        const requestId = data.requestId as string;
+        if (!SAFE_REQUEST_ID_RE.test(requestId)) {
+          logger.warn(
+            { sourceGroup, requestId },
+            'Rejected create_skill request with invalid requestId',
+          );
+          break;
+        }
+        const tasksDir = path.join(DATA_DIR, 'ipc', sourceGroup, 'tasks');
+        const tasksDirResolved = path.resolve(tasksDir);
+        const resultFileName = `create_skill_result_${requestId}.json`;
+        const resultFilePath = path.resolve(tasksDir, resultFileName);
+        if (!resultFilePath.startsWith(`${tasksDirResolved}${path.sep}`)) {
+          logger.warn(
+            { sourceGroup, requestId, resultFilePath },
+            'Rejected create_skill request with unsafe result file path',
+          );
+          break;
+        }
+
+        const sourceGroupForCreate = Object.values(registeredGroups).find(
+          (g) => g.folder === sourceGroup,
+        );
+        const userId = sourceGroupForCreate?.created_by;
+
+        if (!userId) {
+          logger.warn(
+            { sourceGroup },
+            'Cannot create skill: no user associated with group',
+          );
+          const errorResult = JSON.stringify({
+            success: false,
+            error: 'No user associated with this group',
+          });
+          const tmpPath = `${resultFilePath}.tmp`;
+          fs.mkdirSync(path.dirname(resultFilePath), { recursive: true });
+          fs.writeFileSync(tmpPath, errorResult);
+          fs.renameSync(tmpPath, resultFilePath);
+          break;
+        }
+
+        // Run async — AI generation may take 30-90s
+        (async () => {
+          try {
+            const userDir = getUserSkillsDir(userId);
+            fs.mkdirSync(userDir, { recursive: true });
+            const baseId = suggestedName
+              ? slugifySkillName(suggestedName)
+              : slugifySkillName(descriptionPrompt);
+            const preResolvedId = resolveSkillIdConflict(userDir, baseId);
+
+            const genResult = await generateSkillContent(descriptionPrompt, preResolvedId);
+            const tmpPath = `${resultFilePath}.tmp`;
+            fs.mkdirSync(path.dirname(resultFilePath), { recursive: true });
+
+            if ('error' in genResult) {
+              fs.writeFileSync(
+                tmpPath,
+                JSON.stringify({ success: false, error: genResult.error }),
+              );
+              fs.renameSync(tmpPath, resultFilePath);
+              return;
+            }
+
+            const validation = validateSkillContent(genResult.content);
+            if (!validation.valid) {
+              fs.writeFileSync(
+                tmpPath,
+                JSON.stringify({
+                  success: false,
+                  error: `AI generated invalid content: ${validation.error}`,
+                }),
+              );
+              fs.renameSync(tmpPath, resultFilePath);
+              return;
+            }
+
+            const finalId = resolveSkillIdConflict(
+              userDir,
+              slugifySkillName(validation.frontmatter!.name),
+            );
+            writeSkillContent(userId, finalId, genResult.content);
+            fs.writeFileSync(
+              tmpPath,
+              JSON.stringify({ success: true, skillId: finalId }),
+            );
+            fs.renameSync(tmpPath, resultFilePath);
+            logger.info(
+              { sourceGroup, userId, skillId: finalId },
+              'Skill created via IPC',
+            );
+          } catch (err) {
+            logger.error(
+              { err: (err as Error).message },
+              'Failed to create skill via IPC',
+            );
+            const tmpPath = `${resultFilePath}.tmp`;
+            fs.mkdirSync(path.dirname(resultFilePath), { recursive: true });
+            fs.writeFileSync(
+              tmpPath,
+              JSON.stringify({
+                success: false,
+                error: (err as Error).message || 'Unknown error',
+              }),
+            );
+            fs.renameSync(tmpPath, resultFilePath);
+          }
+        })();
+      } else {
+        logger.warn(
+          { data },
+          'Invalid create_skill request - missing required fields',
         );
       }
       break;

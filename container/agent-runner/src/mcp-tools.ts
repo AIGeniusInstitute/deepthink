@@ -1341,6 +1341,90 @@ Use the skills panel in the UI to find the skill ID (directory name, e.g. "memor
           }
         },
       ),
+
+      // --- create_skill ---
+      tool(
+        'create_skill',
+        `Create a new user-level skill from a natural-language description. The AI will generate a complete SKILL.md (YAML frontmatter + Markdown body) and register it to the user's skill list. The skill will be available in the next conversation.
+Use this when the user describes a reusable capability that should be persisted as a skill (e.g. "每天爬取 GitHub trending" → skill "github-trending").`,
+        {
+          description_prompt: z
+            .string()
+            .min(10)
+            .describe(
+              'Natural-language description of what the skill should do. At least 10 characters.',
+            ),
+          name: z
+            .string()
+            .optional()
+            .describe(
+              'Optional suggested skill name (kebab-case). If omitted, the AI will choose based on the description.',
+            ),
+        },
+        async (args) => {
+          const descriptionPrompt = args.description_prompt.trim();
+          if (descriptionPrompt.length < 10) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: 'description_prompt must be at least 10 characters.',
+                },
+              ],
+              isError: true,
+            };
+          }
+          const name = args.name?.trim() || undefined;
+
+          const requestId = newRequestId();
+          try {
+            const result = await pollIpcResult(
+              TASKS_DIR,
+              {
+                type: 'create_skill',
+                descriptionPrompt,
+                name,
+                requestId,
+                groupFolder: ctx.groupFolder,
+                timestamp: new Date().toISOString(),
+              },
+              'create_skill_result',
+              150_000,
+            );
+            if (result.success) {
+              const skillId = result.skillId as string;
+              return {
+                content: [
+                  {
+                    type: 'text' as const,
+                    text: `Skill created successfully: ${skillId}\n\nNote: The skill will be available in the next conversation (new container/process).`,
+                  },
+                ],
+              };
+            } else {
+              return {
+                content: [
+                  {
+                    type: 'text' as const,
+                    text: `Failed to create skill: ${result.error || 'Unknown error'}`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+          } catch {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: `Timeout waiting for skill creation result (150s). The AI generation may still be in progress.`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      ),
     );
   }
 

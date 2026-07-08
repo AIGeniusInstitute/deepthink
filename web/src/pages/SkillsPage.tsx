@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Plus, RefreshCw, Puzzle, Trash2 } from 'lucide-react';
+import { Plus, RefreshCw, Puzzle, Trash2, Upload, Sparkles } from 'lucide-react';
 import { SearchInput } from '@/components/common';
 import { PageHeader } from '@/components/common/PageHeader';
 import { SkeletonCardList } from '@/components/common/Skeletons';
@@ -11,6 +11,8 @@ import { useSkillsStore } from '../stores/skills';
 import { SkillCard } from '../components/skills/SkillCard';
 import { SkillDetail } from '../components/skills/SkillDetail';
 import { InstallSkillDialog } from '../components/skills/InstallSkillDialog';
+import { CreateSkillDialog } from '../components/skills/CreateSkillDialog';
+import { UploadSkillDialog } from '../components/skills/UploadSkillDialog';
 
 export function SkillsPage() {
   const {
@@ -26,6 +28,8 @@ export function SkillsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showInstallDialog, setShowInstallDialog] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
 
   useEffect(() => {
@@ -61,10 +65,18 @@ export function SkillsPage() {
             title="技能(Skill)管理"
             subtitle={`用户级 ${userSkills.length}${externalSkills.length > 0 ? ` · 宿主机 ${externalSkills.length}` : ''} · 项目级 ${projectSkills.length} · 启用 ${enabledCount}`}
             actions={
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <Button variant="outline" onClick={loadSkills} disabled={loading}>
                   <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
                   刷新
+                </Button>
+                <Button variant="outline" onClick={() => setShowUploadDialog(true)}>
+                  <Upload size={18} />
+                  上传 ZIP
+                </Button>
+                <Button variant="outline" onClick={() => setShowCreateDialog(true)}>
+                  <Sparkles size={18} />
+                  AI 创建
                 </Button>
                 <Button onClick={() => setShowInstallDialog(true)}>
                   <Plus size={18} />
@@ -199,6 +211,14 @@ export function SkillsPage() {
         onClose={() => setShowInstallDialog(false)}
         onInstall={handleInstall}
         installing={installing}
+      />
+      <CreateSkillDialog
+        open={showCreateDialog}
+        onClose={() => setShowCreateDialog(false)}
+      />
+      <UploadSkillDialog
+        open={showUploadDialog}
+        onClose={() => setShowUploadDialog(false)}
       />
     </div>
   );
