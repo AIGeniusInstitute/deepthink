@@ -3094,4 +3094,41 @@ configRoutes.post(
   },
 );
 
+// ─── Supervisor toggle (per-group) ──────────────────────────────
+import {
+  isSupervisorEnabled,
+  setSupervisorEnabled,
+} from '../supervisor-config.js';
+
+/** GET /api/config/supervisor?chat_jid=xxx — get supervisor enabled state */
+configRoutes.get('/supervisor', authMiddleware, async (c) => {
+  const chatJid = c.req.query('chat_jid');
+  if (!chatJid) return c.json({ error: 'chat_jid required' }, 400);
+  const group = getRegisteredGroup(chatJid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const user = c.get('user') as import('../types.js').AuthUser;
+  if (!canAccessGroup(user, { ...group, jid: chatJid })) {
+    return c.json({ error: 'Access denied' }, 403);
+  }
+  const enabled = await isSupervisorEnabled(chatJid);
+  return c.json({ chat_jid: chatJid, enabled });
+});
+
+/** PUT /api/config/supervisor — body: { chat_jid, enabled } */
+configRoutes.put('/supervisor', authMiddleware, async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const chatJid = body.chat_jid;
+  const enabled = !!body.enabled;
+  if (!chatJid) return c.json({ error: 'chat_jid required' }, 400);
+  const group = getRegisteredGroup(chatJid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const user = c.get('user') as import('../types.js').AuthUser;
+  if (!canModifyGroup(user, { ...group, jid: chatJid })) {
+    return c.json({ error: 'Only the workspace owner can toggle supervisor' }, 403);
+  }
+  await setSupervisorEnabled(chatJid, enabled);
+  logger.info({ chatJid, enabled, userId: user.id }, 'Supervisor toggle updated');
+  return c.json({ chat_jid: chatJid, enabled });
+});
+
 export default configRoutes;

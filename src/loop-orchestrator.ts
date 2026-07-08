@@ -16,6 +16,8 @@
  */
 
 import crypto from 'node:crypto';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 
 import {
@@ -43,7 +45,7 @@ import type { StreamEvent } from './stream-event.types.js';
 import type { ExecutionMode, RegisteredGroup } from './types.js';
 import type { ChildProcess } from 'child_process';
 
-export type LoopKind = 'goal' | 'loop' | 'schedule' | 'proactive';
+export type LoopKind = 'goal' | 'loop' | 'schedule' | 'proactive' | 'adaptive' | 'skill_evolution';
 export type LoopStatus =
   | 'pending'
   | 'running'
@@ -267,7 +269,7 @@ async function runOneIteration(
     },
   });
 
-  const prompt = buildIterationPrompt(ctx, iterationIndex, reviewHint);
+  const prompt = buildIterationPromptForKind(ctx, iterationIndex, reviewHint);
   const executionMode = resolveExecutionMode(ctx, deps);
   const sessionId = resolveSessionId(ctx, deps, iterationIndex);
   const runAgent = executionMode === 'host' ? runHostAgent : runContainerAgent;
@@ -565,6 +567,326 @@ async function fetchLastOutput(loopRunId: string): Promise<string> {
   const iterations = listLoopIterations(loopRunId);
   const last = iterations[iterations.length - 1];
   return last?.agent_output ?? '(无产出)';
+}
+
+// ─── Adaptive Loop ──────────────────────────────────────────────
+//
+// Variation of goal loop where max_turns is dynamically extended based on
+// reviewer's suggested_next_turns. Stops early on:
+//   - review pass → completed
+//   - 3 consecutive needs_improvement with unchanged reason → failed (stall)
+//   - hard limit MAX_TURNS_HARD_LIMIT reached → failed
+
+interface AdaptiveState {
+  consecutiveStalls: number;
+  lastReasonHash: string;
+}
+
+function hashReason(reason: string): string {
+  // Simple hash to detect "unchanged" review reasons across iterations.
+  const trimmed = reason.trim().toLowerCase().slice(0, 200);
+  let h = 0;
+  for (let i = 0; i < trimmed.length; i++) {
+    h = ((h << 5) - h + trimmed.charCodeAt(i)) | 0;
+  }
+  return String(h);
+}
+
+export async function executeAdaptiveLoop(ctx: LoopRunContext, deps: LoopDeps): Promise<void> {
+  let effectiveMax = ctx.maxTurns;
+  const state: AdaptiveState = { consecutiveStalls: 0, lastReasonHash: '' };
+  let lastReviewHint: string | undefined;
+
+  updateLoopRunStatus(ctx.loopRunId, 'running');
+  emitLoopEvent(deps, ctx, {
+    eventType: 'loop_start',
+    loop: {
+      loopRunId: ctx.loopRunId,
+      kind: ctx.kind,
+      goalText: ctx.goalText,
+      successCriteria: ctx.successCriteria,
+      maxTurns: effectiveMax,
+      currentTurn: 0,
+      status: 'running',
+    },
+  });
+
+  try {
+    for (let i = 0; i < effectiveMax; i++) {
+      const current = getLoopRun(ctx.loopRunId);
+      if (current?.status === 'cancelled') return;
+
+      updateLoopRunStatus(ctx.loopRunId, 'running', { currentTurn: i });
+      const { output, sessionId } = await runOneIteration(ctx, deps, i, lastReviewHint);
+      updateLoopRunStatus(ctx.loopRunId, 'reviewing', { currentTurn: i });
+      const review = await runReviewer(ctx, output, deps);
+
+      const iterations = listLoopIterations(ctx.loopRunId);
+      const latest = iterations[iterations.length - 1];
+      if (latest) {
+        updateLoopIteration(latest.id, {
+          review_result: review.result,
+          review_reason: review.reason,
+        });
+      }
+
+      if (review.result === 'pass') {
+        updateLoopRunStatus(ctx.loopRunId, 'completed', { endedAt: new Date().toISOString() });
+        await deps.storeResultAndNotify?.(ctx.chatJid, output, {
+          ownerId: ctx.ownerUserId,
+          sourceKind: 'sdk_final',
+          workspaceFolder: ctx.groupFolder,
+        });
+        emitLoopEvent(deps, ctx, {
+          eventType: 'loop_end',
+          loop: {
+            loopRunId: ctx.loopRunId,
+            kind: ctx.kind,
+            status: 'completed',
+            reviewResult: 'pass',
+            reviewReason: review.reason,
+          },
+        });
+        return;
+      }
+
+      // Stall detection: if reason unchanged, increment counter; else reset.
+      const reasonHash = hashReason(review.reason);
+      if (reasonHash === state.lastReasonHash && reasonHash !== '') {
+        state.consecutiveStalls += 1;
+      } else {
+        state.consecutiveStalls = 0;
+        state.lastReasonHash = reasonHash;
+      }
+      if (state.consecutiveStalls >= 2) {
+        // 3 consecutive (this + 2 prev) unchanged → stall
+        updateLoopRunStatus(ctx.loopRunId, 'failed', {
+          endedAt: new Date().toISOString(),
+          cancelReason: `自适应循环检测到连续 3 轮评审无进展，判定为停滞`,
+        });
+        await deps.storeResultAndNotify?.(
+          ctx.chatJid,
+          `自适应循环在 ${i + 1} 轮后判定为停滞（评审原因连续 3 轮未变化）。最后产出：\n${output.slice(0, 2000)}`,
+          { ownerId: ctx.ownerUserId, sourceKind: 'sdk_final', workspaceFolder: ctx.groupFolder },
+        );
+        emitLoopEvent(deps, ctx, {
+          eventType: 'loop_end',
+          loop: {
+            loopRunId: ctx.loopRunId,
+            kind: ctx.kind,
+            status: 'failed',
+            reviewReason: 'stall detected',
+          },
+        });
+        return;
+      }
+
+      // Adaptive extension: reviewer may suggest more turns (parsed from suggestion).
+      // Conservative: only extend once per iteration, capped at HARD_LIMIT.
+      const suggestedExt = parseSuggestedExt(review.suggestion);
+      if (suggestedExt > 0 && effectiveMax < MAX_TURNS_HARD_LIMIT) {
+        effectiveMax = Math.min(effectiveMax + suggestedExt, MAX_TURNS_HARD_LIMIT);
+      }
+
+      lastReviewHint = review.suggestion || review.reason;
+      updateLoopRunStatus(ctx.loopRunId, 'iterating', { currentTurn: i + 1 });
+    }
+
+    updateLoopRunStatus(ctx.loopRunId, 'failed', { endedAt: new Date().toISOString() });
+    const finalReason = lastReviewReasonOf(ctx.loopRunId);
+    await deps.storeResultAndNotify?.(
+      ctx.chatJid,
+      `自适应循环未在 ${effectiveMax} 轮内达成。最后评审：${finalReason}\n\n最后一轮产出：\n${await fetchLastOutput(ctx.loopRunId)}`,
+      { ownerId: ctx.ownerUserId, sourceKind: 'sdk_final', workspaceFolder: ctx.groupFolder },
+    );
+    emitLoopEvent(deps, ctx, {
+      eventType: 'loop_end',
+      loop: { loopRunId: ctx.loopRunId, kind: ctx.kind, status: 'failed' },
+    });
+  } catch (err) {
+    const errMsg = (err as Error).message?.slice(0, 500) || 'Unknown error';
+    logger.error({ err: errMsg, loopRunId: ctx.loopRunId }, 'Adaptive loop failed');
+    updateLoopRunStatus(ctx.loopRunId, 'failed', {
+      endedAt: new Date().toISOString(),
+      cancelReason: errMsg,
+    });
+  }
+}
+
+/** Parse "next_turns=N" or a leading integer from the reviewer's suggestion. */
+function parseSuggestedExt(suggestion: string): number {
+  if (!suggestion) return 0;
+  const m = suggestion.match(/next_turns\s*[:=]\s*(\d+)/i);
+  if (m) return Math.min(parseInt(m[1], 10) || 0, 3);
+  const lead = suggestion.match(/^\s*(\d+)/);
+  if (lead) return Math.min(parseInt(lead[1], 10) || 0, 3);
+  return 0;
+}
+
+/** Read the last iteration's review_reason (used in adaptive failure message). */
+function lastReviewReasonOf(loopRunId: string): string {
+  const iterations = listLoopIterations(loopRunId);
+  const last = iterations[iterations.length - 1];
+  return last?.review_reason ?? '';
+}
+
+// ─── Skill Self-Evolution Loop ──────────────────────────────────
+//
+// Each iteration:
+//   1. runOneIteration — agent modifies skill content to pass tests
+//   2. Execute the test command (success_criteria) via child_process
+//   3. exit 0 → completed; non-zero → needs_improvement, inject stderr/stdout
+//      into next iteration's reviewHint
+//
+// No sdkQuery reviewer — the test command IS the reviewer.
+
+const execAsync = promisify(exec);
+
+const TEST_TIMEOUT_MS = 120_000;
+
+export async function executeSkillEvolutionLoop(ctx: LoopRunContext, deps: LoopDeps): Promise<void> {
+  const testCmd = ctx.successCriteria;
+  if (!testCmd) {
+    updateLoopRunStatus(ctx.loopRunId, 'failed', {
+      endedAt: new Date().toISOString(),
+      cancelReason: 'skill_evolution 循环需要 success_criteria 作为测试命令',
+    });
+    return;
+  }
+
+  let lastTestOutput = '';
+  let lastReviewHint: string | undefined;
+
+  updateLoopRunStatus(ctx.loopRunId, 'running');
+  emitLoopEvent(deps, ctx, {
+    eventType: 'loop_start',
+    loop: {
+      loopRunId: ctx.loopRunId,
+      kind: ctx.kind,
+      goalText: ctx.goalText,
+      successCriteria: testCmd,
+      maxTurns: ctx.maxTurns,
+      currentTurn: 0,
+      status: 'running',
+    },
+  });
+
+  try {
+    for (let i = 0; i < ctx.maxTurns; i++) {
+      const current = getLoopRun(ctx.loopRunId);
+      if (current?.status === 'cancelled') return;
+
+      updateLoopRunStatus(ctx.loopRunId, 'running', { currentTurn: i });
+      const { output } = await runOneIteration(ctx, deps, i, lastReviewHint);
+
+      // Run the test command
+      let testPassed = false;
+      let testStdout = '';
+      let testStderr = '';
+      try {
+        const result = await execAsync(testCmd, {
+          timeout: TEST_TIMEOUT_MS,
+          maxBuffer: 1024 * 1024,
+          cwd: process.cwd(),
+        });
+        testStdout = result.stdout?.slice(0, 2000) ?? '';
+        testStderr = result.stderr?.slice(0, 2000) ?? '';
+        testPassed = true;
+      } catch (err: any) {
+        testStdout = err.stdout?.toString().slice(0, 2000) ?? '';
+        testStderr = err.stderr?.toString().slice(0, 2000) ?? (err.message?.slice(0, 500) ?? '');
+      }
+
+      const iterations = listLoopIterations(ctx.loopRunId);
+      const latest = iterations[iterations.length - 1];
+      if (latest) {
+        updateLoopIteration(latest.id, {
+          review_result: testPassed ? 'pass' : 'fail',
+          review_reason: testPassed ? '测试通过' : `测试失败：\n${testStderr || testStdout}`.slice(0, 2000),
+        });
+      }
+
+      if (testPassed) {
+        updateLoopRunStatus(ctx.loopRunId, 'completed', { endedAt: new Date().toISOString() });
+        await deps.storeResultAndNotify?.(ctx.chatJid, `🧪 技能自进化完成，测试通过。\n\n${output.slice(0, 2000)}`, {
+          ownerId: ctx.ownerUserId,
+          sourceKind: 'sdk_final',
+          workspaceFolder: ctx.groupFolder,
+        });
+        emitLoopEvent(deps, ctx, {
+          eventType: 'loop_end',
+          loop: {
+            loopRunId: ctx.loopRunId,
+            kind: ctx.kind,
+            status: 'completed',
+            reviewResult: 'pass',
+            reviewReason: 'test passed',
+          },
+        });
+        return;
+      }
+
+      lastTestOutput = `stdout:\n${testStdout}\nstderr:\n${testStderr}`;
+      lastReviewHint = `上一轮测试失败：\n${lastTestOutput}\n请修改 skill 使测试通过。`;
+      updateLoopRunStatus(ctx.loopRunId, 'iterating', { currentTurn: i + 1 });
+    }
+
+    updateLoopRunStatus(ctx.loopRunId, 'failed', { endedAt: new Date().toISOString() });
+    await deps.storeResultAndNotify?.(
+      ctx.chatJid,
+      `🧪 技能自进化在 ${ctx.maxTurns} 轮后仍未通过测试。最后测试输出：\n${lastTestOutput}`,
+      { ownerId: ctx.ownerUserId, sourceKind: 'sdk_final', workspaceFolder: ctx.groupFolder },
+    );
+    emitLoopEvent(deps, ctx, {
+      eventType: 'loop_end',
+      loop: { loopRunId: ctx.loopRunId, kind: ctx.kind, status: 'failed' },
+    });
+  } catch (err) {
+    const errMsg = (err as Error).message?.slice(0, 500) || 'Unknown error';
+    logger.error({ err: errMsg, loopRunId: ctx.loopRunId }, 'Skill evolution loop failed');
+    updateLoopRunStatus(ctx.loopRunId, 'failed', {
+      endedAt: new Date().toISOString(),
+      cancelReason: errMsg,
+    });
+  }
+}
+
+// Build a kind-aware iteration prompt.
+// (Override of buildIterationPrompt for adaptive/skill_evolution kinds —
+//  implemented as a thin wrapper to keep the original function intact.)
+function buildIterationPromptForKind(ctx: LoopRunContext, iteration: number, reviewHint?: string): string {
+  if (ctx.kind === 'skill_evolution') {
+    const parts: string[] = [
+      `目标：让以下测试命令通过（exit 0）。你可以修改 skill 文件或相关代码。`,
+      ``,
+      `【Skill 路径/任务】`,
+      ctx.goalText,
+      ``,
+      `【测试命令】`,
+      ctx.successCriteria ?? '(未指定)',
+      ``,
+      `（第 ${iteration + 1}/${ctx.maxTurns} 轮）`,
+    ];
+    if (reviewHint) {
+      parts.push(``, `上一轮反馈：`, reviewHint);
+    }
+    return parts.join('\n');
+  }
+  if (ctx.kind === 'adaptive') {
+    const parts: string[] = [
+      ctx.goalText,
+      ``,
+      `（自适应循环，第 ${iteration + 1} 轮，可探索多个方向）`,
+    ];
+    if (ctx.successCriteria) {
+      parts.push(``, `成功标准：${ctx.successCriteria}`);
+    }
+    if (reviewHint) {
+      parts.push(``, `上一轮评审反馈：${reviewHint}`, `请尝试不同方向或加深探索。`);
+    }
+    return parts.join('\n');
+  }
+  return buildIterationPrompt(ctx, iteration, reviewHint);
 }
 
 /** Cancel a running loop by id. */

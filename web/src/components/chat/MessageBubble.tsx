@@ -8,6 +8,7 @@ import { EmojiAvatar } from '../common/EmojiAvatar';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { MessageContextMenu } from './MessageContextMenu';
 import { ImageLightbox } from './ImageLightbox';
+import { InlineLoopCard } from '../loops/InlineLoopCard';
 import { mediumTap } from '../../hooks/useHaptic';
 import { useDisplayMode } from '../../hooks/useDisplayMode';
 import { formatThinkingDuration } from '../../utils/thinking-duration';
@@ -24,10 +25,12 @@ interface MessageBubbleProps {
 }
 
 interface MessageAttachment {
-  type: 'image';
+  type: 'image' | 'loop_card';
   data: string; // base64
   mimeType?: string;
   name?: string;
+  loop_run_id?: string;
+  task_id?: string;
 }
 
 /** Collapsible reasoning block for AI messages */
@@ -170,6 +173,7 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
       })()
     : [];
   const images = attachments.filter((att) => att.type === 'image');
+  const loopCard = attachments.find((att) => att.type === 'loop_card' && att.loop_run_id);
   const allImageSrcs = images.map((img) => `data:${img.mimeType || 'image/png'};base64,${img.data}`);
 
   // Check if content is empty (only whitespace) and we have images
@@ -367,7 +371,11 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
         )}
 
         {/* Content — strip first-child top margin for consistent spacing */}
-        {!hasOnlyImages && (
+        {loopCard ? (
+          <div className="min-w-0 overflow-hidden">
+            <InlineLoopCard loopRunId={loopCard.loop_run_id!} />
+          </div>
+        ) : !hasOnlyImages ? (
           <div className="min-w-0 overflow-hidden [&>div>*:first-child]:!mt-0">
             {isAI ? (
               <MarkdownRenderer content={message.content} groupJid={message.chat_jid} variant="chat" />
@@ -375,7 +383,7 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
               <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words text-foreground">{message.content}</p>
             )}
           </div>
-        )}
+        ) : null}
 
         {/* Token usage (compact mode) */}
         {isAI && message.token_usage && (
@@ -601,11 +609,15 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
             )}
 
             {/* Content */}
-            {!hasOnlyImages && (
+            {loopCard ? (
+              <div className="max-w-none overflow-hidden">
+                <InlineLoopCard loopRunId={loopCard.loop_run_id!} />
+              </div>
+            ) : !hasOnlyImages ? (
               <div className="max-w-none overflow-hidden">
                 <MarkdownRenderer content={message.content} groupJid={message.chat_jid} variant="chat" />
               </div>
-            )}
+            ) : null}
 
             {/* Token usage */}
             {message.is_from_me && message.token_usage && (

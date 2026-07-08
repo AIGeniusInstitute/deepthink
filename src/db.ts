@@ -824,6 +824,7 @@ export function initDatabase(): void {
   ensureColumn('messages', 'source_kind', 'TEXT');
   ensureColumn('messages', 'finalization_reason', 'TEXT');
   ensureColumn('messages', 'task_id', 'TEXT');
+  ensureColumn('loop_trace_nodes', 'edited_at', 'TEXT');
   ensureColumn('agents', 'source_kind', 'TEXT');
   ensureColumn('agents', 'thread_id', 'TEXT');
   ensureColumn('agents', 'root_message_id', 'TEXT');
@@ -2516,7 +2517,7 @@ export interface LoopRunRow {
   owner_user_id: string;
   group_folder: string;
   chat_jid: string;
-  kind: 'goal' | 'loop' | 'schedule' | 'proactive';
+  kind: 'goal' | 'loop' | 'schedule' | 'proactive' | 'adaptive' | 'skill_evolution';
   goal_text: string;
   success_criteria: string | null;
   max_turns: number;
@@ -2564,6 +2565,7 @@ export interface LoopTraceNodeRow {
   ended_at: string | null;
   tokens: number;
   status: string | null;
+  edited_at: string | null;
 }
 
 export function createLoopRun(row: Partial<LoopRunRow> & {
@@ -2740,7 +2742,7 @@ export function createLoopTraceNode(
 
 export function updateLoopTraceNode(
   id: number,
-  updates: Partial<Pick<LoopTraceNodeRow, 'ended_at' | 'output_summary' | 'tokens' | 'status'>>,
+  updates: Partial<Pick<LoopTraceNodeRow, 'ended_at' | 'output_summary' | 'tokens' | 'status' | 'edited_at'>>,
 ): void {
   const fields: string[] = [];
   const values: (string | number | null)[] = [];
