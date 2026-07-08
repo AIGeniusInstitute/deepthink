@@ -22,7 +22,7 @@
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
     "target": [
-      { "target": "dmg" }
+      { "target": "dmg", "arch": ["arm64"] }
     ],
     "icon": "resources/icon.icns"
   },

@@ -218,7 +218,7 @@ app.whenReady()
 
 | 配置 | 目标产物 | 关键差异 |
 |------|---------|---------|
-| `mac.json` | `DeepThink-1.0.0-{arm64,x64}.dmg` | `icon.icns`、`hardenedRuntime: true`、`dmg.contents` 双图标布局 |
+| `mac-arm64.json` / `mac-x64.json` | `DeepThink-1.0.0-{arm64}.dmg` / `DeepThink-1.0.0.dmg` | `icon.icns`、`hardenedRuntime: true`、`dmg.contents` 双图标布局 |
 | `win.json` | `DeepThink-Setup-1.0.0.exe` | `icon.ico` |
 | `linux.json` | `DeepThink-1.0.0.AppImage` / `.deb` | `icon.png` |
 
