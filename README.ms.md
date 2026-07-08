@@ -87,3 +87,25 @@ Panduan penuh tersedia di sini:
 ---
 
 **Languages**: [English](README.md) · [简体中文](README.zh-CN.md) · [Español](README.es.md) · [हिन्दी](README.hi.md) · [العربية](README.ar.md) · [বাংলা](README.bn.md) · [Português](README.pt.md) · [Русский](README.ru.md) · [日本語](README.ja.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Bahasa Indonesia](README.id.md) · [اردو](README.ur.md) · [मराठी](README.mr.md) · [తెలుగు](README.te.md) · [Türkçe](README.tr.md) · [தமிழ்](README.ta.md) · [한국어](README.ko.md) · [Tiếng Việt](README.vi.md) · [Italiano](README.it.md) · [Polski](README.pl.md) · [Українська](README.uk.md) · [Nederlands](README.nl.md) · [ไทย](README.th.md) · [ગુજરાતી](README.gu.md) · [Bahasa Melayu](README.ms.md) · [ಕನ್ನಡ](README.kn.md) · [فارسی](README.fa.md) · [Svenska](README.sv.md) · [Čeština](README.cs.md)
+
+
+
+## About Author
+
+- [AI光剑的博客](https://blog.csdn.net/universsky2015)
+
+- [Github](https://jason-chen-2017.github.io/Jason-Chen-2017/)
+
+- [光剑图书馆: 全球免费开放的电子图书馆 World Free eBook](https://universsky.github.io/)
+
+
+---
+
+## 捐赠
+
+> Donate to AI Genius Institute:
+
+
+| 微信                                                    | 支付宝                                                  |
+| ------------------------------------------------------- | ------------------------------------------------------- |
+| <img src="static/wechat.jpeg" width="300" height="350"> | <img src="static/alipay.jpeg" width="300" height="350"> |

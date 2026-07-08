@@ -7,7 +7,7 @@
 <h1 align="center">DeepThink</h1>
 
 <p align="center">
-  自托管的多用户本地 AI Agent Loop Engineering 系统(支持桌面端+浏览器+移动端) / Powered By AI Genius Institute
+  自托管的多用户本地 AI Agent Loop Engineering 系统(支持桌面端+浏览器+移动端) / Powered By AI Genius Institute，AI光剑.
 </p>
 
 <p align="center">
@@ -850,7 +850,6 @@ Commit message 使用简体中文，格式：`类型: 描述`
 
 此外，`shared/` 目录存放跨项目共享类型定义（StreamEvent、Channel Prefixes、Image Detector），构建时通过 `make sync-types` 同步到各子项目。
 
-## Star History
 
 ## Star History
 

@@ -7,7 +7,7 @@
 <h1 align="center">DeepThink</h1>
 
 <p align="center">
-  A self-hosted, multi-user local AI Agent Loop Engineering system (desktop + browser + mobile) / Powered By AI Genius Institute
+  A self-hosted, multi-user local AI Agent Loop Engineering system (desktop + browser + mobile) / Powered By AI Genius Institute，AI光剑.
 </p>
 
 <p align="center">
@@ -852,7 +852,6 @@ Additionally, the `shared/` directory holds cross-project shared type definition
 
 ## Star History
 
-## Star History
 
 <a href="https://www.star-history.com/?type=date&legend=top-left&repos=AIGeniusInstitute%2Fdeep-think">
  <picture>
@@ -898,3 +897,24 @@ Additionally, the `shared/` directory holds cross-project shared type definition
 - [فارسی](README.fa.md)
 - [Svenska](README.sv.md)
 - [Čeština](README.cs.md)
+
+
+## About Author
+
+- [AI光剑的博客](https://blog.csdn.net/universsky2015)
+
+- [Github](https://jason-chen-2017.github.io/Jason-Chen-2017/)
+
+- [光剑图书馆: 全球免费开放的电子图书馆 World Free eBook](https://universsky.github.io/)
+
+
+---
+
+## 捐赠
+
+> Donate to AI Genius Institute:
+
+
+| 微信                                                    | 支付宝                                                  |
+| ------------------------------------------------------- | ------------------------------------------------------- |
+| <img src="static/wechat.jpeg" width="300" height="350"> | <img src="static/alipay.jpeg" width="300" height="350"> |
