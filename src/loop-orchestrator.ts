@@ -714,7 +714,7 @@ export async function executeAdaptiveLoop(ctx: LoopRunContext, deps: LoopDeps): 
 }
 
 /** Parse "next_turns=N" or a leading integer from the reviewer's suggestion. */
-function parseSuggestedExt(suggestion: string): number {
+export function parseSuggestedExt(suggestion: string): number {
   if (!suggestion) return 0;
   const m = suggestion.match(/next_turns\s*[:=]\s*(\d+)/i);
   if (m) return Math.min(parseInt(m[1], 10) || 0, 3);

@@ -50,7 +50,7 @@ export interface CommandParseResult {
 // ─── Helpers ────────────────────────────────────────────────────
 
 /** Parse "max_turns=N" from the trailing args of /goal. */
-function parseMaxTurns(args: string): { maxTurns: number; rest: string } {
+export function parseMaxTurns(args: string): { maxTurns: number; rest: string } {
   const match = args.match(/\s+max_turns=(\d+)\s*$/);
   if (match) {
     return {
@@ -83,7 +83,7 @@ export function isValidCron(cron: string): boolean {
 }
 
 /** Parse workflow mode from /proactive args. */
-function parseWorkflow(args: string): { mode: 'parallel' | 'sequential'; rest: string } {
+export function parseWorkflow(args: string): { mode: 'parallel' | 'sequential'; rest: string } {
   const match = args.match(/\s+workflow=(parallel|sequential)\s*$/);
   if (match) {
     return {
