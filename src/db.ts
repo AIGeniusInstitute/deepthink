@@ -419,6 +419,78 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_chat_trace_parent ON chat_trace_nodes(parent_node_id);
   `);
 
+  // Self-Evolving Harness tables (v43)
+  // DGM-style version archive + AHE falsifiable contracts + Harness-Bench mini eval.
+  // Design notes:
+  // - Versions are text manifests (manifest_json), NOT executable code. Mutation
+  //   unit is prompt/skill text (ACE "text-layer evolution").
+  // - Eval runner is NOT versioned — it stays in code as the external judge
+  //   (SEAGym pattern) to avoid the bootstrapping paradox.
+  // - promote/rollback is a single status field flip — atomic, reset-free
+  //   (Continual Harness).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS harness_versions (
+      id TEXT PRIMARY KEY,
+      parent_id TEXT,
+      hash TEXT NOT NULL,
+      manifest_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'experimental'
+        CHECK(status IN ('experimental','promoted','archived','rolled_back')),
+      source TEXT NOT NULL DEFAULT 'manual',
+      created_at TEXT NOT NULL,
+      promoted_at TEXT,
+      notes TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_harness_versions_status ON harness_versions(status);
+    CREATE INDEX IF NOT EXISTS idx_harness_versions_parent ON harness_versions(parent_id);
+
+    CREATE TABLE IF NOT EXISTS harness_proposals (
+      id TEXT PRIMARY KEY,
+      proposed_version_id TEXT NOT NULL,
+      baseline_version_id TEXT NOT NULL,
+      hypothesis TEXT NOT NULL,
+      expected_behavior TEXT NOT NULL,
+      mutation_patch TEXT NOT NULL,
+      verdict TEXT,
+      evidence_run_ids_json TEXT,
+      trace_summary TEXT,
+      created_at TEXT NOT NULL,
+      judged_at TEXT,
+      FOREIGN KEY (proposed_version_id) REFERENCES harness_versions(id),
+      FOREIGN KEY (baseline_version_id) REFERENCES harness_versions(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_harness_proposals_baseline ON harness_proposals(baseline_version_id);
+
+    CREATE TABLE IF NOT EXISTS harness_eval_runs (
+      id TEXT PRIMARY KEY,
+      version_id TEXT NOT NULL,
+      proposal_id TEXT,
+      case_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending','running','completed','failed')),
+      pass INTEGER,
+      score REAL,
+      trace_node_root_id INTEGER,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      error TEXT,
+      FOREIGN KEY (version_id) REFERENCES harness_versions(id),
+      FOREIGN KEY (proposal_id) REFERENCES harness_proposals(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_harness_eval_runs_version ON harness_eval_runs(version_id);
+    CREATE INDEX IF NOT EXISTS idx_harness_eval_runs_proposal ON harness_eval_runs(proposal_id);
+
+    CREATE TABLE IF NOT EXISTS harness_eval_cases (
+      case_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      assertions_json TEXT NOT NULL,
+      rubric_json TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+  `);
+
   // State tables (replacing JSON files)
   db.exec(`
     CREATE TABLE IF NOT EXISTS router_state (
@@ -1473,7 +1545,7 @@ export function initDatabase(): void {
     db.exec('ALTER TABLE scheduled_tasks ADD COLUMN loop_run_id TEXT');
   }
 
-  const SCHEMA_VERSION = '42';
+  const SCHEMA_VERSION = '43';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -2796,6 +2868,327 @@ export function cleanupOldLoopRuns(retentionDays = 30): number {
     )
     .run(cutoff);
   return result.changes;
+}
+
+// =============================================================================
+// Self-Evolving Harness — version archive, proposals, eval runs, eval cases.
+// Row types + CRUD. The harness registry (src/harness-registry.ts) and the
+// eval runner (src/harness-eval.ts) build on these accessors.
+// =============================================================================
+
+export type HarnessVersionStatus =
+  | 'experimental'
+  | 'promoted'
+  | 'archived'
+  | 'rolled_back';
+
+export interface HarnessVersionRow {
+  id: string;
+  parent_id: string | null;
+  hash: string;
+  manifest_json: string;
+  status: HarnessVersionStatus;
+  source: string;
+  created_at: string;
+  promoted_at: string | null;
+  notes: string | null;
+}
+
+export type HarnessVerdict =
+  | 'improved'
+  | 'regressed'
+  | 'neutral'
+  | 'inconclusive'
+  | null;
+
+export interface HarnessProposalRow {
+  id: string;
+  proposed_version_id: string;
+  baseline_version_id: string;
+  hypothesis: string;
+  expected_behavior: string;
+  mutation_patch: string;
+  verdict: HarnessVerdict;
+  evidence_run_ids_json: string | null;
+  trace_summary: string | null;
+  created_at: string;
+  judged_at: string | null;
+}
+
+export type HarnessEvalRunStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export interface HarnessEvalRunRow {
+  id: string;
+  version_id: string;
+  proposal_id: string | null;
+  case_id: string;
+  status: HarnessEvalRunStatus;
+  pass: number | null; // 0 / 1 / null (null = inconclusive)
+  score: number | null;
+  trace_node_root_id: number | null;
+  started_at: string;
+  finished_at: string | null;
+  error: string | null;
+}
+
+export interface HarnessEvalCaseRow {
+  case_id: string;
+  name: string;
+  prompt: string;
+  assertions_json: string;
+  rubric_json: string;
+  enabled: number; // 0 / 1
+  created_at: string;
+}
+
+export function createHarnessVersion(row: {
+  id: string;
+  parentId?: string | null;
+  hash: string;
+  manifestJson: string;
+  status?: HarnessVersionStatus;
+  source?: string;
+  notes?: string | null;
+}): string {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO harness_versions
+      (id, parent_id, hash, manifest_json, status, source, created_at, promoted_at, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    row.id,
+    row.parentId ?? null,
+    row.hash,
+    row.manifestJson,
+    row.status ?? 'experimental',
+    row.source ?? 'manual',
+    now,
+    row.status === 'promoted' ? now : null,
+    row.notes ?? null,
+  );
+  return row.id;
+}
+
+export function getHarnessVersion(id: string): HarnessVersionRow | undefined {
+  return db.prepare('SELECT * FROM harness_versions WHERE id = ?').get(id) as
+    | HarnessVersionRow
+    | undefined;
+}
+
+export function listHarnessVersions(
+  opts: { status?: HarnessVersionStatus; limit?: number; offset?: number } = {},
+): HarnessVersionRow[] {
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (opts.status) {
+    where.push('status = ?');
+    params.push(opts.status);
+  }
+  params.push(opts.limit ?? 100);
+  params.push(opts.offset ?? 0);
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  return db
+    .prepare(
+      `SELECT * FROM harness_versions ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...params) as HarnessVersionRow[];
+}
+
+export function getPromotedHarnessVersion(): HarnessVersionRow | undefined {
+  return db
+    .prepare("SELECT * FROM harness_versions WHERE status = 'promoted' ORDER BY promoted_at DESC LIMIT 1")
+    .get() as HarnessVersionRow | undefined;
+}
+
+export function updateHarnessVersionStatus(
+  id: string,
+  status: HarnessVersionStatus,
+  extra?: { promotedAt?: string | null; notes?: string | null },
+): void {
+  const now = extra?.promotedAt ?? (status === 'promoted' ? new Date().toISOString() : null);
+  db.prepare(
+    `UPDATE harness_versions
+     SET status = ?, promoted_at = COALESCE(?, promoted_at), notes = COALESCE(?, notes)
+     WHERE id = ?`,
+  ).run(status, now, extra?.notes ?? null, id);
+}
+
+export function createHarnessProposal(row: {
+  id: string;
+  proposedVersionId: string;
+  baselineVersionId: string;
+  hypothesis: string;
+  expectedBehavior: string;
+  mutationPatch: string;
+}): string {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO harness_proposals
+      (id, proposed_version_id, baseline_version_id, hypothesis, expected_behavior,
+       mutation_patch, verdict, evidence_run_ids_json, trace_summary, created_at, judged_at)
+     VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, NULL)`,
+  ).run(
+    row.id,
+    row.proposedVersionId,
+    row.baselineVersionId,
+    row.hypothesis,
+    row.expectedBehavior,
+    row.mutationPatch,
+    now,
+  );
+  return row.id;
+}
+
+export function getHarnessProposal(id: string): HarnessProposalRow | undefined {
+  return db.prepare('SELECT * FROM harness_proposals WHERE id = ?').get(id) as
+    | HarnessProposalRow
+    | undefined;
+}
+
+export function listHarnessProposals(
+  opts: { baselineVersionId?: string; limit?: number } = {},
+): HarnessProposalRow[] {
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (opts.baselineVersionId) {
+    where.push('baseline_version_id = ?');
+    params.push(opts.baselineVersionId);
+  }
+  params.push(opts.limit ?? 50);
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  return db
+    .prepare(
+      `SELECT * FROM harness_proposals ${whereClause} ORDER BY created_at DESC LIMIT ?`,
+    )
+    .all(...params) as HarnessProposalRow[];
+}
+
+export function updateHarnessProposalVerdict(
+  id: string,
+  verdict: NonNullable<HarnessVerdict>,
+  evidence: { runIds: string[]; traceSummary: string },
+): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE harness_proposals
+     SET verdict = ?, evidence_run_ids_json = ?, trace_summary = ?, judged_at = ?
+     WHERE id = ?`,
+  ).run(
+    verdict,
+    JSON.stringify(evidence.runIds),
+    evidence.traceSummary,
+    now,
+    id,
+  );
+}
+
+export function createHarnessEvalRun(row: {
+  id: string;
+  versionId: string;
+  proposalId?: string | null;
+  caseId: string;
+  startedAt: string;
+}): string {
+  db.prepare(
+    `INSERT INTO harness_eval_runs
+      (id, version_id, proposal_id, case_id, status, pass, score, trace_node_root_id,
+       started_at, finished_at, error)
+     VALUES (?, ?, ?, ?, 'running', NULL, NULL, NULL, ?, NULL, NULL)`,
+  ).run(
+    row.id,
+    row.versionId,
+    row.proposalId ?? null,
+    row.caseId,
+    row.startedAt,
+  );
+  return row.id;
+}
+
+export function updateHarnessEvalRun(
+  id: string,
+  updates: {
+    status: HarnessEvalRunStatus;
+    pass?: number | null;
+    score?: number | null;
+    traceNodeRootId?: number | null;
+    finishedAt?: string;
+    error?: string | null;
+  },
+): void {
+  db.prepare(
+    `UPDATE harness_eval_runs
+     SET status = ?, pass = COALESCE(?, pass), score = COALESCE(?, score),
+         trace_node_root_id = COALESCE(?, trace_node_root_id),
+         finished_at = COALESCE(?, finished_at), error = COALESCE(?, error)
+     WHERE id = ?`,
+  ).run(
+    updates.status,
+    updates.pass ?? null,
+    updates.score ?? null,
+    updates.traceNodeRootId ?? null,
+    updates.finishedAt ?? null,
+    updates.error ?? null,
+    id,
+  );
+}
+
+export function listHarnessEvalRuns(
+  opts: { versionId?: string; proposalId?: string; limit?: number } = {},
+): HarnessEvalRunRow[] {
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (opts.versionId) {
+    where.push('version_id = ?');
+    params.push(opts.versionId);
+  }
+  if (opts.proposalId) {
+    where.push('proposal_id = ?');
+    params.push(opts.proposalId);
+  }
+  params.push(opts.limit ?? 200);
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  return db
+    .prepare(
+      `SELECT * FROM harness_eval_runs ${whereClause} ORDER BY started_at DESC LIMIT ?`,
+    )
+    .all(...params) as HarnessEvalRunRow[];
+}
+
+export function upsertHarnessEvalCase(row: {
+  caseId: string;
+  name: string;
+  prompt: string;
+  assertionsJson: string;
+  rubricJson: string;
+  enabled?: boolean;
+}): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO harness_eval_cases
+      (case_id, name, prompt, assertions_json, rubric_json, enabled, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(case_id) DO UPDATE SET
+       name = excluded.name,
+       prompt = excluded.prompt,
+       assertions_json = excluded.assertions_json,
+       rubric_json = excluded.rubric_json,
+       enabled = excluded.enabled`,
+  ).run(
+    row.caseId,
+    row.name,
+    row.prompt,
+    row.assertionsJson,
+    row.rubricJson,
+    row.enabled === false ? 0 : 1,
+    now,
+  );
+}
+
+export function listHarnessEvalCases(enabledOnly = false): HarnessEvalCaseRow[] {
+  const sql = enabledOnly
+    ? 'SELECT * FROM harness_eval_cases WHERE enabled = 1 ORDER BY case_id'
+    : 'SELECT * FROM harness_eval_cases ORDER BY case_id';
+  return db.prepare(sql).all() as HarnessEvalCaseRow[];
 }
 
 // --- Router state accessors ---

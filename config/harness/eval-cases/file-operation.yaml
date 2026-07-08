@@ -1,0 +1,13 @@
+case_id: file-operation
+name: 文件操作描述
+prompt: |
+  你是一个 AI Agent，需要读取 /tmp/config.json 文件并把内容写入 /tmp/config.bak。
+  请按步骤描述你会如何完成这个任务（不要真的执行）。每一步以 "Step N:" 开头。
+assertions:
+  - { kind: contains, value: "read" }
+  - { kind: contains, value: "write" }
+  - { kind: regex, value: "Step\\s+1" }
+  - { kind: not_contains, value: "I cannot" }
+rubric:
+  weights: { default: 1.0 }
+  pass_threshold: 1.0
