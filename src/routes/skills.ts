@@ -19,6 +19,28 @@ import {
   listFiles,
   scanSkillDirectory,
 } from '../skill-utils.js';
+import {
+  getUserSkillsDir as getUserSkillsDirFromUtils,
+  slugifySkillName,
+  resolveSkillIdConflict,
+  validateSkillContent,
+  validateZipEntries,
+  writeSkillContent,
+  backupSkillContent,
+  getSkillContentPath,
+} from '../skill-content-utils.js';
+import {
+  generateSkillContent,
+  optimizeSkillContent,
+  debugSkill,
+} from '../skill-ai.js';
+import { logger } from '../logger.js';
+
+// Re-export for backwards compatibility with existing IPC handler imports.
+// (getUserSkillsDir previously lived in this file; now sourced from skill-content-utils.)
+function getUserSkillsDir(userId: string): string {
+  return getUserSkillsDirFromUtils(userId);
+}
 
 const execFileAsync = promisify(execFile);
 let skillInstallLock: Promise<void> = Promise.resolve();
@@ -68,9 +90,7 @@ interface SearchResult {
 
 // --- Utility Functions ---
 
-function getUserSkillsDir(userId: string): string {
-  return path.join(DATA_DIR, 'skills', userId);
-}
+// getUserSkillsDir is now imported from skill-content-utils (see top of file).
 
 function getProjectSkillsDir(): string {
   return path.resolve(process.cwd(), 'container', 'skills');
@@ -962,6 +982,388 @@ skillsRoutes.post('/:id/reinstall', authMiddleware, async (c) => {
   }
 
   return c.json({ success: true, installed: installResult.installed });
+});
+
+// ===========================================================================
+// Upgraded routes: AI generation, online edit, optimize, upload, debug.
+// ===========================================================================
+
+interface SkillsManifestWithSourceType {
+  skills: Record<
+    string,
+    {
+      packageName: string;
+      installedAt: string;
+      source: string;
+      sourceType?: 'generated' | 'uploaded' | 'edited' | 'optimized' | 'registry';
+    }
+  >;
+}
+
+function setManifestSourceType(
+  userId: string,
+  skillId: string,
+  sourceType: 'generated' | 'uploaded' | 'edited' | 'optimized' | 'registry',
+): void {
+  const manifest = readSkillsManifest(userId) as SkillsManifestWithSourceType;
+  const existing = manifest.skills[skillId];
+  if (existing) {
+    existing.sourceType = sourceType;
+    manifest.skills[skillId] = existing;
+  } else {
+    manifest.skills[skillId] = {
+      packageName: 'local',
+      installedAt: new Date().toISOString(),
+      source: 'local',
+      sourceType,
+    };
+  }
+  writeSkillsManifest(userId, manifest);
+}
+
+/**
+ * POST /api/skills/create
+ * AI-generate a new skill from natural-language description.
+ */
+skillsRoutes.post('/create', authMiddleware, async (c) => {
+  const authUser = c.get('user') as AuthUser;
+  const body = await c.req.json().catch(() => ({})) as {
+    description_prompt?: unknown;
+    name?: unknown;
+  };
+
+  const descriptionPrompt = typeof body.description_prompt === 'string' ? body.description_prompt.trim() : '';
+  if (descriptionPrompt.length < 10) {
+    return c.json({ error: 'description_prompt must be at least 10 characters' }, 400);
+  }
+  const suggestedName = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : undefined;
+
+  const userDir = getUserSkillsDir(authUser.id);
+  fs.mkdirSync(userDir, { recursive: true });
+
+  // Pre-resolve a skill ID conflict against the suggested name so we can pass
+  // it to the AI as a hint. If the AI overrides the name, we re-resolve after.
+  const baseId = suggestedName
+    ? slugifySkillName(suggestedName)
+    : slugifySkillName(descriptionPrompt);
+  const preResolvedId = resolveSkillIdConflict(userDir, baseId);
+
+  const result = await generateSkillContent(descriptionPrompt, preResolvedId);
+  if ('error' in result) {
+    return c.json({ error: result.error }, 502);
+  }
+
+  // Re-validate generated content
+  const validation = validateSkillContent(result.content);
+  if (!validation.valid) {
+    logger.warn({ err: validation.error }, 'AI-generated skill content failed validation');
+    return c.json(
+      { error: `AI generated invalid content: ${validation.error}` },
+      502,
+    );
+  }
+
+  // If the AI chose a different name, resolve conflict against that
+  const finalId = resolveSkillIdConflict(userDir, slugifySkillName(validation.frontmatter!.name));
+  const skillDir = path.join(userDir, finalId);
+  fs.mkdirSync(skillDir, { recursive: true });
+  writeSkillContent(authUser.id, finalId, result.content);
+  setManifestSourceType(authUser.id, finalId, 'generated');
+
+  const skill = getSkillDetail(finalId, authUser.id, authUser.role);
+  return c.json({ success: true, skill_id: finalId, skill });
+});
+
+/**
+ * PUT /api/skills/:id/content
+ * Online edit/save SKILL.md content. User-level skills only.
+ */
+skillsRoutes.put('/:id/content', authMiddleware, async (c) => {
+  const id = c.req.param('id');
+  const authUser = c.get('user') as AuthUser;
+  const body = await c.req.json().catch(() => ({})) as { content?: unknown };
+
+  if (typeof body.content !== 'string') {
+    return c.json({ error: 'content must be a string' }, 400);
+  }
+  if (!validateSkillId(id)) {
+    return c.json({ error: 'Invalid skill ID' }, 400);
+  }
+
+  const userDir = getUserSkillsDir(authUser.id);
+  const skillDir = path.join(userDir, id);
+  if (!fs.existsSync(skillDir)) {
+    return c.json({ error: 'Skill not found or is not a user-level skill' }, 404);
+  }
+  if (!validateSkillPath(userDir, skillDir)) {
+    return c.json({ error: 'Invalid skill path' }, 400);
+  }
+
+  const validation = validateSkillContent(body.content);
+  if (!validation.valid) {
+    return c.json({ error: validation.error }, 400);
+  }
+
+  writeSkillContent(authUser.id, id, body.content);
+  setManifestSourceType(authUser.id, id, 'edited');
+
+  const skill = getSkillDetail(id, authUser.id, authUser.role);
+  return c.json({ success: true, skill });
+});
+
+/**
+ * POST /api/skills/:id/optimize
+ * AI-optimize the current SKILL.md. Returns preview; does NOT write.
+ */
+skillsRoutes.post('/:id/optimize', authMiddleware, async (c) => {
+  const id = c.req.param('id');
+  const authUser = c.get('user') as AuthUser;
+  const body = await c.req.json().catch(() => ({})) as { feedback?: unknown };
+
+  if (!validateSkillId(id)) {
+    return c.json({ error: 'Invalid skill ID' }, 400);
+  }
+
+  const contentPath = getSkillContentPath(authUser.id, id);
+  if (!contentPath) {
+    return c.json({ error: 'Skill not found or is not a user-level skill' }, 404);
+  }
+  const userDir = getUserSkillsDir(authUser.id);
+  const skillDir = path.join(userDir, id);
+  if (!validateSkillPath(userDir, skillDir)) {
+    return c.json({ error: 'Invalid skill path' }, 400);
+  }
+
+  const currentContent = fs.readFileSync(contentPath, 'utf-8');
+  const feedback = typeof body.feedback === 'string' ? body.feedback : undefined;
+
+  const result = await optimizeSkillContent(currentContent, feedback);
+  if ('error' in result) {
+    return c.json({ error: result.error }, 502);
+  }
+
+  // Validate the optimized content before returning — don't preview broken output
+  const validation = validateSkillContent(result.content);
+  if (!validation.valid) {
+    return c.json(
+      { error: `AI optimized content is invalid: ${validation.error}` },
+      502,
+    );
+  }
+
+  return c.json({ optimized_content: result.content, original_content: currentContent });
+});
+
+/**
+ * POST /api/skills/:id/optimize/apply
+ * Apply a previously-previewed optimized content. Backs up current content first.
+ */
+skillsRoutes.post('/:id/optimize/apply', authMiddleware, async (c) => {
+  const id = c.req.param('id');
+  const authUser = c.get('user') as AuthUser;
+  const body = await c.req.json().catch(() => ({})) as { content?: unknown };
+
+  if (typeof body.content !== 'string') {
+    return c.json({ error: 'content must be a string' }, 400);
+  }
+  if (!validateSkillId(id)) {
+    return c.json({ error: 'Invalid skill ID' }, 400);
+  }
+
+  const userDir = getUserSkillsDir(authUser.id);
+  const skillDir = path.join(userDir, id);
+  if (!fs.existsSync(skillDir)) {
+    return c.json({ error: 'Skill not found or is not a user-level skill' }, 404);
+  }
+  if (!validateSkillPath(userDir, skillDir)) {
+    return c.json({ error: 'Invalid skill path' }, 400);
+  }
+
+  const validation = validateSkillContent(body.content);
+  if (!validation.valid) {
+    return c.json({ error: validation.error }, 400);
+  }
+
+  const backupPath = backupSkillContent(authUser.id, id);
+  writeSkillContent(authUser.id, id, body.content);
+  setManifestSourceType(authUser.id, id, 'optimized');
+
+  return c.json({ success: true, backup_path: backupPath });
+});
+
+/**
+ * POST /api/skills/upload
+ * Upload a zip-compressed skill package.
+ */
+skillsRoutes.post('/upload', authMiddleware, async (c) => {
+  const authUser = c.get('user') as AuthUser;
+
+  const body = await c.req.parseBody({ all: false });
+  const file = body['file'];
+  if (!(file instanceof File)) {
+    return c.json({ error: 'Missing "file" field in form data' }, 400);
+  }
+
+  // Must be a .zip
+  const lowerName = file.name.toLowerCase();
+  if (!lowerName.endsWith('.zip')) {
+    return c.json({ error: 'File must be a .zip archive' }, 400);
+  }
+  if (file.size === 0) {
+    return c.json({ error: 'Empty file' }, 400);
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    return c.json({ error: 'File exceeds 10MB limit' }, 400);
+  }
+
+  const userDir = getUserSkillsDir(authUser.id);
+  fs.mkdirSync(userDir, { recursive: true });
+
+  // Save to temp file
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-upload-'));
+  const tmpZip = path.join(tmpDir, 'upload.zip');
+  const extractDir = path.join(tmpDir, 'extracted');
+  fs.mkdirSync(extractDir, { recursive: true });
+
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    fs.writeFileSync(tmpZip, buffer);
+
+    // List entries first to validate before extracting
+    const { stdout: listOutput } = await execFileAsync('unzip', ['-l', tmpZip], {
+      maxBuffer: 1024 * 1024,
+    });
+    const listedEntries: string[] = [];
+    for (const line of listOutput.split('\n')) {
+      // unzip -l output format (varies by version/locale):
+      //   "  Length  Date    Time    CRC-32   Name"  (some versions)
+      //   "  Length  Date    Time    Name"          (others — no CRC column)
+      // Date can be MM-DD-YYYY or YYYY-MM-DD. The entry path is the last column.
+      // Skip header/footer lines (no leading digit).
+      // Match: leading spaces + digits (length) + date + time + optional CRC + path
+      const m = line.match(
+        /^\s*\d+\s+\d{2,4}-\d{2}-\d{2,4}\s+\d{2}:\d{2}(?:\s+[\da-fA-F]+)?\s+(.+)$/,
+      );
+      if (m) {
+        const entryPath = m[1].trim();
+        // Filter out footer line like "---------                     -------"
+        // and summary lines like "103                     2 files"
+        if (!/^-+$/.test(entryPath) && !/^\d+\s+\d+\s+files?$/.test(entryPath)) {
+          listedEntries.push(entryPath);
+        }
+      }
+    }
+    const entryCheck = validateZipEntries(listedEntries);
+    if (!entryCheck.safe) {
+      return c.json({ error: `Invalid zip: ${entryCheck.reason}` }, 400);
+    }
+    if (listedEntries.length === 0) {
+      return c.json({ error: 'Zip archive is empty' }, 400);
+    }
+    if (listedEntries.length > 100) {
+      return c.json({ error: 'Zip archive exceeds 100 entries' }, 400);
+    }
+
+    // Extract
+    await execFileAsync('unzip', ['-o', '-q', tmpZip, '-d', extractDir], {
+      maxBuffer: 10 * 1024 * 1024,
+    });
+
+    // Find SKILL.md: either at the top level, or inside a single nested directory
+    let skillRootDir: string | null = null;
+    if (fs.existsSync(path.join(extractDir, 'SKILL.md')) ||
+        fs.existsSync(path.join(extractDir, 'SKILL.md.disabled'))) {
+      skillRootDir = extractDir;
+    } else {
+      // Look for a single subdirectory containing SKILL.md
+      const subdirs = fs.readdirSync(extractDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory());
+      if (subdirs.length === 1) {
+        const sub = path.join(extractDir, subdirs[0].name);
+        if (fs.existsSync(path.join(sub, 'SKILL.md')) ||
+            fs.existsSync(path.join(sub, 'SKILL.md.disabled'))) {
+          skillRootDir = sub;
+        }
+      }
+    }
+
+    if (!skillRootDir) {
+      return c.json(
+        { error: 'Zip must contain SKILL.md at top level or in a single subdirectory' },
+        400,
+      );
+    }
+
+    // Read SKILL.md to determine skill ID
+    const skillMdPath = fs.existsSync(path.join(skillRootDir, 'SKILL.md'))
+      ? path.join(skillRootDir, 'SKILL.md')
+      : path.join(skillRootDir, 'SKILL.md.disabled');
+    const content = fs.readFileSync(skillMdPath, 'utf-8');
+    const validation = validateSkillContent(content);
+    if (!validation.valid) {
+      return c.json({ error: `Uploaded SKILL.md is invalid: ${validation.error}` }, 400);
+    }
+
+    const skillId = slugifySkillName(validation.frontmatter!.name);
+    const targetDir = path.join(userDir, skillId);
+    if (fs.existsSync(targetDir)) {
+      return c.json(
+        { error: `Skill "${skillId}" already exists — rename or delete the existing one first` },
+        409,
+      );
+    }
+
+    // Move extracted skill root into user skills dir
+    fs.renameSync(skillRootDir, targetDir);
+
+    setManifestSourceType(authUser.id, skillId, 'uploaded');
+    const skill = getSkillDetail(skillId, authUser.id, authUser.role);
+    return c.json({ success: true, skill_id: skillId, skill });
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, 'Failed to upload skill zip');
+    return c.json(
+      { error: 'Failed to process zip upload', details: (err as Error).message },
+      500,
+    );
+  } finally {
+    // Cleanup temp dir
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
+});
+
+/**
+ * POST /api/skills/:id/debug
+ * Run a single-turn debug query with the skill content as context.
+ */
+skillsRoutes.post('/:id/debug', authMiddleware, async (c) => {
+  const id = c.req.param('id');
+  const authUser = c.get('user') as AuthUser;
+  const body = await c.req.json().catch(() => ({})) as { test_input?: unknown };
+
+  if (!validateSkillId(id)) {
+    return c.json({ error: 'Invalid skill ID' }, 400);
+  }
+  const testInput = typeof body.test_input === 'string' ? body.test_input.trim() : '';
+  if (testInput.length === 0) {
+    return c.json({ error: 'test_input must be a non-empty string' }, 400);
+  }
+
+  // Search user / project / external for the skill content (read-only)
+  const skill = getSkillDetail(id, authUser.id, authUser.role);
+  if (!skill) {
+    return c.json({ error: 'Skill not found' }, 404);
+  }
+
+  const result = await debugSkill(skill.content, testInput);
+  if ('error' in result) {
+    return c.json({ error: result.error }, 502);
+  }
+
+  return c.json({ output: result.output, duration_ms: result.durationMs });
 });
 
 export { getUserSkillsDir, installSkillForUser, deleteSkillForUser };

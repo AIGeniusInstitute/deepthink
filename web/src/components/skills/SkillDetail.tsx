@@ -1,13 +1,22 @@
 import { useState, useEffect } from 'react';
-import { File, Folder, Loader2, Lock, Trash2, RefreshCw, Package } from 'lucide-react';
+import {
+  File, Folder, Loader2, Lock, Trash2, RefreshCw, Package,
+  Wand2, Save, Play, Pencil,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import { useSkillsStore, type SkillDetail as SkillDetailType } from '../../stores/skills';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
+import { OptimizeSkillDialog } from './OptimizeSkillDialog';
 
 interface SkillDetailProps {
   skillId: string | null;
   onDeleted?: () => void;
 }
+
+type TabKey = 'view' | 'edit' | 'debug';
 
 export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
   const [detail, setDetail] = useState<SkillDetailType | null>(null);
@@ -15,9 +24,20 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [reinstalling, setReinstalling] = useState(false);
-  const getSkillDetail = useSkillsStore((state) => state.getSkillDetail);
-  const deleteSkill = useSkillsStore((state) => state.deleteSkill);
-  const reinstallSkill = useSkillsStore((state) => state.reinstallSkill);
+  const [tab, setTab] = useState<TabKey>('view');
+  const [editContent, setEditContent] = useState('');
+  const [editDirty, setEditDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showOptimize, setShowOptimize] = useState(false);
+  const [testInput, setTestInput] = useState('');
+  const [debugOutput, setDebugOutput] = useState<string | null>(null);
+  const [debugDuration, setDebugDuration] = useState<number | null>(null);
+  const [debugging, setDebugging] = useState(false);
+  const getSkillDetail = useSkillsStore((s) => s.getSkillDetail);
+  const deleteSkill = useSkillsStore((s) => s.deleteSkill);
+  const reinstallSkill = useSkillsStore((s) => s.reinstallSkill);
+  const saveSkillContent = useSkillsStore((s) => s.saveSkillContent);
+  const debugSkill = useSkillsStore((s) => s.debugSkill);
 
   useEffect(() => {
     if (!skillId) {
@@ -25,13 +45,14 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
       setError(null);
       return;
     }
-
     const loadDetail = async () => {
       setLoading(true);
       setError(null);
       try {
         const data = await getSkillDetail(skillId);
         setDetail(data);
+        setEditContent(data.content);
+        setEditDirty(false);
       } catch (err) {
         setError(err instanceof Error ? err.message : '加载失败');
         setDetail(null);
@@ -39,9 +60,49 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
         setLoading(false);
       }
     };
-
     loadDetail();
   }, [skillId, getSkillDetail]);
+
+  const isUserLevel = detail?.source === 'user';
+
+  const handleSave = async () => {
+    if (!detail) return;
+    setSaving(true);
+    try {
+      await saveSkillContent(detail.id, editContent);
+      // Re-fetch detail to get fresh content + files
+      const updated = await getSkillDetail(detail.id);
+      setDetail(updated);
+      setEditContent(updated.content);
+      setEditDirty(false);
+      toast.success('已保存');
+    } catch (err: any) {
+      toast.error(err?.message || '保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDebug = async () => {
+    if (!detail) return;
+    const trimmed = testInput.trim();
+    if (!trimmed) {
+      toast.error('请输入测试输入');
+      return;
+    }
+    setDebugging(true);
+    setDebugOutput(null);
+    setDebugDuration(null);
+    try {
+      const result = await debugSkill(detail.id, trimmed);
+      setDebugOutput(result.output);
+      setDebugDuration(result.duration_ms);
+    } catch (err: any) {
+      toast.error(err?.message || '调试失败');
+    } finally {
+      setDebugging(false);
+    }
+  };
 
   if (!skillId) {
     return (
@@ -98,7 +159,7 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
             <p className="text-sm text-muted-foreground">{detail.description}</p>
           </div>
 
-          {detail.source === 'project' ? (
+          {detail.source === 'project' || detail.source === 'external' ? (
             <div className="flex items-center gap-2">
               <Lock size={16} className="text-muted-foreground" />
               <div
@@ -114,31 +175,40 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={deleting || reinstalling}
+                onClick={() => setShowOptimize(true)}
+              >
+                <Wand2 size={14} />
+                AI 优化
+              </Button>
               {detail.packageName && (
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={reinstalling || deleting}
                   onClick={async () => {
                     if (!confirm(`确认重新安装技能「${detail.name}」？`)) return;
                     setReinstalling(true);
                     try {
                       await reinstallSkill(detail.id);
-                      // Reload detail after reinstall
                       const data = await getSkillDetail(detail.id);
                       setDetail(data);
-                    } catch {
-                      // error handled by store
-                    } finally {
-                      setReinstalling(false);
-                    }
+                      setEditContent(data.content);
+                    } catch { /* handled by store */ }
+                    finally { setReinstalling(false); }
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors disabled:opacity-50"
                 >
-                  <RefreshCw size={16} className={reinstalling ? 'animate-spin' : ''} />
+                  <RefreshCw size={14} className={reinstalling ? 'animate-spin' : ''} />
                   {reinstalling ? '重装中...' : '重新安装'}
-                </button>
+                </Button>
               )}
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 disabled={deleting || reinstalling}
                 onClick={async () => {
                   if (!confirm(`确认删除技能「${detail.name}」？`)) return;
@@ -146,22 +216,18 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
                   try {
                     await deleteSkill(detail.id);
                     onDeleted?.();
-                  } catch {
-                    // error is handled by the store
-                  } finally {
-                    setDeleting(false);
-                  }
+                  } catch { /* error handled by store */ }
+                  finally { setDeleting(false); }
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-error hover:bg-error-bg transition-colors disabled:opacity-50"
+                className="text-error hover:bg-error-bg"
               >
-                <Trash2 size={16} />
+                <Trash2 size={14} />
                 {deleting ? '删除中...' : '删除'}
-              </button>
+              </Button>
             </div>
           )}
         </div>
 
-        {/* 元信息区域 */}
         <div className="space-y-2 text-sm">
           {detail.packageName && (
             <div className="flex items-center gap-1.5">
@@ -202,51 +268,121 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
         </div>
       </div>
 
-      {/* SKILL.md 内容 */}
-      <div className="p-6 border-b border-border">
-        <h3 className="text-sm font-semibold text-foreground mb-3">技能说明</h3>
-        <div className="max-w-none">
-          <MarkdownRenderer content={detail.content} variant="docs" />
+      <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)} className="flex-1 min-h-0 flex flex-col">
+        <div className="px-6 pt-4">
+          <TabsList>
+            <TabsTrigger value="view">查看</TabsTrigger>
+            <TabsTrigger value="edit" disabled={!isUserLevel}>
+              <Pencil className="size-3 mr-1" />
+              编辑
+            </TabsTrigger>
+            <TabsTrigger value="debug">
+              <Play className="size-3 mr-1" />
+              调试
+            </TabsTrigger>
+          </TabsList>
         </div>
-      </div>
 
-      {/* 文件列表 */}
-      {detail.files && detail.files.length > 0 && (
-        <div className="p-6 border-b border-border">
-          <h3 className="text-sm font-semibold text-foreground mb-3">文件列表</h3>
-          <div className="space-y-1">
-            {detail.files.map((file) => (
-              <div
-                key={file.name}
-                className="flex items-center gap-2 text-sm text-muted-foreground"
-              >
-                {file.type === 'directory' ? (
-                  <Folder size={16} className="text-muted-foreground" />
-                ) : (
-                  <File size={16} className="text-muted-foreground" />
-                )}
-                <span>{file.name}</span>
-                {file.type === 'file' && (
-                  <span className="text-xs text-muted-foreground">({file.size} B)</span>
-                )}
-              </div>
-            ))}
+        <TabsContent value="view" className="px-6 pb-6">
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-foreground mb-3">技能说明</h3>
+            <div className="max-w-none">
+              <MarkdownRenderer content={detail.content} variant="docs" />
+            </div>
           </div>
-        </div>
-      )}
 
-      {/* 底部操作区 */}
-      <div className="p-6 bg-muted">
-        <p className="text-sm text-muted-foreground">
-          {detail.source === 'user'
-            ? detail.packageName
-              ? `通过 ${detail.packageName} 安装，可重新安装以获取最新版本`
-              : '用户级技能可启用/禁用或删除，也可在对话中让 AI 安装或卸载技能'
-            : detail.source === 'external'
-              ? '宿主机技能为只读，来自 ~/.claude/skills/'
-              : '项目级技能为只读，不可修改或删除'}
-        </p>
-      </div>
+          {detail.files && detail.files.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-3">文件列表</h3>
+              <div className="space-y-1">
+                {detail.files.map((file) => (
+                  <div
+                    key={file.name}
+                    className="flex items-center gap-2 text-sm text-muted-foreground"
+                  >
+                    {file.type === 'directory' ? (
+                      <Folder size={16} className="text-muted-foreground" />
+                    ) : (
+                      <File size={16} className="text-muted-foreground" />
+                    )}
+                    <span>{file.name}</span>
+                    {file.type === 'file' && (
+                      <span className="text-xs text-muted-foreground">({file.size} B)</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="edit" className="px-6 pb-6 flex flex-col gap-3">
+          {!isUserLevel ? (
+            <p className="text-sm text-muted-foreground">只读技能不支持编辑</p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  编辑 SKILL.md 全文，保存后下次会话生效
+                  {editDirty && <span className="text-amber-600 ml-2">· 未保存</span>}
+                </p>
+                <Button size="sm" onClick={handleSave} disabled={saving || !editDirty}>
+                  {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                  保存
+                </Button>
+              </div>
+              <textarea
+                className="w-full min-h-[400px] rounded-md border border-border bg-background px-3 py-2 text-xs font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                value={editContent}
+                onChange={(e) => {
+                  setEditContent(e.target.value);
+                  setEditDirty(e.target.value !== detail.content);
+                }}
+                disabled={saving}
+                spellCheck={false}
+              />
+            </>
+          )}
+        </TabsContent>
+
+        <TabsContent value="debug" className="px-6 pb-6 flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">
+            输入测试 prompt，AI 会以该技能的指令响应一次（不调用工具，纯文本）
+          </p>
+          <textarea
+            className="w-full min-h-[100px] rounded-md border border-border bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+            placeholder="例如：列出今日 Python 仓库前 10 名"
+            value={testInput}
+            onChange={(e) => setTestInput(e.target.value)}
+            disabled={debugging}
+          />
+          <div className="flex items-center justify-between">
+            {debugDuration !== null && (
+              <span className="text-xs text-muted-foreground">
+                耗时 {(debugDuration / 1000).toFixed(2)}s
+              </span>
+            )}
+            <Button size="sm" onClick={handleDebug} disabled={debugging || !testInput.trim()} className="ml-auto">
+              {debugging ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+              执行
+            </Button>
+          </div>
+          {debugOutput !== null && (
+            <div className="rounded-md border border-border bg-muted/30 p-3 max-h-[400px] overflow-y-auto">
+              <MarkdownRenderer content={debugOutput} variant="docs" />
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {showOptimize && detail && (
+        <OptimizeSkillDialog
+          open={showOptimize}
+          onClose={() => setShowOptimize(false)}
+          skillId={detail.id}
+          skillName={detail.name}
+        />
+      )}
     </Card>
   );
 }
