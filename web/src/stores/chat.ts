@@ -37,6 +37,23 @@ export interface Message {
 import type { StreamEventType, StreamEvent } from '../stream-event.types';
 export type { StreamEventType, StreamEvent };
 
+export interface TraceNodeEntry {
+  id: number;
+  chat_jid: string;
+  session_id?: string | null;
+  parent_node_id?: number | null;
+  node_type: 'turn' | 'tool' | 'review' | 'goal_check' | 'skill' | 'subagent';
+  title?: string | null;
+  input_summary?: string | null;
+  output_summary?: string | null;
+  tokens?: number;
+  status?: string | null;
+  annotation_input?: string | null;
+  annotation_output?: string | null;
+  started_at: string;
+  ended_at?: string | null;
+}
+
 export interface StreamingTimelineEvent {
   id: string;
   timestamp: number;
@@ -248,6 +265,21 @@ interface ChatState {
   agentMessages: Record<string, Message[]>;          // agentId → messages
   agentWaiting: Record<string, boolean>;             // agentId → waiting for reply
   agentHasMore: Record<string, boolean>;             // agentId → has more messages
+  // DAG trace nodes (per chatJid) — populated from stream events and
+  // /api/groups/:jid/trace/nodes. Node IDs are integers allocated by
+  // agent-runner's TraceNodeAllocator; upserts are idempotent on (jid, id).
+  traceNodes: Record<string, TraceNodeEntry[]>;
+  selectedTraceNodeId: number | null;
+  loadTraceNodes: (jid: string) => Promise<void>;
+  upsertTraceNode: (jid: string, node: TraceNodeEntry) => void;
+  clearTraceNodes: (jid: string) => void;
+  setSelectedTraceNodeId: (id: number | null) => void;
+  saveTraceNodeAnnotation: (
+    jid: string,
+    nodeId: number,
+    annotationInput: string | null,
+    annotationOutput: string | null,
+  ) => Promise<boolean>;
   loadGroups: () => Promise<void>;
   selectGroup: (jid: string) => void;
   loadMessages: (jid: string, loadMore?: boolean) => Promise<void>;
@@ -1096,6 +1128,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   agentMessages: {},
   agentWaiting: {},
   agentHasMore: {},
+  traceNodes: {},
+  selectedTraceNodeId: null,
   drafts: {},
   unreadReplies: {},
 
@@ -1712,6 +1746,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
   handleStreamEvent: (chatJid, event, agentId?) => {
     // Skip while clearHistory is in-flight
     if (get().clearing[chatJid]) return;
+
+    // DAG trace node — upsert before any other handling so the canvas
+    // updates even for events the rest of the handler doesn't care about.
+    if (event.traceNode && !agentId) {
+      const tn = event.traceNode;
+      get().upsertTraceNode(chatJid, {
+        id: tn.nodeId,
+        chat_jid: chatJid,
+        node_type: tn.nodeType,
+        parent_node_id: tn.parentNodeId ?? null,
+        title: tn.title ?? null,
+        input_summary: tn.inputSummary ?? null,
+        output_summary: tn.outputSummary ?? null,
+        tokens: tn.tokens ?? 0,
+        status: tn.status ?? null,
+        started_at: new Date().toISOString(),
+        ended_at: tn.status === 'done' || tn.status === 'failed' ? new Date().toISOString() : null,
+      });
+    }
 
     // ⓪ text_delta / thinking_delta — rAF batch for both agent and main conversation
     if ((event.eventType === 'text_delta' || event.eventType === 'thinking_delta') && (agentId || !event.parentToolUseId)) {
@@ -2548,6 +2601,80 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((s) => ({
       activeAgentTab: { ...s.activeAgentTab, [jid]: agentId },
     }));
+  },
+
+  // -- DAG trace node actions --
+
+  loadTraceNodes: async (jid) => {
+    try {
+      const data = await api.get<{ nodes: TraceNodeEntry[] }>(
+        `/api/groups/${encodeURIComponent(jid)}/trace/nodes`,
+      );
+      set((s) => ({
+        traceNodes: { ...s.traceNodes, [jid]: data.nodes ?? [] },
+      }));
+    } catch {
+      // best-effort; failure leaves existing nodes intact
+    }
+  },
+
+  upsertTraceNode: (jid, node) => {
+    set((s) => {
+      const list = s.traceNodes[jid] ?? [];
+      const idx = list.findIndex((n) => n.id === node.id);
+      let next: TraceNodeEntry[];
+      if (idx === -1) {
+        next = [...list, node];
+      } else {
+        // Merge — preserve existing annotation fields (server is source of
+        // truth for those, only the server-side save action updates them).
+        const merged: TraceNodeEntry = {
+          ...list[idx],
+          ...node,
+          annotation_input: list[idx].annotation_input ?? node.annotation_input,
+          annotation_output: list[idx].annotation_output ?? node.annotation_output,
+        };
+        next = [...list.slice(0, idx), merged, ...list.slice(idx + 1)];
+      }
+      return { traceNodes: { ...s.traceNodes, [jid]: next } };
+    });
+  },
+
+  clearTraceNodes: (jid) => {
+    set((s) => {
+      const next = { ...s.traceNodes };
+      delete next[jid];
+      return { traceNodes: next };
+    });
+  },
+
+  setSelectedTraceNodeId: (id) => {
+    set({ selectedTraceNodeId: id });
+  },
+
+  saveTraceNodeAnnotation: async (jid, nodeId, annotationInput, annotationOutput) => {
+    try {
+      await api.put(
+        `/api/groups/${encodeURIComponent(jid)}/trace/nodes/${nodeId}/annotation`,
+        { annotationInput, annotationOutput },
+      );
+      // Mirror the save into local state so the UI updates immediately.
+      set((s) => {
+        const list = s.traceNodes[jid] ?? [];
+        const idx = list.findIndex((n) => n.id === nodeId);
+        if (idx === -1) return {};
+        const next = [...list];
+        next[idx] = {
+          ...next[idx],
+          annotation_input: annotationInput,
+          annotation_output: annotationOutput,
+        };
+        return { traceNodes: { ...s.traceNodes, [jid]: next } };
+      });
+      return true;
+    } catch {
+      return false;
+    }
   },
 
   // -- Conversation agent actions --

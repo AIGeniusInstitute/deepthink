@@ -397,6 +397,26 @@ export function initDatabase(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_loop_trace_run ON loop_trace_nodes(loop_run_id, started_at);
     CREATE INDEX IF NOT EXISTS idx_loop_trace_parent ON loop_trace_nodes(parent_node_id);
+
+    CREATE TABLE IF NOT EXISTS chat_trace_nodes (
+      id INTEGER NOT NULL,
+      chat_jid TEXT NOT NULL,
+      session_id TEXT,
+      parent_node_id INTEGER,
+      node_type TEXT NOT NULL CHECK(node_type IN ('turn','tool','review','goal_check','skill','subagent')),
+      title TEXT,
+      input_summary TEXT,
+      output_summary TEXT,
+      tokens INTEGER NOT NULL DEFAULT 0,
+      status TEXT,
+      annotation_input TEXT,
+      annotation_output TEXT,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      UNIQUE(chat_jid, id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_trace_jid ON chat_trace_nodes(chat_jid, started_at);
+    CREATE INDEX IF NOT EXISTS idx_chat_trace_parent ON chat_trace_nodes(parent_node_id);
   `);
 
   // State tables (replacing JSON files)
@@ -1453,7 +1473,7 @@ export function initDatabase(): void {
     db.exec('ALTER TABLE scheduled_tasks ADD COLUMN loop_run_id TEXT');
   }
 
-  const SCHEMA_VERSION = '41';
+  const SCHEMA_VERSION = '42';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -2795,6 +2815,113 @@ export function setRouterState(key: string, value: string): void {
 
 export function deleteRouterState(key: string): void {
   db.prepare('DELETE FROM router_state WHERE key = ?').run(key);
+}
+
+// --- Chat trace nodes (DAG visualization for regular chat conversations) ---
+
+export interface ChatTraceNodeRow {
+  id: number;
+  chat_jid: string;
+  session_id: string | null;
+  parent_node_id: number | null;
+  node_type: 'turn' | 'tool' | 'review' | 'goal_check' | 'skill' | 'subagent';
+  title: string | null;
+  input_summary: string | null;
+  output_summary: string | null;
+  tokens: number;
+  status: string | null;
+  annotation_input: string | null;
+  annotation_output: string | null;
+  started_at: string;
+  ended_at: string | null;
+}
+
+export interface ChatTraceNodeUpsertInput {
+  id: number;
+  chat_jid: string;
+  session_id?: string | null;
+  parent_node_id?: number | null;
+  node_type: ChatTraceNodeRow['node_type'];
+  title?: string | null;
+  input_summary?: string | null;
+  output_summary?: string | null;
+  tokens?: number;
+  status?: string | null;
+  started_at: string;
+  ended_at?: string | null;
+}
+
+/**
+ * Idempotent upsert keyed on (chat_jid, id). The agent-runner allocates nodeIds
+ * within a single session; the main process persists them as they arrive via
+ * stream events. Replays (e.g. on page refresh) are safe.
+ */
+export function upsertChatTraceNode(row: ChatTraceNodeUpsertInput): void {
+  db.prepare(
+    `INSERT INTO chat_trace_nodes
+       (id, chat_jid, session_id, parent_node_id, node_type, title,
+        input_summary, output_summary, tokens, status, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(chat_jid, id) DO UPDATE SET
+       session_id = COALESCE(excluded.session_id, session_id),
+       parent_node_id = COALESCE(excluded.parent_node_id, parent_node_id),
+       title = COALESCE(excluded.title, title),
+       input_summary = COALESCE(excluded.input_summary, input_summary),
+       output_summary = COALESCE(excluded.output_summary, output_summary),
+       tokens = MAX(tokens, excluded.tokens),
+       status = COALESCE(excluded.status, status),
+       ended_at = COALESCE(excluded.ended_at, ended_at)`,
+  ).run(
+    row.id,
+    row.chat_jid,
+    row.session_id ?? null,
+    row.parent_node_id ?? null,
+    row.node_type,
+    row.title ?? null,
+    row.input_summary ?? null,
+    row.output_summary ?? null,
+    row.tokens ?? 0,
+    row.status ?? null,
+    row.started_at,
+    row.ended_at ?? null,
+  );
+}
+
+export function listChatTraceNodes(chatJid: string): ChatTraceNodeRow[] {
+  return db
+    .prepare(
+      'SELECT * FROM chat_trace_nodes WHERE chat_jid = ? ORDER BY id ASC',
+    )
+    .all(chatJid) as ChatTraceNodeRow[];
+}
+
+export function getChatTraceNode(
+  chatJid: string,
+  nodeId: number,
+): ChatTraceNodeRow | undefined {
+  return db
+    .prepare('SELECT * FROM chat_trace_nodes WHERE chat_jid = ? AND id = ?')
+    .get(chatJid, nodeId) as ChatTraceNodeRow | undefined;
+}
+
+export function saveChatTraceNodeAnnotation(
+  chatJid: string,
+  nodeId: number,
+  annotationInput: string | null,
+  annotationOutput: string | null,
+): void {
+  db.prepare(
+    `UPDATE chat_trace_nodes
+     SET annotation_input = ?, annotation_output = ?
+     WHERE chat_jid = ? AND id = ?`,
+  ).run(annotationInput, annotationOutput, chatJid, nodeId);
+}
+
+export function deleteChatTraceNodes(chatJid: string): number {
+  const result = db
+    .prepare('DELETE FROM chat_trace_nodes WHERE chat_jid = ?')
+    .run(chatJid);
+  return result.changes;
 }
 
 export function getRouterStateByPrefix(

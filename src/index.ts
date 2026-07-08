@@ -252,6 +252,7 @@ import { expandMessagesIfNeeded } from './plugin-expander-core.js';
 import { makeExpandContext } from './plugin-expander-context.js';
 import type { ExpandContext } from './plugin-expander-context.js';
 import { persistPluginExpansion } from './plugin-expander-store.js';
+import { persistTraceNodeFromStreamEvent } from './chat-trace-persist.js';
 
 // Set timezone so all child processes (host agents, containers) inherit it
 process.env.TZ = process.env.TZ || TIMEZONE;
@@ -3620,6 +3621,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
               }
               return;
             }
+            persistTraceNodeFromStreamEvent(chatJid, result.streamEvent);
             broadcastStreamEvent(chatJid, result.streamEvent);
 
             // ── 累积 text_delta / thinking_delta 文本（中断时用于保存已输出内容）──
@@ -4758,6 +4760,7 @@ async function runTerminalWarmup(chatJid: string): Promise<void> {
       undefined,
       async (result) => {
         if (result.status === 'stream' && result.streamEvent) {
+          persistTraceNodeFromStreamEvent(chatJid, result.streamEvent);
           broadcastStreamEvent(chatJid, result.streamEvent);
           return;
         }
