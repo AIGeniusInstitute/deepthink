@@ -244,7 +244,9 @@ app.whenReady()
 | `make desktop-build` | `desktop-build-deps` + `desktop-install` + 编译 Electron TypeScript |
 | `make desktop-fetch-node` | 拉取当前平台的 Node.js 二进制到 `desktop/dev-resources/node` |
 | `make desktop-dev` | 桌面版开发模式：启动 Electron 壳加载本机后端 |
-| `make desktop-pack-mac` | 打包 macOS `.dmg`（arm64 + x64） |
+| `make desktop-pack-mac` | 打包 macOS `.dmg`（仅 arm64，日常本地用） |
+| `make desktop-pack-mac-x64` | 打包 macOS `.dmg`（仅 x64，需在 x64/intel Mac 上执行） |
+| `make desktop-pack-mac-all` | 打包 macOS `.dmg`（arm64 + x64 双架构，发布用） |
 | `make desktop-pack-win` | 打包 Windows `.exe`（需在 Windows runner 执行） |
 | `make desktop-pack-linux` | 打包 Linux AppImage / `.deb`（需在 Linux runner 执行） |
 
@@ -821,7 +823,9 @@ make help          # 列出所有可用的 make 命令
 make desktop-build      # 编译桌面版 Electron 壳（含后端 + 前端 + agent-runner 依赖构建）
 make desktop-fetch-node # 拉取当前平台的 Node.js 二进制到 desktop/dev-resources/node
 make desktop-dev        # 桌面版开发模式：启动 Electron 壳加载本机后端
-make desktop-pack-mac   # 打包 macOS .dmg（arm64 + x64）
+make desktop-pack-mac   # 打包 macOS .dmg（仅 arm64，日常本地用）
+make desktop-pack-mac-x64 # 打包 macOS .dmg（仅 x64，需在 intel Mac 上执行）
+make desktop-pack-mac-all # 打包 macOS .dmg（arm64 + x64 双架构，发布用）
 make desktop-pack-win   # 打包 Windows .exe（需在 Windows runner 执行）
 make desktop-pack-linux # 打包 Linux AppImage/.deb（需在 Linux runner 执行）
 ```

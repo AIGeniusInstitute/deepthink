@@ -5,7 +5,8 @@
        _check-sync _build-web-if-stale _build-ar-if-stale _build-backend-if-stale \
        _start-pm2 _start-direct \
        desktop-install desktop-build-deps desktop-build desktop-fetch-node \
-       desktop-rebuild-natives desktop-dev desktop-pack-mac desktop-pack-win desktop-pack-linux
+       desktop-rebuild-natives desktop-dev desktop-pack-mac desktop-pack-mac-x64 \
+       desktop-pack-mac-all desktop-pack-win desktop-pack-linux
 
 # ─── Runtime ────────────────────────────────────────────────
 # 本项目只用原生 Node 工具链运行（npm / npx / tsx / node），不使用 bun。
@@ -353,12 +354,18 @@ desktop-fetch-node: ## 拉取当前平台的 Node.js 二进制到 dev-resources/
 
 desktop-rebuild-natives: desktop-fetch-node ## 用内置 Node ABI 重新编译根 node_modules 的 native 模块（better-sqlite3 等），避免运行时 ABI 不匹配
 	@echo "[desktop] rebuilding native modules against node $(DESKTOP_NODE_VERSION)..."
-	npm rebuild --build-from-source --target=$(DESKTOP_NODE_VERSION) --runtime=node
+	npm rebuild --target=$(DESKTOP_NODE_VERSION) --runtime=node
 
 desktop-dev: desktop-build ## 桌面版开发模式：启动 Electron 壳，加载本机后端
 	cd $(DESKTOP_DIR) && npm run dev
 
-desktop-pack-mac: desktop-build desktop-rebuild-natives ## 打包 macOS .dmg
+desktop-pack-mac: desktop-build desktop-rebuild-natives ## 打包 macOS .dmg（仅 arm64，日常本地用）
+	cd $(DESKTOP_DIR) && npx electron-builder --config build/mac.json --arm64
+
+desktop-pack-mac-x64: desktop-build desktop-rebuild-natives ## 打包 macOS .dmg（仅 x64，需在 x64/intel Mac 上执行）
+	cd $(DESKTOP_DIR) && npx electron-builder --config build/mac.json --x64
+
+desktop-pack-mac-all: desktop-build desktop-rebuild-natives ## 打包 macOS .dmg（arm64 + x64 双架构，发布用）
 	cd $(DESKTOP_DIR) && npx electron-builder --config build/mac.json
 
 desktop-pack-win: desktop-build desktop-rebuild-natives ## 打包 Windows .exe（在 Windows runner 上执行）
@@ -404,5 +411,5 @@ release-delete: ## 删除 release 及 tag（用法: make release-delete VERSION=
 help: ## 显示帮助
 	@echo "运行时: 🟢 Node.js（本项目不使用 bun）"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
