@@ -281,7 +281,7 @@ cd deepthink
 # 2. One-tap launch (auto-installs dependencies + compiles on first run)
 make start
 
-Open: http://localhost:3000
+Open: http://localhost:9898
 
 For public access, configure a reverse proxy with nginx/caddy yourself
 ```
@@ -753,7 +753,7 @@ make help    # List all available make commands with descriptions
 
 | Service | Default Port | Description |
 |------|---------|------|
-| Backend | 3000 | Hono + WebSocket |
+| Backend | 9898 | Hono + WebSocket |
 | Frontend dev server | 5173 | Vite, proxies `/api` and `/ws` to the backend (dev mode only) |
 
 #### Custom Ports
@@ -765,7 +765,7 @@ WEB_PORT=8080 make start
 # Open http://localhost:8080
 ```
 
-**Dev mode** (`make dev`): The frontend Vite dev server (`5173`) and backend (`3000`) run separately; access `5173` during development.
+**Dev mode** (`make dev`): The frontend Vite dev server (`5173`) and backend (`9898`) run separately; access `5173` during development.
 
 Change the backend port:
 
@@ -773,7 +773,7 @@ Change the backend port:
 # Backend on 8080 (via env var)
 WEB_PORT=8080 make dev-backend
 
-# The frontend must update its proxy target, otherwise API requests go to the default 3000
+# The frontend must update its proxy target, otherwise API requests go to the default 9898
 VITE_API_PROXY_TARGET=http://127.0.0.1:8080 VITE_WS_PROXY_TARGET=ws://127.0.0.1:8080 make dev-web
 ```
 
@@ -789,7 +789,7 @@ The following are optional overrides. We recommend using the Web setup wizard to
 
 | Variable | Default | Description |
 |------|--------|------|
-| `WEB_PORT` | `3000` | Web service port |
+| `WEB_PORT` | `9898` | Web service port |
 | `ASSISTANT_NAME` | `DeepThink` | Assistant display name |
 | `CONTAINER_IMAGE` | `deepthink-agent:latest` | Agent container image |
 | `CONTAINER_TIMEOUT` | `1800000` (30min) | Container hard timeout (overridable via Web settings) |
@@ -852,7 +852,15 @@ Additionally, the `shared/` directory holds cross-project shared type definition
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=AIGeniusInstitute/deep-think&type=date&legend=top-left)](https://www.star-history.com/#AIGeniusInstitute/deep-think&type=date&legend=top-left)
+## Star History
+
+<a href="https://www.star-history.com/?type=date&legend=top-left&repos=AIGeniusInstitute%2Fdeep-think">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deep-think&type=date&theme=dark&legend=top-left&sealed_token=0gNYAW67bWNrFGzx-kxE6i2dToMHwyrb24xZtohvRFcRNNzLVK-3VzinIWDn3Vfl3iTU6FY9TsCVmk9pHF2zB37sJ5TCvSSEOnjvKTkjF46QvTjnrhEfzg" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deep-think&type=date&legend=top-left&sealed_token=0gNYAW67bWNrFGzx-kxE6i2dToMHwyrb24xZtohvRFcRNNzLVK-3VzinIWDn3Vfl3iTU6FY9TsCVmk9pHF2zB37sJ5TCvSSEOnjvKTkjF46QvTjnrhEfzg" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=AIGeniusInstitute/deep-think&type=date&legend=top-left&sealed_token=0gNYAW67bWNrFGzx-kxE6i2dToMHwyrb24xZtohvRFcRNNzLVK-3VzinIWDn3Vfl3iTU6FY9TsCVmk9pHF2zB37sJ5TCvSSEOnjvKTkjF46QvTjnrhEfzg" />
+ </picture>
+</a>
 
 ## License
 

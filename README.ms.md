@@ -55,7 +55,7 @@ cd deepthink
 make start
 ```
 
-Buka http://localhost:3000 dan ikuti wizard pemasangan: cipta pentadbir (tiada akaun lalai), konfigurasi Claude API dan saluran IM jika perlu. Semuanya dikonfigurasi dari antara muka web, tiada fail konfigurasi. Kunci API disulitkan dengan AES-256-GCM.
+Buka http://localhost:9898 dan ikuti wizard pemasangan: cipta pentadbir (tiada akaun lalai), konfigurasi Claude API dan saluran IM jika perlu. Semuanya dikonfigurasi dari antara muka web, tiada fail konfigurasi. Kunci API disulitkan dengan AES-256-GCM.
 
 ### Pengaktifan mod container
 

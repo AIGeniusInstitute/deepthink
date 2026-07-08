@@ -281,7 +281,7 @@ cd deepthink
 # 2. 一键启动（首次自动安装依赖 + 编译）
 make start
 
-访问： http://localhost:3000
+访问： http://localhost:9898
 
 如需公网访问，可以自行使用 nginx/caddy 配置反向代理
 ```
@@ -753,7 +753,7 @@ make help    # 列出所有可用的 make 命令及说明
 
 | 服务 | 默认端口 | 说明 |
 |------|---------|------|
-| 后端 | 3000 | Hono + WebSocket |
+| 后端 | 9898 | Hono + WebSocket |
 | 前端开发服务器 | 5173 | Vite，代理 `/api` 和 `/ws` 到后端（仅开发模式） |
 
 #### 自定义端口
@@ -765,7 +765,7 @@ WEB_PORT=8080 make start
 # 访问 http://localhost:8080
 ```
 
-**开发模式**（`make dev`）：前端 Vite 开发服务器（`5173`）和后端（`3000`）分别运行，开发时访问 `5173`。
+**开发模式**（`make dev`）：前端 Vite 开发服务器（`5173`）和后端（`9898`）分别运行，开发时访问 `5173`。
 
 修改后端端口：
 
@@ -773,7 +773,7 @@ WEB_PORT=8080 make start
 # 后端改为 8080（通过环境变量）
 WEB_PORT=8080 make dev-backend
 
-# 前端需同步修改代理目标，否则 API 请求会发到默认的 3000
+# 前端需同步修改代理目标，否则 API 请求会发到默认的 9898
 VITE_API_PROXY_TARGET=http://127.0.0.1:8080 VITE_WS_PROXY_TARGET=ws://127.0.0.1:8080 make dev-web
 ```
 
@@ -789,7 +789,7 @@ cd web && npx vite --port 3001
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `WEB_PORT` | `3000` | Web 服务端口 |
+| `WEB_PORT` | `9898` | Web 服务端口 |
 | `ASSISTANT_NAME` | `DeepThink` | 助手显示名称 |
 | `CONTAINER_IMAGE` | `deepthink-agent:latest` | Agent 容器镜像 |
 | `CONTAINER_TIMEOUT` | `1800000`（30min） | 容器硬超时（可通过 Web 设置覆盖） |
@@ -852,7 +852,15 @@ Commit message 使用简体中文，格式：`类型: 描述`
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=AIGeniusInstitute/deep-think&type=date&legend=top-left)](https://www.star-history.com/#AIGeniusInstitute/deep-think&type=date&legend=top-left)
+## Star History
+
+<a href="https://www.star-history.com/?type=date&legend=top-left&repos=AIGeniusInstitute%2Fdeep-think">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deep-think&type=date&theme=dark&legend=top-left&sealed_token=0gNYAW67bWNrFGzx-kxE6i2dToMHwyrb24xZtohvRFcRNNzLVK-3VzinIWDn3Vfl3iTU6FY9TsCVmk9pHF2zB37sJ5TCvSSEOnjvKTkjF46QvTjnrhEfzg" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deep-think&type=date&legend=top-left&sealed_token=0gNYAW67bWNrFGzx-kxE6i2dToMHwyrb24xZtohvRFcRNNzLVK-3VzinIWDn3Vfl3iTU6FY9TsCVmk9pHF2zB37sJ5TCvSSEOnjvKTkjF46QvTjnrhEfzg" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=AIGeniusInstitute/deep-think&type=date&legend=top-left&sealed_token=0gNYAW67bWNrFGzx-kxE6i2dToMHwyrb24xZtohvRFcRNNzLVK-3VzinIWDn3Vfl3iTU6FY9TsCVmk9pHF2zB37sJ5TCvSSEOnjvKTkjF46QvTjnrhEfzg" />
+ </picture>
+</a>
 
 ## 许可证
 

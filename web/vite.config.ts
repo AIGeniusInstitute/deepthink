@@ -4,8 +4,8 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-const API_PROXY_TARGET = process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:3000';
-const WS_PROXY_TARGET = process.env.VITE_WS_PROXY_TARGET || 'ws://127.0.0.1:3000';
+const API_PROXY_TARGET = process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:9898';
+const WS_PROXY_TARGET = process.env.VITE_WS_PROXY_TARGET || 'ws://127.0.0.1:9898';
 const ENABLE_DEV_PWA = process.env.VITE_PWA_DEV === 'true';
 const MERMAID_RUNTIME_CHUNK_PATTERNS = [
   /(^|\/)assets\/mermaid(?:\.core)?-[^/]+\.js$/i,

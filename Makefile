@@ -12,7 +12,7 @@
 # 原因：主服务的 WebSocket 走 `ws` 包 + @hono/node-server 的 `server.on('upgrade')`
 # 握手，该模式在 bun 的 HTTP server 下不触发，会导致 WS 全部握手失败（HTTP/接口正常，
 # 但前端实时流式卡片/通知全失效，飞书等 stdout 通道不受影响）。
-PORT    ?= $(or $(WEB_PORT),3000)
+PORT    ?= $(or $(WEB_PORT),9898)
 PKG     := npm
 RUN     := npx
 RUNNER  := npx tsx src/index.ts

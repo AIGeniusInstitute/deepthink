@@ -55,7 +55,7 @@ cd deepthink
 make start
 ```
 
-Acesse http://localhost:3000 e siga o assistente de configuração: crie o administrador (sem conta padrão), configure a Claude API e, opcionalmente, configure os canais IM. Toda configuração é feita pela interface Web, sem arquivos de configuração. As chaves de API são armazenadas criptografadas com AES-256-GCM.
+Acesse http://localhost:9898 e siga o assistente de configuração: crie o administrador (sem conta padrão), configure a Claude API e, opcionalmente, configure os canais IM. Toda configuração é feita pela interface Web, sem arquivos de configuração. As chaves de API são armazenadas criptografadas com AES-256-GCM.
 
 ### Habilitar modo contêiner
 

@@ -55,7 +55,7 @@ cd deepthink
 make start
 ```
 
-Otwórz http://localhost:3000 i podążaj za kreatorem konfiguracji: utwórz administratora (brak domyślnego konta), skonfiguruj Claude API i opcjonalnie kanały IM. Wszystko konfiguruje się z interfejsu webowego, bez plików konfiguracyjnych. Klucze API są szyfrowane AES-256-GCM.
+Otwórz http://localhost:9898 i podążaj za kreatorem konfiguracji: utwórz administratora (brak domyślnego konta), skonfiguruj Claude API i opcjonalnie kanały IM. Wszystko konfiguruje się z interfejsu webowego, bez plików konfiguracyjnych. Klucze API są szyfrowane AES-256-GCM.
 
 ### Aktywacja trybu container
 

@@ -55,7 +55,7 @@ cd deepthink
 make start
 ```
 
-http://localhost:3000 adresini açın ve kurulum sihirbazını izleyin: yönetici oluşturun (varsayılan hesap yok), Claude API'yi yapılandırın ve gerekirse IM kanallarını ayarlayın. Her şey web arayüzünden yapılandırılır, yapılandırma dosyası gerekmez. API anahtarları AES-256-GCM ile şifrelenir.
+http://localhost:9898 adresini açın ve kurulum sihirbazını izleyin: yönetici oluşturun (varsayılan hesap yok), Claude API'yi yapılandırın ve gerekirse IM kanallarını ayarlayın. Her şey web arayüzünden yapılandırılır, yapılandırma dosyası gerekmez. API anahtarları AES-256-GCM ile şifrelenir.
 
 ### Container modunu etkinleştirme
 

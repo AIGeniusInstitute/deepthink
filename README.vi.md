@@ -55,7 +55,7 @@ cd deepthink
 make start
 ```
 
-Mở http://localhost:3000 và làm theo hướng dẫn cài đặt: tạo admin (không có tài khoản mặc định), cấu hình Claude API và kênh IM nếu cần. Mọi thứ được cấu hình từ giao diện web, không cần tệp cấu hình. Khóa API được mã hóa bằng AES-256-GCM.
+Mở http://localhost:9898 và làm theo hướng dẫn cài đặt: tạo admin (không có tài khoản mặc định), cấu hình Claude API và kênh IM nếu cần. Mọi thứ được cấu hình từ giao diện web, không cần tệp cấu hình. Khóa API được mã hóa bằng AES-256-GCM.
 
 ### Kích hoạt chế độ container
 

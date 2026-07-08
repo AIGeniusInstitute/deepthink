@@ -41,7 +41,7 @@ export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai';
 
 // Web server configuration
-export const WEB_PORT = parseInt(process.env.WEB_PORT || '3000', 10);
+export const WEB_PORT = parseInt(process.env.WEB_PORT || '9898', 10);
 
 // Cookie configuration
 // When accessed over HTTPS: use __Host- prefix (requires Secure; Path=/; no Domain)

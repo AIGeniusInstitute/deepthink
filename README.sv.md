@@ -55,7 +55,7 @@ cd deepthink
 make start
 ```
 
-Öppna http://localhost:3000 och följ setup-guiden: skapa en administratör (inget standardkonto), konfigurera Claude API och vid behov IM-kanaler. Allt konfigureras från webbgränssnittet, inga konfigurationsfiler. API-nycklar krypteras med AES-256-GCM.
+Öppna http://localhost:9898 och följ setup-guiden: skapa en administratör (inget standardkonto), konfigurera Claude API och vid behov IM-kanaler. Allt konfigureras från webbgränssnittet, inga konfigurationsfiler. API-nycklar krypteras med AES-256-GCM.
 
 ### Aktivera containerläge
 

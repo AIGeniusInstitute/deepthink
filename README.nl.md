@@ -55,7 +55,7 @@ cd deepthink
 make start
 ```
 
-Open http://localhost:3000 en volg de setup-wizard: maak een beheerder aan (geen standaardaccount), configureer de Claude API en eventueel IM-kanalen. Alles wordt via de webinterface geconfigureerd, geen configuratiebestanden. API-sleutels worden versleuteld opgeslagen met AES-256-GCM.
+Open http://localhost:9898 en volg de setup-wizard: maak een beheerder aan (geen standaardaccount), configureer de Claude API en eventueel IM-kanalen. Alles wordt via de webinterface geconfigureerd, geen configuratiebestanden. API-sleutels worden versleuteld opgeslagen met AES-256-GCM.
 
 ### Container-modus activeren
 

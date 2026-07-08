@@ -55,7 +55,7 @@ cd deepthink
 make start
 ```
 
-Otevřete http://localhost:3000 a následujte setup průvodce: vytvořte administrátora (žádný výchozí účet), nastavte Claude API a případně IM kanály. Vše se konfiguruje z webového rozhraní, žádné konfigurační soubory. API klíče se ukládají šifrované pomocí AES-256-GCM.
+Otevřete http://localhost:9898 a následujte setup průvodce: vytvořte administrátora (žádný výchozí účet), nastavte Claude API a případně IM kanály. Vše se konfiguruje z webového rozhraní, žádné konfigurační soubory. API klíče se ukládají šifrované pomocí AES-256-GCM.
 
 ### Aktivace kontejnerového režimu
 

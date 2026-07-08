@@ -55,7 +55,7 @@ cd deepthink
 make start
 ```
 
-Kunjungi http://localhost:3000 dan ikuti panduan pengaturan: buat administrator (tidak ada akun default), konfigurasikan Claude API, dan opsional konfigurasikan kanal IM. Semua konfigurasi dilakukan dari antarmuka Web, tanpa file konfigurasi. Kunci API disimpan terenkripsi dengan AES-256-GCM.
+Kunjungi http://localhost:9898 dan ikuti panduan pengaturan: buat administrator (tidak ada akun default), konfigurasikan Claude API, dan opsional konfigurasikan kanal IM. Semua konfigurasi dilakukan dari antarmuka Web, tanpa file konfigurasi. Kunci API disimpan terenkripsi dengan AES-256-GCM.
 
 ### Mengaktifkan mode kontainer
 
