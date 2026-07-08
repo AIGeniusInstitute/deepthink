@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { successTap } from '../../hooks/useHaptic';
 import {
@@ -17,6 +17,13 @@ import { useFileStore } from '../../stores/files';
 import { useChatStore } from '../../stores/chat';
 import { useDisplayMode } from '../../hooks/useDisplayMode';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useSkillsStore } from '../../stores/skills';
+import {
+  buildSlashCommandList,
+  detectSlashToken,
+  filterSlashCommands,
+  completeSlashToken,
+} from '../../lib/slash-commands';
 
 interface PendingFile {
   /** Display name: relative path for folder uploads, file name otherwise */
@@ -72,6 +79,25 @@ export function MessageInput({
   const prevGroupJidRef = useRef<string | undefined>(groupJid);
   const groupJidRef = useRef(groupJid);
   groupJidRef.current = groupJid;
+
+  // Slash command popover state
+  const [slashIndex, setSlashIndex] = useState(0);
+  const { skills } = useSkillsStore();
+  const slashCommands = useMemo(() => buildSlashCommandList(skills), [skills]);
+  const slashToken = useMemo(
+    () => detectSlashToken(content, textareaRef.current?.selectionStart ?? content.length),
+    [content],
+  );
+  const slashFiltered = useMemo(
+    () => (slashToken ? filterSlashCommands(slashCommands, slashToken.match.slice(1)) : []),
+    [slashToken, slashCommands],
+  );
+  const slashOpen = slashFiltered.length > 0;
+  useEffect(() => {
+    if (slashIndex >= slashFiltered.length) {
+      setSlashIndex(0);
+    }
+  }, [slashFiltered.length, slashIndex]);
 
   const { uploadFiles, uploading, uploadProgress } = useFileStore();
   const { drafts, saveDraft, clearDraft } = useChatStore();
@@ -164,6 +190,58 @@ export function MessageInput({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (composingRef.current || e.nativeEvent.isComposing) return;
+
+    // Slash command popover navigation — takes precedence over Enter-send
+    // so arrow keys and Tab don't get hijacked by the textarea's native behavior.
+    if (slashOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSlashIndex((i) => (i + 1) % slashFiltered.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSlashIndex((i) => (i - 1 + slashFiltered.length) % slashFiltered.length);
+        return;
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault();
+        const cmd = slashFiltered[slashIndex];
+        if (cmd && slashToken) {
+          const cursorPos = textareaRef.current?.selectionStart ?? content.length;
+          const { text: nextText, cursorPos: nextCursor } = completeSlashToken(
+            content,
+            slashToken.start,
+            cursorPos,
+            cmd,
+          );
+          setContent(nextText);
+          debouncedSaveDraft(nextText);
+          // Restore cursor position after React re-renders
+          requestAnimationFrame(() => {
+            const ta = textareaRef.current;
+            if (ta) {
+              ta.selectionStart = ta.selectionEnd = nextCursor;
+              ta.focus();
+            }
+          });
+          return;
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        // Clear the slash token by trimming back to the start of the match
+        if (slashToken) {
+          const before = content.slice(0, slashToken.start);
+          const after = content.slice((textareaRef.current?.selectionStart ?? content.length));
+          const nextText = before + after;
+          setContent(nextText);
+          debouncedSaveDraft(nextText);
+        }
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
       if (Date.now() - compositionEndTimeRef.current < 100) return;
       e.preventDefault();
@@ -725,8 +803,8 @@ export function MessageInput({
             </div>
           )}
 
-          {/* Textarea */}
-          <div className="px-4 pt-3 pb-1">
+          {/* Textarea + slash command popover */}
+          <div className="px-4 pt-3 pb-1 relative">
             <textarea
               ref={textareaRef}
               value={content}
@@ -738,12 +816,62 @@ export function MessageInput({
               onCompositionStart={() => { composingRef.current = true; }}
               onCompositionEnd={() => { composingRef.current = false; compositionEndTimeRef.current = Date.now(); }}
               onPaste={handlePaste}
-              placeholder="输入消息..."
+              placeholder="输入消息...（输入 / 触发命令）"
               disabled={disabled}
               className="w-full text-base leading-6 resize-none focus:outline-none placeholder:text-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed bg-transparent"
               rows={1}
               style={{ minHeight: '28px', maxHeight: '144px' }}
             />
+            {slashOpen && (
+              <div className="absolute left-4 right-4 bottom-full mb-1 max-h-60 overflow-y-auto rounded-md border border-border bg-popover shadow-lg z-50">
+                {slashFiltered.map((cmd, i) => (
+                  <button
+                    key={`${cmd.source}:${cmd.name}`}
+                    type="button"
+                    onMouseDown={(e) => {
+                      // Prevent textarea blur before click fires
+                      e.preventDefault();
+                      const cursorPos = textareaRef.current?.selectionStart ?? content.length;
+                      const { text: nextText, cursorPos: nextCursor } = completeSlashToken(
+                        content,
+                        slashToken!.start,
+                        cursorPos,
+                        cmd,
+                      );
+                      setContent(nextText);
+                      debouncedSaveDraft(nextText);
+                      requestAnimationFrame(() => {
+                        const ta = textareaRef.current;
+                        if (ta) {
+                          ta.selectionStart = ta.selectionEnd = nextCursor;
+                          ta.focus();
+                        }
+                      });
+                    }}
+                    className={`w-full flex items-start gap-2 px-3 py-2 text-left cursor-pointer ${
+                      i === slashIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'
+                    }`}
+                  >
+                    <span className="font-mono text-xs text-primary flex-shrink-0 mt-0.5">
+                      /{cmd.name}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs text-foreground truncate">
+                        {cmd.description}
+                      </span>
+                      {cmd.argumentHint && (
+                        <span className="block text-[10px] text-muted-foreground mt-0.5">
+                          参数: <code className="font-mono">{cmd.argumentHint}</code>
+                        </span>
+                      )}
+                      <span className="block text-[10px] text-muted-foreground/70 mt-0.5">
+                        {cmd.source === 'builtin' ? '内置命令' : 'Skill'}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Bottom action bar */}

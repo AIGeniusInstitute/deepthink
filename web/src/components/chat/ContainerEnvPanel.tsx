@@ -10,7 +10,16 @@ interface ContainerEnvPanelProps {
 }
 
 const MODEL_ENV_KEY = 'ANTHROPIC_MODEL';
+const EFFORT_ENV_KEY = 'CLAUDE_EFFORT';
 const MODEL_PRESETS = ['opus[1m]', 'opus', 'sonnet[1m]', 'sonnet', 'haiku'] as const;
+const EFFORT_OPTIONS = [
+  { value: '', label: '默认（不设置）' },
+  { value: 'low', label: 'Low — 快速回答' },
+  { value: 'medium', label: 'Medium — 常规推理' },
+  { value: 'high', label: 'High — 深度思考' },
+  { value: 'xhigh', label: 'XHigh — 极深推理' },
+  { value: 'max', label: 'Max — 最大预算' },
+] as const;
 
 export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps) {
   const { configs, loading, saving, loadConfig, saveConfig } = useContainerEnvStore();
@@ -21,6 +30,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
   const [authToken, setAuthToken] = useState('');
   const [authTokenDirty, setAuthTokenDirty] = useState(false);
   const [model, setModel] = useState('');
+  const [effort, setEffort] = useState('');
   const [customEnv, setCustomEnv] = useState<{ key: string; value: string }[]>([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -46,8 +56,10 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
     setAuthTokenDirty(false);
     const entries = Object.entries(config.customEnv || {}).map(([key, value]) => ({ key, value }));
     const modelFromConfig = (config.customEnv && config.customEnv[MODEL_ENV_KEY]) || '';
+    const effortFromConfig = (config.customEnv && config.customEnv[EFFORT_ENV_KEY]) || '';
     setModel(modelFromConfig);
-    setCustomEnv(entries.filter(({ key }) => key !== MODEL_ENV_KEY));
+    setEffort(effortFromConfig);
+    setCustomEnv(entries.filter(({ key }) => key !== MODEL_ENV_KEY && key !== EFFORT_ENV_KEY));
   }, [config]);
 
   const handleSave = async () => {
@@ -64,12 +76,16 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
     const envMap: Record<string, string> = {};
     for (const { key, value } of customEnv) {
       const k = key.trim();
-      if (!k || k === MODEL_ENV_KEY) continue;
+      if (!k || k === MODEL_ENV_KEY || k === EFFORT_ENV_KEY) continue;
       envMap[k] = value;
     }
     const normalizedModel = model.trim();
     if (normalizedModel) {
       envMap[MODEL_ENV_KEY] = normalizedModel;
+    }
+    const normalizedEffort = effort.trim();
+    if (normalizedEffort) {
+      envMap[EFFORT_ENV_KEY] = normalizedEffort;
     }
     data.customEnv = envMap;
 
@@ -213,6 +229,26 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                 留空则回退到全局配置（默认值通常为 <code className="bg-muted px-1 rounded">opus</code>）。
               </p>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              推理深度（CLAUDE_EFFORT）
+            </label>
+            <select
+              value={effort}
+              onChange={(e) => setEffort(e.target.value)}
+              className="w-full px-2.5 py-1.5 text-xs h-auto rounded-md border border-input bg-background text-foreground cursor-pointer"
+            >
+              {EFFORT_OPTIONS.map((opt) => (
+                <option key={opt.value || 'default'} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              控制模型思考预算。低档适合简单问答，高档适合复杂推理任务。
+            </p>
           </div>
 
         </div>

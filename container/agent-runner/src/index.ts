@@ -45,6 +45,7 @@ import {
 import { StreamEventProcessor } from './stream-processor.js';
 import { PREDEFINED_AGENTS } from './agent-definitions.js';
 import { createMcpTools } from './mcp-tools.js';
+import { TraceNodeAllocator } from './trace-node-allocator.js';
 
 // 路径解析：优先读取环境变量，降级到容器内默认路径（保持向后兼容）
 const WORKSPACE_GROUP = process.env.DEEPTHINK_WORKSPACE_GROUP || '/workspace/group';
@@ -58,6 +59,16 @@ const WORKSPACE_IPC = process.env.DEEPTHINK_WORKSPACE_IPC || '/workspace/ipc';
 // 入口 fail-fast，明确报配置错误，而不是发一个注定失败的请求。
 // 取值支持别名（opus/sonnet/haiku）或完整模型 ID；[1m] 后缀启用 1M 上下文窗口。
 const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL?.trim() ?? '';
+
+// Reasoning effort depth, propagated to SDK query() options.effort.
+// Empty string means "do not set" (let SDK use its default).
+const CLAUDE_EFFORT = (process.env.CLAUDE_EFFORT?.trim() || '') as
+  | ''
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max';
 
 const IPC_INPUT_DIR = path.join(WORKSPACE_IPC, 'input');
 const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
@@ -1245,11 +1256,18 @@ async function runQuery(
   const assistantTextTracker = new AssistantTextTracker();
   let canonicalAssistantUuid: string | undefined;
   const initialRejected = stream.push(prompt, images);
-  const decorateStreamEvent = (event: StreamEvent): StreamEvent => ({
-    ...event,
-    turnId: containerInput.turnId,
-    sessionId: newSessionId || sessionId,
-  });
+  // Allocate stable nodeIds for DAG visualization. Per-process monotonic
+  // counter; the main process persists nodes with upsertChatTraceNode keyed
+  // on (chat_jid, id). resetTurn() is called when a new user message arrives.
+  const traceAllocator = new TraceNodeAllocator();
+  const decorateStreamEvent = (event: StreamEvent): StreamEvent => {
+    const decorated = traceAllocator.decorate(event);
+    return {
+      ...decorated,
+      turnId: containerInput.turnId,
+      sessionId: newSessionId || sessionId,
+    };
+  };
   const emit = (output: ContainerOutput): void => {
     if (output.streamEvent) {
       output = {
@@ -1548,6 +1566,7 @@ async function runQuery(
       options: {
         ...(pathToClaudeCodeExecutable && { pathToClaudeCodeExecutable }),
         model: CLAUDE_MODEL,
+        ...(CLAUDE_EFFORT ? { effort: CLAUDE_EFFORT } : {}),
         cwd: WORKSPACE_GROUP,
         additionalDirectories: extraDirs,
         resume: sessionId,
