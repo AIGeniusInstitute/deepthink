@@ -658,7 +658,7 @@ fileRoutes.get('/:jid/files/preview/:path', authMiddleware, (c) => {
     const isHtmlLike =
       mimeType === 'text/html' || mimeType === 'image/svg+xml';
     const csp = isHtmlLike
-      ? "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'unsafe-inline' data: blob:; img-src data: blob:; font-src data: blob:; connect-src 'none'; frame-ancestors 'none'"
+      ? "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'unsafe-inline' data: blob:; img-src data: blob:; font-src data: blob:; connect-src 'none'; frame-ancestors 'self'"
       : "default-src 'none'; sandbox";
     const securityHeaders: Record<string, string> = {
       'Content-Security-Policy': csp,
