@@ -1,0 +1,368 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1100" width="1400" height="1100">
+  <style>
+    text { font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif; }
+    .layer-label { font-size: 14px; font-weight: 600; fill: #374151; }
+    .node-title { font-size: 15px; font-weight: 600; fill: #111827; }
+    .node-sub { font-size: 12px; fill: #6b7280; }
+    .pill-title { font-size: 13px; font-weight: 600; fill: #1f2937; }
+    .pill-sub { font-size: 11px; fill: #6b7280; }
+    .arrow-label { font-size: 11px; fill: #4b5563; }
+    .legend-text { font-size: 12px; fill: #4b5563; }
+  </style>
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#ea580c"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/>
+    </marker>
+    <marker id="arrow-gray-start" markerWidth="10" markerHeight="7" refX="1" refY="3.5" orient="auto">
+      <polygon points="10 0, 0 3.5, 10 7" fill="#6b7280"/>
+    </marker>
+  </defs>
+
+  <rect width="1400" height="1100" fill="#ffffff"/>
+
+  <text x="700" y="38" text-anchor="middle" font-size="22" font-weight="600" fill="#111827">DeepThink 系统整体架构图</text>
+  <text x="700" y="60" text-anchor="middle" font-size="13" fill="#6b7280">Enterprise Agent SaaS · 自进化超级智能体平台 · Harness → Loop Engineering</text>
+
+  <!-- ========== Layer 1: 用户接入层 ========== -->
+  <rect x="40" y="90" width="1320" height="130" fill="none" stroke="#9ca3af" stroke-width="1.2" stroke-dasharray="6,4" rx="10"/>
+  <rect x="56" y="80" width="180" height="20" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.2" stroke-dasharray="6,4" rx="4"/>
+  <text x="60" y="95" class="layer-label">① 用户接入层</text>
+
+  <!-- Web 前端 -->
+  <rect x="80" y="120" width="320" height="85" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5" rx="8"/>
+  <rect x="80" y="120" width="6" height="85" fill="#2563eb" rx="3"/>
+  <text x="100" y="145" class="node-title">Web 前端</text>
+  <text x="100" y="165" class="node-sub">React 19 · Vite 6 · Zustand</text>
+  <text x="100" y="182" class="node-sub">React Router 7 · PWA · WebSocket</text>
+  <text x="100" y="199" class="node-sub">Mermaid · react-markdown</text>
+
+  <!-- 桌面版 Electron -->
+  <rect x="430" y="120" width="320" height="85" fill="#fff7ed" stroke="#fed7aa" stroke-width="1.5" rx="8"/>
+  <rect x="430" y="120" width="6" height="85" fill="#ea580c" rx="3"/>
+  <text x="450" y="145" class="node-title">桌面版 Electron 壳</text>
+  <text x="450" y="165" class="node-sub">macOS (.dmg) · Windows (.exe)</text>
+  <text x="450" y="182" class="node-sub">Linux (.AppImage)</text>
+  <text x="450" y="199" class="node-sub">BackendSupervisor spawn 后端子进程</text>
+
+  <!-- IM 渠道 容器 -->
+  <rect x="780" y="120" width="560" height="85" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1.5" rx="8"/>
+  <rect x="780" y="120" width="6" height="85" fill="#0d9488" rx="3"/>
+  <text x="800" y="142" class="node-title">IM 渠道（per-user 连接）</text>
+  <!-- 5 pills -->
+  <rect x="800" y="155" width="100" height="42" fill="#ffffff" stroke="#5eead4" stroke-width="1" rx="6"/>
+  <text x="850" y="173" text-anchor="middle" class="pill-title">飞书</text>
+  <text x="850" y="189" text-anchor="middle" class="pill-sub">WebSocket</text>
+
+  <rect x="910" y="155" width="100" height="42" fill="#ffffff" stroke="#5eead4" stroke-width="1" rx="6"/>
+  <text x="960" y="173" text-anchor="middle" class="pill-title">Telegram</text>
+  <text x="960" y="189" text-anchor="middle" class="pill-sub">Bot Long Poll</text>
+
+  <rect x="1020" y="155" width="100" height="42" fill="#ffffff" stroke="#5eead4" stroke-width="1" rx="6"/>
+  <text x="1070" y="173" text-anchor="middle" class="pill-title">QQ</text>
+  <text x="1070" y="189" text-anchor="middle" class="pill-sub">Bot API v2</text>
+
+  <rect x="1130" y="155" width="100" height="42" fill="#ffffff" stroke="#5eead4" stroke-width="1" rx="6"/>
+  <text x="1180" y="173" text-anchor="middle" class="pill-title">钉钉</text>
+  <text x="1180" y="189" text-anchor="middle" class="pill-sub">Stream 协议</text>
+
+  <rect x="1240" y="155" width="100" height="42" fill="#ffffff" stroke="#5eead4" stroke-width="1" rx="6"/>
+  <text x="1290" y="173" text-anchor="middle" class="pill-title">WhatsApp</text>
+  <text x="1290" y="189" text-anchor="middle" class="pill-sub">Baileys</text>
+
+  <!-- ========== Layer 2: 网关与认证层 ========== -->
+  <rect x="40" y="240" width="1320" height="110" fill="none" stroke="#9ca3af" stroke-width="1.2" stroke-dasharray="6,4" rx="10"/>
+  <rect x="56" y="230" width="200" height="20" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.2" stroke-dasharray="6,4" rx="4"/>
+  <text x="60" y="245" class="layer-label">② 网关与认证层</text>
+
+  <!-- Hono Web 服务 -->
+  <rect x="80" y="265" width="640" height="75" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5" rx="8"/>
+  <rect x="80" y="265" width="6" height="75" fill="#2563eb" rx="3"/>
+  <text x="100" y="288" class="node-title">Hono Web 服务（src/web.ts）</text>
+  <text x="100" y="307" class="node-sub">REST API · /ws WebSocket 长连接 · 实时推送 stream_event / agent_status</text>
+  <text x="100" y="324" class="node-sub">HMAC Cookie · CORS_ALLOWED_ORIGINS Origin 纵深防御 · 静态文件托管</text>
+
+  <!-- 认证授权 -->
+  <rect x="740" y="265" width="600" height="75" fill="#fef2f2" stroke="#fecaca" stroke-width="1.5" rx="8"/>
+  <rect x="740" y="265" width="6" height="75" fill="#dc2626" rx="3"/>
+  <text x="760" y="288" class="node-title">认证与授权（src/routes/auth.ts）</text>
+  <text x="760" y="307" class="node-sub">bcrypt 12 轮 · 30 天 Session · RBAC（admin / member · 5 权限）</text>
+  <text x="760" y="324" class="node-sub">审计日志 18 事件类型 · 登录锁定 · 设置向导 · 邀请码</text>
+
+  <!-- ========== Layer 3: 业务路由层 ========== -->
+  <rect x="40" y="370" width="1320" height="130" fill="none" stroke="#9ca3af" stroke-width="1.2" stroke-dasharray="6,4" rx="10"/>
+  <rect x="56" y="360" width="220" height="20" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.2" stroke-dasharray="6,4" rx="4"/>
+  <text x="60" y="375" class="layer-label">③ 业务路由层（Web API · src/routes/）</text>
+
+  <!-- 12 pills -->
+  <g>
+    <rect x="64" y="405" width="95" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="6"/>
+    <text x="111" y="435" text-anchor="middle" class="pill-title">auth</text>
+    <text x="111" y="453" text-anchor="middle" class="pill-sub">登录/注册</text>
+    <text x="111" y="468" text-anchor="middle" class="pill-sub">RBAC</text>
+
+    <rect x="171" y="405" width="95" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="6"/>
+    <text x="218" y="435" text-anchor="middle" class="pill-title">groups</text>
+    <text x="218" y="453" text-anchor="middle" class="pill-sub">群组 CRUD</text>
+    <text x="218" y="468" text-anchor="middle" class="pill-sub">消息分页</text>
+
+    <rect x="278" y="405" width="95" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="6"/>
+    <text x="325" y="435" text-anchor="middle" class="pill-title">files</text>
+    <text x="325" y="453" text-anchor="middle" class="pill-sub">上传/下载</text>
+    <text x="325" y="468" text-anchor="middle" class="pill-sub">50MB 限制</text>
+
+    <rect x="385" y="405" width="95" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="6"/>
+    <text x="432" y="435" text-anchor="middle" class="pill-title">memory</text>
+    <text x="432" y="453" text-anchor="middle" class="pill-sub">记忆读写</text>
+    <text x="432" y="468" text-anchor="middle" class="pill-sub">全文检索</text>
+
+    <rect x="492" y="405" width="95" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="6"/>
+    <text x="539" y="435" text-anchor="middle" class="pill-title">config</text>
+    <text x="539" y="453" text-anchor="middle" class="pill-sub">Claude/IM</text>
+    <text x="539" y="468" text-anchor="middle" class="pill-sub">系统设置</text>
+
+    <rect x="599" y="405" width="95" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="6"/>
+    <text x="646" y="435" text-anchor="middle" class="pill-title">tasks</text>
+    <text x="646" y="453" text-anchor="middle" class="pill-sub">定时任务</text>
+    <text x="646" y="468" text-anchor="middle" class="pill-sub">cron/once</text>
+
+    <rect x="706" y="405" width="95" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="6"/>
+    <text x="753" y="435" text-anchor="middle" class="pill-title">agents</text>
+    <text x="753" y="453" text-anchor="middle" class="pill-sub">Sub-Agent</text>
+    <text x="753" y="468" text-anchor="middle" class="pill-sub">CRUD</text>
+
+    <rect x="813" y="405" width="95" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="6"/>
+    <text x="860" y="435" text-anchor="middle" class="pill-title">mcp</text>
+    <text x="860" y="453" text-anchor="middle" class="pill-sub">MCP Servers</text>
+    <text x="860" y="468" text-anchor="middle" class="pill-sub">per-user</text>
+
+    <rect x="920" y="405" width="95" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="6"/>
+    <text x="967" y="435" text-anchor="middle" class="pill-title">plugins</text>
+    <text x="967" y="453" text-anchor="middle" class="pill-sub">Plugin 版本</text>
+    <text x="967" y="468" text-anchor="middle" class="pill-sub">化 runtime</text>
+
+    <rect x="1027" y="405" width="95" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="6"/>
+    <text x="1074" y="435" text-anchor="middle" class="pill-title">admin</text>
+    <text x="1074" y="453" text-anchor="middle" class="pill-sub">用户管理</text>
+    <text x="1074" y="468" text-anchor="middle" class="pill-sub">审计/邀请</text>
+
+    <rect x="1134" y="405" width="95" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="6"/>
+    <text x="1181" y="435" text-anchor="middle" class="pill-title">monitor</text>
+    <text x="1181" y="453" text-anchor="middle" class="pill-sub">容器列表</text>
+    <text x="1181" y="468" text-anchor="middle" class="pill-sub">/api/health</text>
+
+    <rect x="1241" y="405" width="95" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="6"/>
+    <text x="1288" y="435" text-anchor="middle" class="pill-title">usage</text>
+    <text x="1288" y="453" text-anchor="middle" class="pill-sub">Token 用量</text>
+    <text x="1288" y="468" text-anchor="middle" class="pill-sub">日聚合</text>
+  </g>
+
+  <!-- ========== Layer 4: 核心调度层 ========== -->
+  <rect x="40" y="520" width="1320" height="130" fill="none" stroke="#9ca3af" stroke-width="1.2" stroke-dasharray="6,4" rx="10"/>
+  <rect x="56" y="510" width="200" height="20" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.2" stroke-dasharray="6,4" rx="4"/>
+  <text x="60" y="525" class="layer-label">④ 核心调度层</text>
+
+  <!-- index.ts -->
+  <rect x="90" y="550" width="290" height="85" fill="#faf5ff" stroke="#ddd6fe" stroke-width="1.5" rx="8"/>
+  <rect x="90" y="550" width="6" height="85" fill="#7c3aed" rx="3"/>
+  <text x="110" y="573" class="node-title">index.ts 主进程</text>
+  <text x="110" y="592" class="node-sub">消息轮询 2s · IPC 监听 1s</text>
+  <text x="110" y="609" class="node-sub">容器/宿主机生命周期管理</text>
+  <text x="110" y="626" class="node-sub">loadState() 启动加载</text>
+
+  <!-- GroupQueue -->
+  <rect x="400" y="550" width="290" height="85" fill="#fff7ed" stroke="#fed7aa" stroke-width="1.5" rx="8"/>
+  <rect x="400" y="550" width="6" height="85" fill="#ea580c" rx="3"/>
+  <text x="420" y="573" class="node-title">GroupQueue</text>
+  <text x="420" y="592" class="node-sub">并发控制：20 容器 + 5 宿主机进程</text>
+  <text x="420" y="609" class="node-sub">任务优先 · 指数退避重试 5 次</text>
+  <text x="420" y="626" class="node-sub">优雅关闭 _close sentinel</text>
+
+  <!-- IMConnectionManager -->
+  <rect x="710" y="550" width="290" height="85" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5" rx="8"/>
+  <rect x="710" y="550" width="6" height="85" fill="#16a34a" rx="3"/>
+  <text x="730" y="573" class="node-title">IMConnectionManager</text>
+  <text x="730" y="592" class="node-sub">per-user 飞书/Telegram/QQ/钉钉</text>
+  <text x="730" y="609" class="node-sub">/WhatsApp 连接池</text>
+  <text x="730" y="626" class="node-sub">热重连 · ignoreMessagesBefore</text>
+
+  <!-- TaskScheduler -->
+  <rect x="1020" y="550" width="290" height="85" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5" rx="8"/>
+  <rect x="1020" y="550" width="6" height="85" fill="#2563eb" rx="3"/>
+  <text x="1040" y="573" class="node-title">TaskScheduler</text>
+  <text x="1040" y="592" class="node-sub">60s 轮询调度</text>
+  <text x="1040" y="609" class="node-sub">cron / interval / once</text>
+  <text x="1040" y="626" class="node-sub">group / isolated 上下文</text>
+
+  <!-- ========== Layer 5: Agent Runner 执行引擎 ========== -->
+  <rect x="40" y="670" width="1320" height="200" fill="none" stroke="#9ca3af" stroke-width="1.2" stroke-dasharray="6,4" rx="10"/>
+  <rect x="56" y="660" width="240" height="20" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.2" stroke-dasharray="6,4" rx="4"/>
+  <text x="60" y="675" class="layer-label">⑤ Agent Runner 执行引擎（container/agent-runner/）</text>
+
+  <!-- host mode -->
+  <rect x="70" y="700" width="620" height="60" fill="#fff7ed" stroke="#fed7aa" stroke-width="1.5" rx="8"/>
+  <rect x="70" y="700" width="6" height="60" fill="#ea580c" rx="3"/>
+  <text x="90" y="722" class="node-title">Host 模式（admin 主容器 folder=main）</text>
+  <text x="90" y="742" class="node-sub">node agent-runner/dist · @anthropic-ai/claude-agent-sdk · claude CLI 直接访问宿主机</text>
+
+  <!-- container mode -->
+  <rect x="710" y="700" width="620" height="60" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5" rx="8"/>
+  <rect x="710" y="700" width="6" height="60" fill="#2563eb" rx="3"/>
+  <text x="730" y="722" class="node-title">Container 模式（member 主容器 / 其他群组）</text>
+  <text x="730" y="742" class="node-sub">docker run · node:22-slim · 卷挂载隔离 · entrypoint.sh 加载 env/Skills</text>
+
+  <!-- Shared modules row -->
+  <rect x="70" y="780" width="240" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="8"/>
+  <text x="190" y="810" text-anchor="middle" class="pill-title">Claude Agent SDK</text>
+  <text x="190" y="828" text-anchor="middle" class="pill-sub">cli.js 内置运行时</text>
+  <text x="190" y="844" text-anchor="middle" class="pill-sub">" *" 始终最新</text>
+
+  <rect x="325" y="780" width="240" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="8"/>
+  <text x="445" y="810" text-anchor="middle" class="pill-title">MCP Server（12 工具）</text>
+  <text x="445" y="828" text-anchor="middle" class="pill-sub">send_message · schedule_task</text>
+  <text x="445" y="844" text-anchor="middle" class="pill-sub">register_group · memory_*</text>
+
+  <rect x="580" y="780" width="240" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="8"/>
+  <text x="700" y="810" text-anchor="middle" class="pill-title">StreamEventProcessor</text>
+  <text x="700" y="828" text-anchor="middle" class="pill-sub">text_delta 200 字缓冲</text>
+  <text x="700" y="844" text-anchor="middle" class="pill-sub">tool_use 状态追踪</text>
+
+  <rect x="835" y="780" width="240" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="8"/>
+  <text x="955" y="810" text-anchor="middle" class="pill-title">预定义 SubAgent</text>
+  <text x="955" y="828" text-anchor="middle" class="pill-sub">code-reviewer</text>
+  <text x="955" y="844" text-anchor="middle" class="pill-sub">web-researcher</text>
+
+  <rect x="1090" y="780" width="240" height="80" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2" rx="8"/>
+  <text x="1210" y="810" text-anchor="middle" class="pill-title">PreCompact Hook</text>
+  <text x="1210" y="828" text-anchor="middle" class="pill-sub">归档对话到</text>
+  <text x="1210" y="844" text-anchor="middle" class="pill-sub">conversations/</text>
+
+  <!-- ========== Layer 6: 数据持久化层 ========== -->
+  <rect x="40" y="890" width="1320" height="140" fill="none" stroke="#9ca3af" stroke-width="1.2" stroke-dasharray="6,4" rx="10"/>
+  <rect x="56" y="880" width="200" height="20" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.2" stroke-dasharray="6,4" rx="4"/>
+  <text x="60" y="895" class="layer-label">⑥ 数据持久化层</text>
+
+  <!-- SQLite -->
+  <rect x="80" y="920" width="400" height="95" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5" rx="8"/>
+  <rect x="80" y="920" width="6" height="95" fill="#16a34a" rx="3"/>
+  <text x="100" y="945" class="node-title">SQLite 数据库（WAL 模式）</text>
+  <text x="100" y="965" class="node-sub">Schema v1 → v24 · 13 张表</text>
+  <text x="100" y="982" class="node-sub">messages · chats · registered_groups</text>
+  <text x="100" y="999" class="node-sub">users · sessions · tasks · audit · usage</text>
+
+  <!-- 文件系统 -->
+  <rect x="500" y="920" width="440" height="95" fill="#faf5ff" stroke="#ddd6fe" stroke-width="1.5" rx="8"/>
+  <rect x="500" y="920" width="6" height="95" fill="#7c3aed" rx="3"/>
+  <text x="520" y="945" class="node-title">文件系统 data/</text>
+  <text x="520" y="965" class="node-sub">groups/{folder}/ · sessions/ · ipc/{folder}/</text>
+  <text x="520" y="982" class="node-sub">extra/{folder}/ · plugins/runtime/ · streaming-buffer/</text>
+  <text x="520" y="999" class="node-sub">skills/{userId}/ · mcp-servers/{userId}/</text>
+
+  <!-- 加密配置 -->
+  <rect x="960" y="920" width="380" height="95" fill="#fef2f2" stroke="#fecaca" stroke-width="1.5" rx="8"/>
+  <rect x="960" y="920" width="6" height="95" fill="#dc2626" rx="3"/>
+  <text x="980" y="945" class="node-title">AES-256-GCM 加密配置</text>
+  <text x="980" y="965" class="node-sub">claude-provider · container-env</text>
+  <text x="980" y="982" class="node-sub">user-im/{userId}/* · user-cli/{userId}/</text>
+  <text x="980" y="999" class="node-sub">session-secret.key（0600 权限）</text>
+
+  <!-- ========== Arrows ========== -->
+
+  <!-- L1 Web → L2 Hono -->
+  <path d="M 240,205 L 240,265" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <text x="248" y="240" class="arrow-label">HTTP / WS</text>
+
+  <!-- L1 Desktop → L2 Hono (spawn backend) -->
+  <path d="M 590,205 L 590,265" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <text x="598" y="240" class="arrow-label">spawn 后端</text>
+
+  <!-- L1 IM → L4 IMConnectionManager (curved right rail, lands on right edge of IMConnectionManager) -->
+  <path d="M 1340,160 C 1380,160 1380,592 1000,592" stroke="#7c3aed" stroke-width="1.8" fill="none" stroke-dasharray="4,3" marker-end="url(#arrow-purple)"/>
+  <text x="1392" y="380" class="arrow-label" transform="rotate(90 1392 380)">WebSocket / Long Polling · 消息事件</text>
+
+  <!-- L2 Hono ↔ Auth -->
+  <path d="M 720,302 L 740,302" stroke="#2563eb" stroke-width="1.8" fill="none" marker-end="url(#arrow-blue)"/>
+  <path d="M 740,308 L 720,308" stroke="#2563eb" stroke-width="1.8" fill="none" marker-end="url(#arrow-blue)"/>
+  <text x="730" y="290" text-anchor="middle" class="arrow-label">校验</text>
+
+  <!-- L2 Hono → L3 业务路由 -->
+  <path d="M 400,340 L 400,405" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <text x="408" y="378" class="arrow-label">路由分发</text>
+
+  <!-- L3 → L4 (rail down, target index.ts top) -->
+  <path d="M 235,485 L 235,550" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <text x="243" y="522" class="arrow-label">调用 / 派发</text>
+
+  <!-- L4 index.ts → GroupQueue -->
+  <path d="M 380,592 L 400,592" stroke="#2563eb" stroke-width="1.8" fill="none" marker-end="url(#arrow-blue)"/>
+  <text x="390" y="583" text-anchor="middle" class="arrow-label">入队</text>
+
+  <!-- L4 GroupQueue → index.ts (reverse, enqueue) -->
+  <!-- (omitted to avoid clutter) -->
+
+  <!-- L4 GroupQueue → L5 host mode -->
+  <path d="M 380,635 L 380,700" stroke="#ea580c" stroke-width="2" fill="none" marker-end="url(#arrow-orange)"/>
+  <text x="300" y="670" class="arrow-label">调度执行</text>
+
+  <!-- L4 GroupQueue → L5 container mode -->
+  <path d="M 1020,635 C 1020,670 1020,670 1020,700" stroke="#ea580c" stroke-width="2" fill="none" marker-end="url(#arrow-orange)"/>
+  <text x="1030" y="670" class="arrow-label">docker run</text>
+
+  <!-- L5 host/container → shared modules -->
+  <path d="M 190,760 L 190,780" stroke="#9ca3af" stroke-width="1.2" fill="none" marker-end="url(#arrow-gray)"/>
+  <path d="M 445,760 L 445,780" stroke="#9ca3af" stroke-width="1.2" fill="none" marker-end="url(#arrow-gray)"/>
+  <path d="M 700,760 L 700,780" stroke="#9ca3af" stroke-width="1.2" fill="none" marker-end="url(#arrow-gray)"/>
+  <path d="M 955,760 L 955,780" stroke="#9ca3af" stroke-width="1.2" fill="none" marker-end="url(#arrow-gray)"/>
+  <path d="M 1210,760 L 1210,780" stroke="#9ca3af" stroke-width="1.2" fill="none" marker-end="url(#arrow-gray)"/>
+
+  <!-- L5 Agent Runner → L6 数据层 -->
+  <path d="M 700,860 L 700,920" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#arrow-green)"/>
+  <text x="708" y="893" class="arrow-label">读写 / 持久化</text>
+
+  <!-- (omitted: IMConnectionManager → data layer config read, implied) -->
+
+  <!-- L5 → L4 index.ts (stream_event / IPC 回传, gray dashed, routed via left margin to avoid host mode box) -->
+  <path d="M 55,730 L 55,592 L 90,592" stroke="#6b7280" stroke-width="1.5" fill="none" stroke-dasharray="4,2" marker-end="url(#arrow-gray)"/>
+  <text x="63" y="665" class="arrow-label">stream_event</text>
+  <text x="63" y="679" class="arrow-label">/ IPC 回传</text>
+
+  <!-- L4 TaskScheduler → L5 (trigger) -->
+  <path d="M 1165,635 L 1165,700" stroke="#ea580c" stroke-width="1.8" fill="none" stroke-dasharray="5,3" marker-end="url(#arrow-orange)"/>
+  <text x="1172" y="670" class="arrow-label">触发</text>
+
+  <!-- ========== Legend ========== -->
+  <rect x="40" y="1040" width="1320" height="48" fill="#f9fafb" stroke="#d1d5db" stroke-width="1" rx="6"/>
+  <text x="56" y="1062" class="layer-label">图例</text>
+
+  <line x1="110" y1="1060" x2="145" y2="1060" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <text x="153" y="1064" class="legend-text">主请求/数据流</text>
+
+  <line x1="270" y1="1060" x2="305" y2="1060" stroke="#ea580c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  <text x="313" y="1064" class="legend-text">控制/调度触发</text>
+
+  <line x1="430" y1="1060" x2="465" y2="1060" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <text x="473" y="1064" class="legend-text">数据读写（持久化）</text>
+
+  <line x1="600" y1="1060" x2="635" y2="1060" stroke="#7c3aed" stroke-width="1.8" stroke-dasharray="4,3" marker-end="url(#arrow-purple)"/>
+  <text x="643" y="1064" class="legend-text">IM 异步事件</text>
+
+  <line x1="745" y1="1060" x2="780" y2="1060" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrow-gray)"/>
+  <text x="788" y="1064" class="legend-text">stream_event / IPC 回传</text>
+
+  <line x1="950" y1="1060" x2="985" y2="1060" stroke="#9ca3af" stroke-width="1.2" marker-end="url(#arrow-gray)"/>
+  <text x="993" y="1064" class="legend-text">模块组合关系</text>
+
+  <text x="1100" y="1064" class="legend-text" font-style="italic">执行模式：host（admin） · container（member）</text>
+
+</svg>
