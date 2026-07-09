@@ -26,9 +26,15 @@
 
 ## Was ist DeepThink?
 
-DeepThink ist ein selbst-gehostetes, Multi-User-AI-Agent-System, das auf dem [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) aufbaut. Es verpackt die vollständige Claude-Code-Runtime in einen Dienst, der über Feishu, Telegram, QQ, DingTalk, WeChat und eine Web-Oberfläche erreichbar ist, mit Unterstützung für Datei-Lese/Schreiboperationen, Terminal-Operationen, Browser-Automatisierung, mehrstufiges Schließen und das MCP-Tool-Ökosystem.
+DeepThink, eine Unternehmens-Plattform zur Selbst-Evolution autonomen Agent-Superintelligenz, Pionier im Übergang vom Harness Engineering- zum Loop Engineering-Paradigma, ist die nächste Generation der AI-Infrastruktur (AI Infra) für Unternehmenskunden. Die DeepThink-Plattform zentriert sich auf ein Multi-Agent-Kollaborations-Framework und verbindet AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop und Human-Agent Symbiosis, um ein Unternehmens-AI-System zu bauen, das kontinuierlich lernt, sich selbst verbessert und letztlich zur Superintelligenz heranwächst:
 
-Zentrales Designprinzip: **Agent-Fähigkeiten nicht neu implementieren, Claude Code direkt wiederverwenden**. Was unter der Haube aufgerufen wird, ist die vollständige Claude-Code-CLI-Runtime, kein API-Wrapper oder Prompt-Chain. Jedes Claude-Code-Upgrade — neue Tools, stärkeres Schließen, mehr MCP-Support — benefiting DeepThink automatisch ohne Anpassung.
+- **AI-Autonome R&D-Plattform** — Agent absolvieren unabhängig den gesamten Software-Entwicklungslebenszyklus, ohne menschliche Ingenieure bei routinemäßigen Codierungsaufgaben zu benötigen
+- **Self-Evolving-Agent-Engine** — Agent lernen kontinuierlich aus Fehlern, saugen Wissen aus der Codebasis auf und entwickeln sich aus Nutzerfeedback weiter
+- **Programmierer-Agent-Kollaborations-Hub** — Jeder Programmierer besitzt ein persönliches „Entwicklungsprojekt" mit mehreren parallelen Sitzungen, und ein zentraler Scheduler verhindert Nebenläufigkeitskonflikte
+- **Unternehmens-SaaS-Plattform** — Multi-Tenant-Isolierung, gestaffelte Berechtigungen, elastische Abrechnung und Unternehmens-Integrationen (Feishu/DingTalk/WeCom/LDAP)
+- **Superintelligenz-Inkubator** — Durch kontinuierliche Evolution erlangt ein einzelner Agent schließlich die umfassenden Fähigkeiten eines vollständigen Software-Teams
+
+> „Jedes Unternehmen soll ein nie innehaltendes, sich kontinuierlich entwickelndes AI-Super-R&D-Team besitzen — vom Werkzeugnutzer, zum Code-Ersteller, schließlich heranwachsend zu einer selbst-replizierenden Superintelligenz. Lasst uns gemeinsam auf dem Weg zur AGI schreiten."
 
 ### Hauptmerkmale
 

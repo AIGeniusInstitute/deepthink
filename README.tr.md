@@ -26,9 +26,15 @@
 
 ## DeepThink Nedir
 
-DeepThink, [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) üzerinde inşa edilmiş self-hosted çok kullanıcılı AI Agent sistemidir. Tam Claude Code runtime'ını Feishu, Telegram, QQ, DingTalk, WeChat ve web arayüzünden erişilebilen bir hizmet olarak paketler. Dosya okuma/yazma, terminal kontrolü, tarayıcı otomasyonu, çok turlu akıl yürütme ve MCP araç ekosistemini destekler.
+DeepThink, kurumsal düzeyde özerk Agent kendi-evrilen süper-zeka platformu; Harness Engineering'den Loop Engineering paradigmasına geçişin öncüsü; kurumsal müşteriler için yeni nesil AI Altyapısıdır (AI Infra). DeepThink platformu çok-Agent işbirliği çerçevesini merkeze alır; AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop ve Human-Agent Symbiosis'i harmanlayarak sürekli öğrenen, kendini geliştiren ve nihayetinde süper-zekaya dönüşen kurumsal bir AI sistemi inşa eder:
 
-Tasarım ilkesi: **Agent yeteneklerini yeniden implement etme, bunun yerine Claude Code'u doğrudan yeniden kullan**. Kaputun altında tam Claude Code CLI runtime'ı çalışır, API sarmalayıcı veya prompt zinciri değildir. Claude Code yükseltmeleri (yeni araçlar, daha güçlü akıl yürütme, daha fazla MCP desteği) adaptör olmadan otomatik olarak DeepThink'e yansır.
+- **AI Özerk Ar-Ge Platformu** — Agent'lar yazılım geliştirme yaşam döngüsünün tamamını bağımsız olarak tamamlar; rutin kodlama görevlerinde insan mühendislere ihtiyaç duymaz
+- **Kendi-Evrilen Agent Motoru** — Agent'lar hatalardan sürekli öğrenir, kod tabanından bilgi emer ve kullanıcı geri bildirimlerinden evrilir
+- **Programcı-Agent İşbirliği Merkezi** — Her programcının birden çok paralel oturum içeren kişisel bir "Geliştirme Projesi" vardır; merkezi zamanlayıcı eşzamanlılık çakışmalarını önler
+- **Kurumsal SaaS Platformu** — Çok-kiracılı izolasyon, katmanlı izinler, esnek faturalama ve kurumsal entegrasyonlar (Feishu/DingTalk/WeCom/LDAP)
+- **Süper-zeka Kuluçka Makinesi** — Sürekli evrim yoluyla, tek bir Agent nihayetinde eksiksiz bir yazılım ekibinin kapsamlı yeteneklerine erişir
+
+> "Her kuruluş, asla durmayan, sürekli evrilen bir AI süper Ar-Ge ekibine sahip olsun — araç kullanıcısından, kod yaratıcısına, nihayetinde kendini çoğaltan bir süper-zekaya büyüyerek. AGI'ye giden yolda birlikte yürüyelim."
 
 ### Ana özellikler
 

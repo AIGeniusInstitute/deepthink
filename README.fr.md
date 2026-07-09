@@ -26,9 +26,15 @@
 
 ## Qu'est-ce que DeepThink ?
 
-DeepThink est un système d'AI Agent auto-hébergé et multi-utilisateur construit sur le [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Il enveloppe le runtime complet de Claude Code dans un service accessible via Feishu, Telegram, QQ, DingTalk, WeChat et l'interface Web, avec support de lecture/écriture de fichiers, d'opérations terminal, d'automatisation de navigateur, de raisonnement multi-tours et de l'écosystème d'outils MCP.
+DeepThink, une plateforme d'auto-évolution de superintelligence Agent autonome de niveau entreprise, pionnière dans la transition du paradigme Harness Engineering vers Loop Engineering, est la nouvelle génération d'Infrastructure IA (AI Infra) pour les clients entreprise. La plateforme DeepThink s'articule autour d'un framework de collaboration multi-Agent, fusionnant AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop et Human-Agent Symbiosis pour bâtir un système d'IA d'entreprise qui apprend continuellement, s'auto-améliore et, in fine, se développe pour devenir une superintelligence :
 
-Principe de conception central : **ne pas réimplémenter les capacités d'Agent, réutiliser directement Claude Code**. Ce qui est invoqué en dessous est le runtime complet de la CLI Claude Code, pas un wrapper d'API ou une chaîne de prompts. Chaque mise à jour de Claude Code — nouveaux outils, raisonnement plus fort, plus de support MCP — benefiting automatiquement DeepThink sans adaptation.
+- **Plateforme de R&D Autonome par IA** — Les Agent accomplissent indépendamment le cycle de vie complet de développement logiciel, sans nécessiter d'ingénieurs humains pour les tâches de codage routinières
+- **Moteur Agent Auto-Évolutif** — Les Agent apprennent continuellement des erreurs, absorbent le savoir de la base de code et évoluent à partir des retours utilisateurs
+- **Hub de Collaboration Programmateur-Agent** — Chaque programmateur possède un « Projet de Développement » personnel contenant plusieurs sessions parallèles, et un planificateur central empêche les conflits de concurrence
+- **Plateforme SaaS d'Entreprise** — Isolation multi-tenant, permissions hiérarchisées, facturation élastique et intégrations d'entreprise (Feishu/DingTalk/WeCom/LDAP)
+- **Incubateur de Superintelligence** — Par l'évolution continue, un Agent unique finit par acquérir les capacités globales d'une équipe logicielle complète
+
+> « Que chaque entreprise possède une super-équipe de R&D IA qui ne s'arrête jamais et évolue continuellement — de l'utilisateur d'outils, au créateur de code, pour finalement devenir une superintelligence auto-répliquante. Marchons ensemble sur la voie de l'AGI. »
 
 ### Caractéristiques clés
 

@@ -26,9 +26,15 @@
 
 ## DeepThink là gì
 
-DeepThink là hệ thống AI Agent đa người dùng self-hosted được xây dựng trên [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Nó bọc toàn bộ Claude Code runtime thành dịch vụ truy cập được từ Feishu, Telegram, QQ, DingTalk, WeChat và giao diện web. Hỗ trợ đọc/ghi tệp, điều khiển terminal, tự động hóa trình duyệt, suy luận đa vòng và hệ sinh thái công cụ MCP.
+DeepThink, nền tảng siêu trí tuệ tự tiến hóa Agent tự chủ cấp doanh nghiệp, nhà tiên phong trong chuyển dịch từ mô hình Harness Engineering sang Loop Engineering, là thế hệ mới của Hạ tầng AI (AI Infra) dành cho khách hàng doanh nghiệp. Nền tảng DeepThink lấy khung cộng tác đa-Agent làm trung tâm, kết hợp AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop và Human-Agent Symbiosis để xây dựng một hệ thống AI cấp doanh nghiệp liên tục học hỏi, tự cải thiện và cuối cùng phát triển thành siêu trí tuệ:
 
-Nguyên tắc thiết kế: **không tái hiện lại năng lực của Agent, mà tái sử dụng trực tiếp Claude Code**. Phía sau chạy toàn bộ Claude Code CLI runtime, không phải API wrapper hay chuỗi prompt. Các bản nâng cấp của Claude Code (công cụ mới, suy luận mạnh hơn, hỗ trợ MCP nhiều hơn) tự động phản chiếu vào DeepThink mà không cần adapter.
+- **Nền tảng R&D tự chủ bằng AI** — Agent độc lập hoàn thành toàn bộ vòng đời phát triển phần mềm, không cần kỹ sư con người trong các tác vụ mã hóa thường lệ
+- **Động cơ Agent tự tiến hóa** — Agent liên tục học từ lỗi, hấp thụ tri thức từ cơ sở mã, và tiến hóa từ phản hồi người dùng
+- **Trung tâm cộng tác Lập trình viên-Agent** — Mỗi lập trình viên sở hữu một "Dự án Phát triển" cá nhân chứa nhiều phiên song song, bộ lập lịch trung tâm ngăn xung đột đồng thời
+- **Nền tảng SaaS doanh nghiệp** — Cô lập multi-tenant, quyền hạn theo tầng, thanh toán linh hoạt, tích hợp doanh nghiệp (Feishu/DingTalk/WeCom/LDAP)
+- **Ấp ủ siêu trí tuệ** — Thông qua tiến hóa liên tục, một Agent duy nhất cuối cùng đạt được năng lực toàn diện của một đội phần mềm hoàn chỉnh
+
+> "Mong mỗi doanh nghiệp sở hữu một đội R&D siêu AI không bao giờ dừng lại và liên tục tiến hóa — từ người dùng công cụ, sang người kiến tạo mã, cuối cùng phát triển thành siêu trí tuệ tự tái tạo. Hãy cùng bước trên con đường tiến tới AGI."
 
 ### Tính năng chính
 

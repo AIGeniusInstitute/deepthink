@@ -26,9 +26,15 @@
 
 ## Czym jest DeepThink
 
-DeepThink to samohostowany wieloużytkownikowy system AI Agent zbudowany na [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Pakuje pełny runtime Claude Code jako usługę dostępną z Feishu, Telegrama, QQ, DingTalk, WeChat i interfejsu webowego. Obsługuje odczyt/zapis plików, sterowanie terminalem, automatyzację przeglądarki, wielorundowe wnioskowanie oraz ekosystem narzędzi MCP.
+DeepThink, platforma samoewolucji superinteligencji Agent autonomicznej klasy enterprise, pionier w przejściu od paradygmatu Harness Engineering do Loop Engineering, to nowe pokolenie Infrastruktury AI (AI Infra) dla klientów enterprise. Platforma DeepThink skupia się na frameworku współpracy wielo-Agentowej, łącząc AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop oraz Human-Agent Symbiosis, aby zbudować system AI klasy enterprise, który stale się uczy, samodzielnie się poprawia i ostatecznie wzrasta do rangi superinteligencji:
 
-Zasada projektowa: **nie reimplementuj możliwości Agenta, lecz bezpośrednio reużywaj Claude Code**. Pod maską działa pełny runtime Claude Code CLI, a nie wrapper API czy łańcuch promptów. Ulepszenia Claude Code (nowe narzędzia, silniejsze wnioskowanie, większe wsparcie MCP) automatycznie, bez adapterów, przenoszą się do DeepThink.
+- **Platforma Autonomicznego R&D AI** — Agent-y samodzielnie przechodzą pełny cykl życia tworzenia oprogramowania, eliminując potrzebę inżynierów ludzkich przy rutynowych zadaniach kodowania
+- **Silnik Agent Samoewolucyjny** — Agent-y stale uczą się na błędach, absorbują wiedzę z bazy kodu i ewoluują na podstawie opinii użytkowników
+- **Centrum Współpracy Programista-Agent** — Każdy programista posiada osobisty „Projekt Rozwoju" zawierający wiele równoległych sesji, a centralny scheduler zapobiega konfliktom współbieżności
+- **Platforma SaaS Enterprise** — Izolacja multi-tenant, uprawnienia hierarchiczne, elastyczne fakturowanie i integracje enterprise (Feishu/DingTalk/WeCom/LDAP)
+- **Inkubator Superinteligencji** — Poprzez ciągłą ewolucję, pojedynczy Agent ostatecznie uzyskuje wyczerpujące zdolności pełnego zespołu programistycznego
+
+> „Niech każde przedsiębiorstwo posiada zespół R&D super AI, który nigdy nie ustaje i stale się rozwija — od użytkownika narzędzi, do twórcy kodu, ostatecznie wzrastając do samo-replikującej się superinteligencji. Kroczmy razem na drodze do AGI."
 
 ### Główne cechy
 

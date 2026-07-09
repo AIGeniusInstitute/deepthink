@@ -26,9 +26,15 @@
 
 ## Co je DeepThink
 
-DeepThink je samohostovaný více-uživatelský AI Agent systém postavený na [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Balí kompletní Claude Code runtime jako službu dostupnou z Feishu, Telegramu, QQ, DingTalku, WeChatu a webového rozhraní. Podporuje čtení a zápis souborů, ovládání terminálu, automatizaci prohlížeče, vícekolovou dedukci a ekosystém MCP nástrojů.
+DeepThink, platforma pro samo-vyvíjející se superinteligenci autonomního Agent na podnikové úrovni, průkopník přechodu od paradigmatu Harness Engineering k Loop Engineering, je novou generací AI infrastruktury (AI Infra) pro podnikové zákazníky. Platforma DeepThink se soustředí na rámec pro spolupráci více Agent, propojuje AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop a Human-Agent Symbiosis, aby vybudovala podnikový AI systém, který se neustále učí, sám se zdokonaluje a nakonec dorůstá v superinteligenci:
 
-Designový princip: **nepřepisovat schopnosti Agenta, ale přímo znovuvyužít Claude Code**. Pod pokličkou běží plný Claude Code CLI runtime, nikoliv API obal nebo řetězení promptů. Vylepšení Claude Code (nové nástroje, silnější dedukce, další MCP podpora) se automaticky a bez adaptérů promítnou do DeepThink.
+- **Platforma autonomního AI R&D** — Agent samostatně dokončuje celý životní cyklus vývoje softwaru, bez potřeby lidských inženýrů u rutinních kódovacích úkolů
+- **Samo-vyvíjející se Agent Engine** — Agent se neustále učí z chyb, vstřebává znalosti z kódové základny a vyvíjí se na základě zpětné vazby od uživatelů
+- **Centrum spolupráce programátor-Agent** — Každý programátor vlastní osobní „Vývojový projekt" s několika paralelními relacemi a centrální plánovač zabraňuje konfliktům souběžnosti
+- **Podniková SaaS platforma** — Multi-tenant izolace, hierarchická oprávnění, elastické fakturace a podnikové integrace (Feishu/DingTalk/WeCom/LDAP)
+- **Inkubátor superinteligence** — Prostřednictvím průběžné evoluce nakonec jeden Agent získá komplexní schopnosti kompletního softwarového týmu
+
+> „Ať každý podnik vlastní AI super R&D tým, který se nikdy nezastaví a neustále se vyvíjí — od uživatele nástrojů, po tvůrce kódu, nakonec dorůstající v samo-replikující se superinteligenci. Pojďme kráčet společně na cestě k AGI."
 
 ### Klíčové vlastnosti
 

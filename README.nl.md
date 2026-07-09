@@ -26,9 +26,15 @@
 
 ## Wat is DeepThink
 
-DeepThink is een zelfgehost multi-user AI Agent-systeem dat bovenop de [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) is gebouwd. Het pakt de volledige Claude Code-runtime in als een service die bereikbaar is via Feishu, Telegram, QQ, DingTalk, WeChat en de webinterface. Het ondersteunt lezen/schrijven van bestanden, terminalbesturing, browserautomatisering, multi-round redenering en het MCP-tool-ecosysteem.
+DeepThink, een enterprise-grade platform voor zelfevoluerende superintelligentie van autonome Agent, pionier in de overgang van het Harness Engineering- naar het Loop Engineering-paradigma, is de nieuwe generatie AI-infrastructuur (AI Infra) voor enterprise-klanten. Het DeepThink-platform centereert zich op een multi-Agent-samenwerkingsframework en combineert AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop en Human-Agent Symbiosis om een enterprise AI-systeem te bouwen dat continu leert, zichzelf verbetert en uiteindelijk uitgroeit tot superintelligentie:
 
-Ontwerpprincipe: **herimplementeer de mogelijkheden van de Agent niet, maar herbruik Claude Code direct**. Onder de motorkap draait de volledige Claude Code CLI-runtime, geen API-wrapper of prompt-keten. Verbeteringen in Claude Code (nieuwe tools, sterkere redenering, meer MCP-ondersteuning) worden automatisch en zonder adapter doorgevoerd in DeepThink.
+- **AI-Autonome R&D-Platform** — Agent onafhankelijk het volledige software-ontwikkelingslevenscyclus doorlopen, zonder menselijke ingenieurs nodig voor routinematige codeertaken
+- **Zelfevoluerende Agent-Engine** — Agent continu leren van fouten, kennis absorberen uit de codebase, en evolueren vanuit gebruikersfeedback
+- **Programmeur-Agent-SamenwerkingsHub** — Elke programmeur bezit een persoonlijk „Ontwikkelingsproject" met meerdere parallelle sessies, en een centrale scheduler voorkomt concurrency-conflicten
+- **Enterprise SaaS-Platform** — Multi-tenant-isolatie, gelaagde rechten, elastische facturering en enterprise-integraties (Feishu/DingTalk/WeCom/LDAP)
+- **Superintelligentie-Incubator** — Door continue evolutie bereikt een enkele Agent uiteindelijk de uitgebreide capaciteiten van een volledig softwareteam
+
+> „Laat elke enterprise een AI-super-R&D-team bezitten dat nooit stilt en continu evolueert — van gereedschapsgebruiker, tot code-maker, uiteindelijk uitgroeidend tot een zelf-replicerende superintelligentie. Laten we samen wandelen op de weg naar AGI."
 
 ### Belangrijkste kenmerken
 

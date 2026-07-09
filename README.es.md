@@ -26,9 +26,15 @@
 
 ## ¿Qué es DeepThink?
 
-DeepThink es un sistema de AI Agent autoalojado y multiusuario construido sobre el [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Envuelve el runtime completo de Claude Code en un servicio accesible desde Feishu, Telegram, QQ, DingTalk, WeChat y la interfaz Web, con soporte para lectura/escritura de archivos, operaciones de terminal, automatización de navegador, razonamiento multirround y el ecosistema de herramientas MCP.
+DeepThink, una plataforma de auto-evolución de superinteligencia Agent autónoma de nivel empresarial, pionera en la transición del paradigma Harness Engineering al Loop Engineering, es la nueva generación de Infraestructura de IA (AI Infra) para clientes empresariales. La plataforma DeepThink se centra en un marco de colaboración multi-Agent, fusionando AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop y Human-Agent Symbiosis para construir un sistema de IA empresarial que aprende continuamente, se auto-mejora y, en última instancia, crece hasta convertirse en una superinteligencia:
 
-Principio de diseño central: **no reimplementar la capacidad de Agent, reutilizar directamente Claude Code**. Lo que se invoca por debajo es el runtime completo del CLI de Claude Code, no un API wrapper ni una cadena de prompts. Cada actualización de Claude Code — nuevas herramientas, razonamiento más fuerte, más soporte MCP — beneficia a DeepThink sin adaptación.
+- **Plataforma de I+D Autónoma con IA** — Los Agent completan de forma independiente el ciclo de vida completo del desarrollo de software, sin necesidad de ingenieros humanos en tareas de codificación rutinarias
+- **Motor de Agent Auto-Evolutivo** — Los Agent aprenden continuamente de los errores, absorben conocimiento del código base y evolucionan a partir de los comentarios de los usuarios
+- **Centro de Colaboración Programador-Agent** — Cada programador posee un "Proyecto de Desarrollo" personal con múltiples sesiones paralelas, y un planificador central evita conflictos de concurrencia
+- **Plataforma SaaS Empresarial** — Aislamiento multi-tenant, permisos por niveles, facturación elástica e integraciones empresariales (Feishu/DingTalk/WeCom/LDAP)
+- **Incubadora de Superinteligencia** — Mediante evolución continua, un solo Agent alcanza finalmente las capacidades integrales de un equipo de software completo
+
+> "Que cada empresa tenga un equipo de I+D súper de IA que nunca se detiene y evoluciona continuamente — del usuario de herramientas, al creador de código, creciendo finalmente hacia una superinteligencia auto-replicante. Caminemos juntos en el camino hacia AGI."
 
 ### Características clave
 

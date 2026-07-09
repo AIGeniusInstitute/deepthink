@@ -30,9 +30,15 @@
 
 ## What is DeepThink
 
-DeepThink is a self-hosted, multi-user AI Agent system built on the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). It wraps the complete Claude Code runtime as a service accessible via Feishu, Telegram, QQ, DingTalk, WeChat, and the Web interface, supporting file read/write, terminal operations, browser automation, multi-turn reasoning, and the MCP tool ecosystem.
+DeepThink, an enterprise-grade autonomous Agent self-evolving superintelligence platform, is a pioneer in the transition from Harness Engineering to the Loop Engineering paradigm and a new generation of AI Infrastructure (AI Infra) for enterprise customers. The DeepThink platform centers on a multi-Agent collaboration framework, fusing AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop, and Human-Agent Symbiosis to build an enterprise-grade AI system that continuously learns, self-improves, and ultimately grows into a superintelligence:
 
-Core design principle: **Don't reimplement Agent capabilities — reuse Claude Code directly**. The underlying layer invokes the full Claude Code CLI runtime, not an API wrapper or prompt chain. Every Claude Code upgrade — new tools, stronger reasoning, broader MCP support — automatically benefits DeepThink with zero adaptation.
+- **AI Autonomous R&D Platform** — Agents independently complete the full software development lifecycle, eliminating the need for human engineers on routine coding tasks
+- **Self-Evolving Agent Engine** — Agents continuously learn from errors, absorb knowledge from the codebase, and evolve from user feedback
+- **Programmer-Agent Collaboration Hub** — Every programmer owns a personal "Development Project" containing multiple parallel sessions, with a central scheduler preventing concurrency conflicts
+- **Enterprise SaaS Platform** — Multi-tenant isolation, tiered permissions, elastic billing, and enterprise integrations (Feishu/DingTalk/WeCom/LDAP)
+- **Superintelligence Incubator** — Through continuous evolution, a single Agent ultimately attains the comprehensive capabilities of a full software team
+
+> "Let every enterprise own a never-stopping, continuously evolving AI super R&D team — from tool user, to code creator, ultimately growing into a self-replicating superintelligence. Let us walk together on the road to AGI."
 
 ### Key Features
 

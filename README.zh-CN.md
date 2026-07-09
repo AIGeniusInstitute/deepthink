@@ -30,9 +30,15 @@
 
 ## DeepThink 是什么
 
-DeepThink 是一个基于 [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) 构建的自托管多用户 AI Agent 系统。它将完整的 Claude Code 运行时封装为可通过飞书、Telegram、QQ、钉钉、微信和 Web 界面访问的服务，支持文件读写、终端操作、浏览器自动化、多轮推理及 MCP 工具生态。
+DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness Engineering 到 Loop Engineering 范式的先行者，是面向企业客户的新一代 AI 基础设施(AI Infra)。DeepThink 平台以多 Agent 协作框架为核心，融合 AI 自主编程（AI Coding）、自主进化（Self-Evolving）、全栈可观测性（Full-Stack Observability）、Bug 自修复闭环（Bug Auto-Fix Loop） 与 程序员-Agent 共生协作（Human-Agent Symbiosis），构建一个能持续学习、自我改进、最终成长为超级智能体的企业级 AI 系统：
 
-核心设计原则：**不重新实现 Agent 能力，直接复用 Claude Code**。底层调用的是完整的 Claude Code CLI 运行时，而非 API Wrapper 或 Prompt Chain。Claude Code 的每次升级——新工具、更强的推理、更多的 MCP 支持——DeepThink 零适配自动受益。
+- **AI 自主研发平台** —— Agent 独立完成软件研发全生命周期，无需人类工程师介入常规编码任务
+- **自进化智能体引擎** —— Agent 持续从错误中学习、从代码库中吸收知识、从用户反馈中进化
+- **程序员-Agent 协作中枢** —— 每位程序员拥有个人"开发项目"，内含多个并行会话，中央调度防止并发冲突
+- **企业级 SaaS 平台** —— 多租户隔离、权限分级、计费弹性、企业集成（飞书/钉钉/企微/LDAP）
+- **超级智能体孵化器** —— 通过持续进化，单一 Agent 最终具备完整软件团队综合能力
+
+> "让每一家企业都拥有一支永不停歇、持续进化的 AI 超级研发团队——从工具使用者，到代码创造者，最终成长为可自我繁衍的超级智能体。让我们在通往 AGI 的道路上一起前行。"
 
 ### 关键特性
 

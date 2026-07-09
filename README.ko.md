@@ -26,9 +26,15 @@
 
 ## DeepThink란
 
-DeepThink는 [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) 위에 구축된 셀프 호스팅 다중 사용자 AI Agent 시스템입니다. 완전한 Claude Code 런타임을 Feishu, Telegram, QQ, DingTalk, WeChat, 웹 인터페이스에서 접근 가능한 서비스로 포장합니다. 파일 읽기/쓰기, 터미널 제어, 브라우저 자동화, 다중 라운드 추론, MCP 도구 생태계를 지원합니다.
+DeepThink, 엔터프라이즈급 자율형 Agent 자가진화 슈퍼인텔리전스 플랫폼, Harness Engineering에서 Loop Engineering 패러다임으로의 전환을 선도하는 개척자, 기업 고객을 위한 차세대 AI 인프라(AI Infra)입니다. DeepThink 플랫폼은 멀티-Agent 협업 프레임워크를 중심으로 AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop, Human-Agent Symbiosis를 융합하여 지속적으로 학습하고 자기 개선하며 궁극적으로 슈퍼인텔리전스로 성장하는 엔터프라이즈급 AI 시스템을 구축합니다:
 
-설계 원칙: **Agent의 능력을 재구현하지 않고 Claude Code를 직접 재사용한다**. 후면에서는 API 래퍼나 프롬프트 체인이 아닌 완전한 Claude Code CLI 런타임이 실행됩니다. Claude Code의 업그레이드(새로운 도구, 더 강력한 추론, 더 많은 MCP 지원)는 어댑터 없이 자동으로 DeepThink에 반영됩니다.
+- **AI 자율 R&D 플랫폼** — Agent가 소프트웨어 개발의 전체 라이프사이클을 독립적으로 완수하며, 루틴한 코딩 작업에 인간 엔지니어의 개입이 불필요합니다
+- **자가진화 Agent 엔진** — Agent는 오류로부터 지속적으로 학습하고, 코드베이스에서 지식을 흡수하며, 사용자 피드백으로부터 진화합니다
+- **프로그래머-Agent 협업 허브** — 모든 프로그래머는 여러 병렬 세션을 포함하는 개인 "개발 프로젝트"를 소유하며, 중앙 스케줄러가 동시성 충돌을 방지합니다
+- **엔터프라이즈 SaaS 플랫폼** — 멀티테넌트 격리, 계층적 권한, 탄력적 과금, 기업 통합(Feishu/DingTalk/WeCom/LDAP)
+- **슈퍼인텔리전스 인큐베이터** — 지속적 진화를 통해 단일 Agent는 궁극적으로 완전한 소프트웨어 팀의 종합적 역량을 갖추게 됩니다
+
+> "모든 기업이 결코 멈추지 않고 지속적으로 진화하는 AI 슈퍼 R&D 팀을 소유하기를 — 도구 사용자에서, 코드 창조자로, 궁극적으로 자가 복제하는 슈퍼인텔리전스로 성장하며. AGI를 향한 길에서 함께 걸어갑시다."
 
 ### 주요 특징
 

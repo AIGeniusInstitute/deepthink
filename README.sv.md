@@ -26,9 +26,15 @@
 
 ## Vad är DeepThink
 
-DeepThink är ett självhostat flervänligt AI Agent-system byggt ovanpå [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Det packar hela Claude Code-runtime som en tjänst som nås från Feishu, Telegram, QQ, DingTalk, WeChat och webbgränssnitt. Stöder filläsning/skrivning, terminalstyrning, webbläsarautomation, flerrunds resonemang och MCP-verktygsekosystem.
+DeepThink, en företagsklassad plattform för själv-evolverande superintelligens för autonoma Agent, pionjär inom övergången från Harness Engineering- till Loop Engineering-paradigmet, är den nya generationens AI-infrastruktur (AI Infra) för företagskunder. DeepThink-plattformen centreras kring ett ramverk för multi-Agent-samarbete och smälter samman AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop och Human-Agent Symbiosis för att bygga ett företagsklassat AI-system som kontinuerligt lär sig, förbättrar sig självt och slutligen växer till en superintelligens:
 
-Designprincip: **implementera inte om Agentens förmågor, utan återanvänd Claude Code direkt**. Under huven körs hela Claude Code CLI-runtime, inte ett API-wrapper eller promptkedja. Uppgraderingar av Claude Code (nya verktyg, starkare resonemang, mer MCP-stöd) reflekteras automatiskt i DeepThink utan adapter.
+- **AI-Autonom R&D-Plattform** — Agent slutför självständigt hela programvaruutvecklingslivscykeln, utan behov av mänskliga ingenjörer för rutinmässiga kodningsuppgifter
+- **Själv-Evolverande Agent-Motor** — Agent lär sig kontinuerligt av fel, absorberar kunskap från kodbasen och utvecklas från användaråterkoppling
+- **Programmerare-Agent-Samarbetshubb** — Varje programmerare äger ett personligt ”Utvecklingsprojekt” med flera parallella sessioner, och en central schemaläggare förhindrar samtidighetskonflikter
+- **Företags-SaaS-Plattform** — Multi-tenant-isolering, nivåindelade rättigheter, elastisk fakturering och företagsintegrationer (Feishu/DingTalk/WeCom/LDAP)
+- **Superintelligens-Inkubator** — Genom kontinuerlig evolution uppnår en enskild Agent till slut de omfattande förmågorna hos ett komplett programvaruteam
+
+> ”Låt varje företag äga ett AI-super-R&D-team som aldrig stannar och ständigt utvecklas — från verktygsanvändare, till kodskapare, slutligen växande till en själv-reproducerande superintelligens. Låt oss gå tillsammans på vägen mot AGI.”
 
 ### Nyckelfunktioner
 

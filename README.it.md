@@ -26,9 +26,15 @@
 
 ## Cos'è DeepThink
 
-DeepThink è un sistema AI Agent multi-utente self-hosted costruito su [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Impacchetta il runtime completo di Claude Code come servizio accessibile da Feishu, Telegram, QQ, DingTalk, WeChat e interfaccia web. Supporta lettura/scrittura di file, controllo del terminale, automazione del browser, ragionamento multi-turno e l'ecosistema di strumenti MCP.
+DeepThink, una piattaforma di auto-evoluzione della superintelligenza Agent autonoma di livello enterprise, pioniera nella transizione dal paradigma Harness Engineering al Loop Engineering, è la nuova generazione di Infrastruttura AI (AI Infra) per clienti enterprise. La piattaforma DeepThink si centra su un framework di collaborazione multi-Agent, fondendo AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop e Human-Agent Symbiosis per costruire un sistema AI di livello enterprise che apprende continuamente, si auto-migliora e infine cresce fino a diventare una superintelligenza:
 
-Principio di design: **non reimplementare le capacità dell'Agent, ma riutilizzare direttamente Claude Code**. Sotto il cofano gira il runtime completo della CLI di Claude Code, non un wrapper API o una catena di prompt. I miglioramenti di Claude Code (nuovi strumenti, ragionamento più forte, maggiore supporto MCP) si riflettono automaticamente in DeepThink senza adattatori.
+- **Piattaforma R&D Autonoma AI** — Gli Agent completano indipendentemente l'intero ciclo di vita dello sviluppo software, senza bisogno di ingegneri umani per le attività di codifica routinaria
+- **Motore Agent Auto-Evolvente** — Gli Agent apprendono continuamente dagli errori, assorbono conoscenza dalla codebase e si evolvono dal feedback degli utenti
+- **Hub di Collaborazione Programmatore-Agent** — Ogni programmatore possiede un "Progetto di Sviluppo" personale con multiple sessioni parallele, e uno scheduler centrale previene conflitti di concorrenza
+- **Piattaforma SaaS Enterprise** — Isolamento multi-tenant, permessi a livelli, fatturazione elastica e integrazioni enterprise (Feishu/DingTalk/WeCom/LDAP)
+- **Incubatore di Superintelligenza** — Attraverso evoluzione continua, un singolo Agent infine acquisisce le capacità comprehensive di un team software completo
+
+> "Che ogni enterprise possegga un team R&D super AI che non si ferma mai e si evolve continuamente — da utente di strumenti, a creatore di codice, crescendo infine in una superintelligenza auto-replicante. Camminiamo insieme sulla via verso l'AGI."
 
 ### Caratteristiche principali
 

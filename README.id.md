@@ -26,9 +26,15 @@
 
 ## Apa itu DeepThink?
 
-DeepThink adalah sistem AI Agent self-hosted dan multi-pengguna yang dibangun di atas [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Ia membungkus runtime Claude Code lengkap menjadi layanan yang dapat diakses melalui Feishu, Telegram, QQ, DingTalk, WeChat, dan antarmuka Web, dengan dukungan untuk membaca/menulis file, operasi terminal, otomatisasi browser, penalaran multi-ronde, dan ekosistem alat MCP.
+DeepThink, platform evolusi-diri superinteligensi Agent otonom kelas enterprise, perintis transisi dari paradigma Harness Engineering ke Loop Engineering, adalah generasi baru Infrastruktur AI (AI Infra) bagi pelanggan enterprise. Platform DeepThink berpusat pada kerangka kolaborasi multi-Agent, memadukan AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop, dan Human-Agent Symbiosis untuk membangun sistem AI kelas enterprise yang belajar terus-menerus, meningkatkan diri, dan pada akhirnya tumbuh menjadi superinteligensi:
 
-Prinsip desain inti: **jangan mengimplementasikan ulang kapabilitas Agent, gunakan ulang Claude Code secara langsung**. Yang dipanggil di bawah adalah runtime CLI Claude Code lengkap, bukan wrapper API atau rantai prompt. Setiap upgrade Claude Code — alat baru, penalaran lebih kuat, lebih banyak dukungan MCP — secara otomatis menguntungkan DeepThink tanpa adaptasi.
+- **Platform R&D Otonom AI** — Agent menyelesaikan siklus hidup pengembangan perangkat lunak secara mandiri, tanpa perlu insinyur manusia pada tugas pengkodean rutin
+- **Mesin Agent Evolusi-Diri** — Agent belajar terus-menerus dari kesalahan, menyerap pengetahuan dari basis kode, dan berevolusi dari umpan balik pengguna
+- **Hub Kolaborasi Programmer-Agent** — Setiap programmer memiliki "Proyek Pengembangan" pribadi yang berisi beberapa sesi paralel, dan penjadwal pusat mencegah konflik konkurensi
+- **Platform SaaS Enterprise** — Isolasi multi-tenant, perizinan bertingkat, penagihan elastis, dan integrasi enterprise (Feishu/DingTalk/WeCom/LDAP)
+- **Inkubator Superinteligensi** — Melalui evolusi berkelanjutan, satu Agent akhirnya mencapai kapabilitas komprehensif sebuah tim perangkat lunak lengkap
+
+> "Semoga setiap enterprise memiliki tim R&D super AI yang tidak pernah berhenti dan terus berevolusi — dari pengguna alat, menjadi pencipta kode, pada akhirnya tumbuh menjadi superinteligensi yang mereplikasi diri. Mari berjalan bersama di jalan menuju AGI."
 
 ### Fitur utama
 
