@@ -80,6 +80,12 @@ admin వినియోగదారు డిఫాల్ట్‌గా హో
 
 ## ఆర్కిటెక్చర్ అవలోకనం
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink మూడు స్వతంత్ర Node.js ప్రాజెక్ట్‌లతో నిర్మించబడింది:
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono): సందేశ రూటర్ (2s polling + నకిలీ తొలగింపు), ఏకకాల క్యూ (గరిష్టం 20 కంటైనర్‌లు + 5 హోస్ట్ ప్రాసెస్‌లు), టాస్క్ షెడ్యూలర్ (cron / interval / once), రియల్-టైమ్ స్ట్రీమింగ్ మరియు టెర్మినల్ కోసం WebSocket సర్వర్, bcrypt + HMAC Cookie ప్రామాణీకరణ, RBAC, AES-256-GCM ఎన్‌క్రిప్టెడ్ కాన్ఫిగరేషన్. డేటా SQLite (WAL మోడ్, schema v1→v33).

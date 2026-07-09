@@ -80,6 +80,12 @@ admin ব্যবহারকারী ডিফল্টভাবে হোস
 
 ## আর্কিটেকচার ওভারভিউ
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink তিনটি স্বাধীন Node.js প্রোজেক্ট নিয়ে গঠিত:
 
 - **ব্যাকএন্ড** (Node.js 22 + TypeScript 5.9 + Hono): প্রধান পরিষেবা যাতে মেসেজ রাউটার (2s পোলিং + ডিডুপ), কনকারেন্সি কিউ (সর্বোচ্চ 20 কন্টেইনার + 5 হোস্ট প্রসেস), টাস্ক শিডিউলার (cron / interval / once), রিয়েল-টাইম স্ট্রিমিং ও টার্মিনালের জন্য WebSocket সার্ভার, bcrypt + HMAC Cookie অথেন্টিকেশন, RBAC, এবং AES-256-GCM এনক্রিপ্টেড কনফিগ ম্যানেজমেন্ট অন্তর্ভুক্ত। ডেটা SQLite-এ (WAL মোড, স্কিমা v1→v33)।

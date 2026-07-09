@@ -80,6 +80,12 @@ make start
 
 ## ภาพรวมสถาปัตยกรรม
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink ประกอบด้วยสามโปรเจก Node.js อิสระ:
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono): message router (polling 2s + ตัดซ้ำ), concurrent queue (สูงสุด 20 container + 5 โปรเซส host), task scheduler (cron / interval / once), เซิร์ฟเวอร์ WebSocket สำหรับ streaming เรียลไทม์และเทอร์มินัล, การยืนยันตัว bcrypt + HMAC Cookie, RBAC, config เข้ารหัส AES-256-GCM. ข้อมูลใน SQLite (โหมด WAL, schema v1→v33)

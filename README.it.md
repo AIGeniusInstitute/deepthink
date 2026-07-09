@@ -80,6 +80,12 @@ Dopo la registrazione di un nuovo utente, il workspace principale in modalità c
 
 ## Panoramica dell'architettura
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink è composto da tre progetti Node.js indipendenti:
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono): router dei messaggi (polling 2s + deduplicazione), coda concorrente (massimo 20 container + 5 processi host), pianificatore di task (cron / interval / once), server WebSocket per streaming in tempo reale e terminale, autenticazione bcrypt + HMAC Cookie, RBAC, gestione configurazione crittografata AES-256-GCM. Dati in SQLite (modalità WAL, schema v1→v33).

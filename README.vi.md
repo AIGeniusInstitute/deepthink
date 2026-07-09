@@ -80,6 +80,12 @@ Sau khi đăng ký người dùng mới, workspace chính ở chế độ contai
 
 ## Tổng quan kiến trúc
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink gồm ba dự án Node.js độc lập:
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono): bộ định tuyến tin nhắn (polling 2s + khử trùng), hàng đợi đồng thời (tối đa 20 container + 5 quy trình host), bộ lập lịch tác vụ (cron / interval / once), máy chủ WebSocket cho streaming thời gian thực và terminal, xác thực bcrypt + HMAC Cookie, RBAC, cấu hình mã hóa AES-256-GCM. Dữ liệu trong SQLite (chế độ WAL, schema v1→v33).

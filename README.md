@@ -455,6 +455,11 @@ The container image is based on `node:22-slim` and ships with the following tool
 
 ### Architecture Diagram
 
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 ```mermaid
 flowchart TD
     subgraph 接入层

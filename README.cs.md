@@ -80,6 +80,12 @@ Po registraci nového uživatele se automaticky vytvoří jeho hlavní workspace
 
 ## Přehled architektury
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink se skládá ze tří nezávislých Node.js projektů:
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono): směrovač zpráv (2s polling + deduplikace), konkurenční fronta (až 20 kontejnerů + 5 host procesů), plánovač úloh (cron / interval / once), WebSocket server pro real-time streaming a terminál, bcrypt + HMAC Cookie auth, RBAC, AES-256-GCM šifrovaná konfigurace. Data v SQLite (WAL režim, schema v1→v33).

@@ -80,6 +80,12 @@ Yeni kullanıcı kaydından sonra, container modunun ana workspace'i (`home-{use
 
 ## Mimariye Genel Bakış
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink üç bağımsız Node.js projesinden oluşur:
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono): mesaj yönlendirici (2s polling + yinelenenleri kaldırma), eşzamanlı kuyruk (en fazla 20 container + 5 host süreci), görev zamanlayıcı (cron / interval / once), gerçek zamanlı akış ve terminal için WebSocket sunucusu, bcrypt + HMAC Cookie kimlik doğrulama, RBAC, AES-256-GCM şifreli yapılandırma. Veriler SQLite (WAL modu, şema v1→v33).

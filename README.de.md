@@ -80,6 +80,12 @@ Nach der Registrierung erhält jeder neue Benutzer automatisch einen Haupt-Works
 
 ## Architektur-Überblick
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink besteht aus drei unabhängigen Node.js-Projekten:
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono): Hauptdienst mit Nachrichten-Router (2s-Polling + Dedup), Concurrency-Queue (bis zu 20 Container + 5 Host-Prozesse), Task-Scheduler (cron / interval / once), WebSocket-Server für Echtzeit-Streaming und Terminal, bcrypt + HMAC-Cookie-Authentifizierung, RBAC und AES-256-GCM-verschlüsselte Konfigurationsverwaltung. Daten in SQLite (WAL-Modus, Schema v1→v33).

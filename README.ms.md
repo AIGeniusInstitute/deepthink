@@ -80,6 +80,12 @@ Selepas pendaftaran pengguna baharu, workspace utama mod container (`home-{userI
 
 ## Gambaran keseluruhan senibina
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink terdiri daripada tiga projek Node.js bebas:
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono): penghala mesej (polling 2s + nyahpendua), baris gilir serentak (maksimum 20 container + 5 proses host), penjadual tugas (cron / interval / once), pelayan WebSocket untuk penstriman masa nyata dan terminal, pengesahan bcrypt + HMAC Cookie, RBAC, pengurusan konfigurasi tersulit AES-256-GCM. Data dalam SQLite (mod WAL, schema v1→v33).

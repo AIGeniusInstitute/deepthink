@@ -80,6 +80,12 @@ make start
 
 ## Огляд архітектури
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink складається з трьох незалежних Node.js-проєктів:
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono): маршрутизатор повідомлень (2s polling + дедуплікація), конкурентна черга (максимум 20 контейнерів + 5 host-процесів), планувальник задач (cron / interval / once), WebSocket-сервер для реального часу і термінала, автентифікація bcrypt + HMAC Cookie, RBAC, AES-256-GCM-шифрована конфігурація. Дані в SQLite (WAL-режим, схема v1→v33).

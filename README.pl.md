@@ -80,6 +80,12 @@ Po rejestracji nowego użytkownika główne workspace w trybie container (`home-
 
 ## Przegląd architektury
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink składa się z trzech niezależnych projektów Node.js:
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono): router wiadomości (polling 2s + deduplikacja), kolejka współbieżna (maks. 20 kontenerów + 5 procesów hosta), harmonogram zadań (cron / interval / once), serwer WebSocket do streamingu w czasie rzeczywistym i terminala, uwierzytelnianie bcrypt + HMAC Cookie, RBAC, konfiguracja szyfrowana AES-256-GCM. Dane w SQLite (tryb WAL, schema v1→v33).

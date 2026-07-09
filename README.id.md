@@ -80,6 +80,12 @@ Setelah pendaftaran, setiap pengguna baru otomatis mendapatkan workspace utama d
 
 ## Gambaran arsitektur
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink terdiri dari tiga proyek Node.js independen:
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono): layanan utama dengan router pesan (polling 2s + dedup), antrean konkurensi (hingga 20 kontainer + 5 proses host), penjadwal tugas (cron / interval / once), server WebSocket untuk streaming real-time dan terminal, autentikasi bcrypt + HMAC Cookie, RBAC, dan manajemen konfigurasi terenkripsi AES-256-GCM. Data di SQLite (mode WAL, skema v1→v33).

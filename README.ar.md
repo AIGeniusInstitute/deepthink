@@ -82,6 +82,12 @@ make start
 
 ## نظرة عامة على البنية
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 يتكون DeepThink من ثلاثة مشاريع Node.js مستقلة:
 
 - **الخلفية** (Node.js 22 + TypeScript 5.9 + Hono): الخدمة الرئيسية مع موجّه رسائل (اقتراع 2s + إزالة تكرار)، طابور تزامن (حتى 20 حاوية + 5 عمليات مضيف)، مجدول مهام (cron / interval / once)، خادم WebSocket للبث المباشر والطرفية، مصادقة bcrypt + HMAC Cookie، RBAC، وإدارة تهيئة مشفّرة بـ AES-256-GCM. البيانات في SQLite (وضع WAL، مخطط v1→v33).

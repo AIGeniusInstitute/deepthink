@@ -82,6 +82,12 @@ http://localhost:9898 پر جائیں اور سیٹ اپ وزرڈ پر عمل ک
 
 ## فن تعمیر کا جائزہ
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink تین آزاد Node.js پروجیکٹس پر مشتمل ہے:
 
 - **بیک اینڈ** (Node.js 22 + TypeScript 5.9 + Hono): مرکزی خدمت جس میں پیغام روٹر (2s پولنگ + ڈی ڈپ)، کنکرنسی قطار (زیادہ سے زیادہ 20 کنٹینرز + 5 ہوسٹ پروسیسز)، ٹاسک شیڈولر (cron / interval / once)، ریئل ٹائم سٹریمنگ اور ٹرمینل کے لیے WebSocket سرور، bcrypt + HMAC Cookie توثیق، RBAC، اور AES-256-GCM خفیہ شدہ کنفیگ مینجمنٹ شامل ہیں۔ ڈیٹا SQLite میں (WAL موڈ، اسکیما v1→v33)۔

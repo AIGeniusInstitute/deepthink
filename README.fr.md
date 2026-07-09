@@ -80,6 +80,12 @@ Après inscription, chaque nouvel utilisateur obtient automatiquement un workspa
 
 ## Vue d'ensemble de l'architecture
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink se compose de trois projets Node.js indépendants :
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono) : service principal avec routeur de messages (polling 2s + déduplication), file de concurrence (jusqu'à 20 conteneurs + 5 processus hôte), planificateur de tâches (cron / interval / once), serveur WebSocket pour streaming temps réel et terminal, authentification bcrypt + HMAC Cookie, RBAC et gestion de configuration chiffrée AES-256-GCM. Données dans SQLite (mode WAL, schéma v1→v33).

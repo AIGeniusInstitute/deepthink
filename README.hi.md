@@ -80,6 +80,12 @@ admin यूज़र डिफ़ॉल्ट रूप से होस्ट 
 
 ## आर्किटेक्चर अवलोकन
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink तीन स्वतंत्र Node.js प्रोजेक्ट्स से बना है:
 
 - **बैकएंड** (Node.js 22 + TypeScript 5.9 + Hono): मुख्य सेवा जिसमें मैसेज राउटर (2s पोलिंग + डिडुपे), कॉन्करेंसी क्यू (अधिकतम 20 कंटेनर + 5 होस्ट प्रक्रियाएँ), टास्क शेड्यूलर (cron / interval / once), रियल-टाइम स्ट्रीमिंग और टर्मिनल के लिए WebSocket सर्वर, bcrypt + HMAC Cookie प्रमाणीकरण, RBAC, और AES-256-GCM एन्क्रिप्टेड कॉन्फ़िग प्रबंधन शामिल हैं। SQLite (WAL मोड, स्कीमा v1→v33) में डेटा रहता है।

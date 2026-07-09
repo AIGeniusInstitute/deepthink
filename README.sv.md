@@ -80,6 +80,12 @@ Efter registrering av ny användare skapas main-workspace i containerläge (`hom
 
 ## Arkitekturöversikt
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink består av tre oberoende Node.js-projekt:
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono): meddelanderouter (2s polling + deduplicering), samtidighetskö (max 20 containrar + 5 host-processer), task-scheduler (cron / interval / once), WebSocket-server för realtidsstreaming och terminal, bcrypt + HMAC Cookie-autentisering, RBAC, AES-256-GCM-krypterad konfiguration. Data i SQLite (WAL-läge, schema v1→v33).

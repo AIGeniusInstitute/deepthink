@@ -80,6 +80,12 @@ admin ಬಳಕೆದಾರ ಡಿಫಾಲ್ಟ್ ಆಗಿ host ಮೋಡ್
 
 ## ಆರ್ಕಿಟೆಕ್ಚರ್ ಅವಲೋಕನ
 
+
+<p align="center">
+  <img src="docs/architecture/deepthink-architecture.png" alt="DeepThink System Architecture" width="860" />
+</p>
+
+
 DeepThink ಮೂರು ಸ್ವತಂತ್ರ Node.js ಪ್ರಾಜೆಕ್ಟ್‌ಗಳಿಂದ ಕೂಡಿದೆ:
 
 - **Backend** (Node.js 22 + TypeScript 5.9 + Hono): ಸಂದೇಶ ರೂಟರ್ (2s polling + ನಕಲು ತೆಗೆದಿಹಾಕುವಿಕೆ), ಸಮಾನಾಂತರ ಸರತಿ (ಗರಿಷ್ಠ 20 ಕಂಟೇನರ್ + 5 host ಪ್ರಕ್ರಿಯೆ), ಕಾರ್ಯ ಶೆಡ್ಯೂಲರ್ (cron / interval / once), real-time streaming ಮತ್ತು ಟರ್ಮಿನಲ್‌ಗಾಗಿ WebSocket ಸರ್ವರ್, bcrypt + HMAC Cookie ದೃಢೀಕರಣ, RBAC, AES-256-GCM ಎನ್‌ಕ್ರಿಪ್ಟೆಡ್ ಸಂರಚನೆ. ಡೇಟಾ SQLite (WAL ಮೋಡ್, schema v1→v33).
