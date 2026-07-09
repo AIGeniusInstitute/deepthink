@@ -24,7 +24,7 @@
 ---
 
 <p align="center">
-  <video src="static/deep-think-intro.mp4" poster="static/deep-think-start-logo.png" controls width="800"></video>
+  <video src="https://github.com/AIGeniusInstitute/deep-think/raw/main/static/deep-think-intro.mp4" poster="https://github.com/AIGeniusInstitute/deep-think/raw/main/static/deep-think-start-logo.png" controls width="800"></video>
 </p>
 
 
