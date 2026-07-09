@@ -19,10 +19,11 @@ permissions:
 
 jobs:
   # ─────────────────────────────────────────────────────────
-  # macOS：arm64 + x64 双架构 dmg
+  # macOS arm64：M1/M2/M3 dmg
+  # 必须用 arm64 runner：desktop-rebuild-natives 按当前 host arch 编 native 模块（better-sqlite3 等）
   # ─────────────────────────────────────────────────────────
-  build-mac:
-    name: Build macOS (arm64 + x64)
+  build-mac-arm64:
+    name: Build macOS (arm64)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +35,7 @@ jobs:
       - name: Install dependencies
         run: make install
 
-      - name: Build & pack macOS
+      - name: Build & pack macOS (arm64)
         run: make desktop-pack-mac
         env:
           # 内置 Node 运行时版本需与 runner Node 版本一致，避免 native module ABI 不匹配
@@ -45,7 +46,41 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: mac-assets
+          name: mac-arm64-assets
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.dmg.blockmap
+            desktop/release/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────
+  # macOS x64：Intel dmg
+  # 必须用 Intel runner（macos-13）：native module 必须在 x64 host 上编译，否则 x64 dmg 在 Intel Mac 上因 ABI 不匹配崩溃
+  # ─────────────────────────────────────────────────────────
+  build-mac-x64:
+    name: Build macOS (x64)
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.18.0'
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Build & pack macOS (x64)
+        run: make desktop-pack-mac-x64
+        env:
+          NODE_VERSION: v24.18.0
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-x64-assets
           path: |
             desktop/release/*.dmg
             desktop/release/*.dmg.blockmap
@@ -130,7 +165,7 @@ jobs:
   # ─────────────────────────────────────────────────────────
   release:
     name: Publish GitHub Release
-    needs: [build-mac, build-win, build-linux]
+    needs: [build-mac-arm64, build-mac-x64, build-win, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
