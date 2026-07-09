@@ -56,11 +56,12 @@ jobs:
 
   # ─────────────────────────────────────────────────────────
   # macOS x64：Intel dmg
-  # 必须用 Intel runner（macos-13）：native module 必须在 x64 host 上编译，否则 x64 dmg 在 Intel Mac 上因 ABI 不匹配崩溃
+  # 必须用 Intel runner：native module 必须在 x64 host 上编译，否则 x64 dmg 在 Intel Mac 上因 ABI 不匹配崩溃
+  # 注意 macos-13 已被 GitHub 完全下线，改用 macos-15-intel（GA、x64、非 deprecated）
   # ─────────────────────────────────────────────────────────
   build-mac-x64:
     name: Build macOS (x64)
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 
