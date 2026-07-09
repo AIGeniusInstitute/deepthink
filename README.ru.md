@@ -4,12 +4,6 @@
   <img src="web/public/icons/logo-1024.png" alt="DeepThink Logo" width="400" />
 </p>
 
-<p align="center">
-  <a href="static/deep-think-intro.mp4" target="_blank" title="DeepThink Intro Video">
-    <img src="static/deep-think-start-logo.png" alt="DeepThink Splash & Intro Video" width="800" />
-  </a>
-</p>
-
 <h1 align="center">DeepThink</h1>
 
 <p align="center">
@@ -24,6 +18,11 @@
 </p>
 
 ---
+
+<p align="center">
+  <video src="static/deep-think-intro.mp4" poster="static/deep-think-start-logo.png" controls width="800"></video>
+</p>
+
 
 ## Что такое DeepThink?
 
@@ -93,10 +92,6 @@ DeepThink состоит из трёх независимых проектов N
 ---
 
 **Languages**: [English](README.md) · [简体中文](README.zh-CN.md) · [Español](README.es.md) · [हिन्दी](README.hi.md) · [العربية](README.ar.md) · [বাংলা](README.bn.md) · [Português](README.pt.md) · [Русский](README.ru.md) · [日本語](README.ja.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Bahasa Indonesia](README.id.md) · [اردو](README.ur.md) · [मराठी](README.mr.md) · [తెలుగు](README.te.md) · [Türkçe](README.tr.md) · [தமிழ்](README.ta.md) · [한국어](README.ko.md) · [Tiếng Việt](README.vi.md) · [Italiano](README.it.md) · [Polski](README.pl.md) · [Українська](README.uk.md) · [Nederlands](README.nl.md) · [ไทย](README.th.md) · [ગુજરાતી](README.gu.md) · [Bahasa Melayu](README.ms.md) · [ಕನ್ನಡ](README.kn.md) · [فارسی](README.fa.md) · [Svenska](README.sv.md) · [Čeština](README.cs.md)
-
-
-
-
 
 
 ## About Author

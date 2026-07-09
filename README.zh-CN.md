@@ -4,12 +4,6 @@
   <img src="web/public/icons/logo-1024.png" alt="DeepThink Logo" width="400" />
 </p>
 
-<p align="center">
-  <a href="static/deep-think-intro.mp4" target="_blank" title="DeepThink Intro Video">
-    <img src="static/deep-think-start-logo.png" alt="DeepThink Splash & Intro Video" width="800" />
-  </a>
-</p>
-
 <h1 align="center">DeepThink</h1>
 
 <p align="center">
@@ -28,6 +22,10 @@
 </p>
 
 ---
+
+<p align="center">
+  <video src="static/deep-think-intro.mp4" poster="static/deep-think-start-logo.png" controls width="800"></video>
+</p>
 
 
 ## DeepThink 是什么
@@ -743,6 +741,12 @@ push `v*` 开头的 tag 自动触发，三平台并行构建后自动创建 Rele
 git tag -a v1.0.0 -m "Release v1.0.0"
 git push origin v1.0.0
 
+git tag -a v1.0.1 -m "Release v1.0.1"
+git push origin v1.0.1
+
+git tag -a v1.0.2 -m "Release v1.0.2"
+git push origin v1.0.2
+
 # 2. 在 GitHub Actions 页面观察构建进度
 #    https://github.com/AIGeniusInstitute/deep-think/actions
 
@@ -875,7 +879,6 @@ Commit message 使用简体中文，格式：`类型: 描述`
 ## 许可证
 
 [MIT](LICENSE)
-
 
 
 ## About Author
