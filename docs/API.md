@@ -109,4 +109,31 @@
 
 ## WebSocket
 
-- `/ws`（详见 `CLAUDE.md` §3.6 WebSocket 协议）
+- `/ws`（协议详见下方）
+
+### 服务端 → 客户端（`WsMessageOut`）
+
+| 类型 | 用途 |
+|------|------|
+| `new_message` | 新消息到达（含 `chatJid`、`message`、`is_from_me`） |
+| `agent_reply` | Agent 最终回复（含 `chatJid`、`text`、`timestamp`） |
+| `typing` | Agent 正在输入指示 |
+| `status_update` | 系统状态变更（活跃容器数、宿主机进程数、队列长度） |
+| `stream_event` | 流式事件（含 `chatJid`、`StreamEvent`） |
+| `agent_status` | Sub-Agent 状态变更（含 `chatJid`、`agentId`、`status`） |
+| `terminal_output` | 终端输出数据 |
+| `terminal_started` | 终端会话已启动 |
+| `terminal_stopped` | 终端会话已停止 |
+| `terminal_error` | 终端错误 |
+| `docker_build_log` | Docker 镜像构建日志 |
+| `docker_build_complete` | Docker 镜像构建完成 |
+
+### 客户端 → 服务端（`WsMessageIn`）
+
+| 类型 | 用途 |
+|------|------|
+| `send_message` | 发送消息（含 `chatJid`、`content`，支持 `attachments` 和 `agentId`） |
+| `terminal_start` | 启动终端会话 |
+| `terminal_input` | 终端输入数据 |
+| `terminal_resize` | 终端窗口大小调整 |
+| `terminal_stop` | 停止终端会话 |
