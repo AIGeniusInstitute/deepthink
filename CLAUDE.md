@@ -699,7 +699,7 @@ WebSocket：`/ws`（协议详见 §3.6）。
 - 当前阶段允许不兼容重构，优先代码清晰与行为一致
 - 修改容器 / 调度逻辑时，优先保证：不丢消息、不重复回复、失败可重试
 - **Git commit message 使用简体中文**，格式：`类型: 简要描述`（如 `修复: 侧边栏下拉菜单无法点击`）
-- **Issue / PR 规范**见下方 §10.1
+- **Issue / PR 规范**见下方 §10.2
 - 系统路径不可通过文件 API 操作：`logs/`、`CLAUDE.md`、`.claude/`、`conversations/`
 - StreamEvent 类型以 `shared/stream-event.ts` 为单一真相源，修改后运行 `make sync-types` 同步（`make build` 自动触发，`make typecheck` 校验一致性）
 - Claude SDK / CLI 和容器内置的第三方工具始终使用最新版本：
@@ -722,7 +722,26 @@ WebSocket：`/ws`（协议详见 §3.6）。
   - **自动 scan 默认开启**：admin 在宿主机安装 / 更新的 plugin marketplace 会在主进程启动 5s 后 + 每小时自动入 catalog（`POST /api/plugins/catalog/scan` 也手动触发同一逻辑），对所有 member 可见可启用。可通过系统设置 `SystemSettings.pluginAutoScan = false` 关闭定时扫描（admin 仍可手动点 `POST /api/plugins/catalog/scan`），适用于不希望本机私有 plugin 自动入共享 catalog 的环境。注意：定时器仅在主进程启动时按当前值注册一次，运行时切换需重启服务才能生效
   - **v3 时代 endpoint 已废**：`POST /api/plugins/sync-host` 与 `GET /api/plugins/available-on-host` 已在 PR1 删除，新代码不要再引用
 
-### 10.1 Issue / PR 规范
+### 10.1 Issue 修复流程
+
+bug 修复 / 线上事故 / CI 故障等 issue 处理 **不**走 PRD → tech_solution → test_report 那条线（不是新需求开发）。流程：
+
+1. 定位根因：必须有证据（日志、API 输出、测试结果），禁止主观判断下结论
+2. 把本次 issue 处理经验沉淀到 `docs/issues/{YYYY-MM-DD}-{slug}.md`，文件结构必须包含：
+   - `## 1. 用户现象`：从用户/外部视角描述看到了什么
+   - `## 2. 问题描述`：从技术视角简述发生了什么
+   - `## 3. 根因`：代码层面 / 基础设施层面的具体原因，附外部依据链接
+   - `## 4. 复现路径`：步骤化，让不熟悉代码的人也能复现
+   - `## 5. 诊断方法`：能复制粘贴的命令（curl / grep / 内部脚本）
+   - `## 6. 修复方案`：diff 形式呈现关键改动 + 选型理由
+   - `## 7. 处理卡住的状态`（如适用）：如何救活已 stuck 的运行态
+   - `## 8. 经验沉淀 / 预防`：未来怎么避免同类问题、巡检脚本、告警建议
+3. 执行编码修复，与 issue 文档一并 commit
+4. push 到 main
+
+参考样本：`docs/issues/2026-07-10-macos-13-runner-retired.md`（GitHub Actions macos-13 runner 下线导致 x64 dmg 构建 job 永久排队的修复）。
+
+### 10.2 Issue / PR 规范
 
 **Issue 标题**：`类型: 简要描述`，类型使用小写英文前缀：
 
