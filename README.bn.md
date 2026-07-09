@@ -21,7 +21,7 @@
 
 ## DeepThink কী?
 
-DeepThink হলো একটি স্ব-হোস্টেড, মাল্টি-ইউজার AI Agent সিস্টেম যা [Claude Agent SDK](https://github.com/anthropics/claude-code/tree/main/packages/claude-agent-sdk)-এর উপর নির্মিত। এটি সম্পূর্ণ Claude Code রানটাইমকে Feishu, Telegram, QQ, DingTalk, WeChat এবং Web ইন্টারফেস থেকে অ্যাক্সেসযোগ্য পরিষেবায় মোড়ায়, ফাইল পড়া/লেখা, টার্মিনাল অপারেশন, ব্রাউজার অটোমেশন, মাল্টি-রাউন্ড রিজনিং এবং MCP টুল ইকোসিস্টেম সমর্থন সহ।
+DeepThink হলো একটি স্ব-হোস্টেড, মাল্টি-ইউজার AI Agent সিস্টেম যা [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript)-এর উপর নির্মিত। এটি সম্পূর্ণ Claude Code রানটাইমকে Feishu, Telegram, QQ, DingTalk, WeChat এবং Web ইন্টারফেস থেকে অ্যাক্সেসযোগ্য পরিষেবায় মোড়ায়, ফাইল পড়া/লেখা, টার্মিনাল অপারেশন, ব্রাউজার অটোমেশন, মাল্টি-রাউন্ড রিজনিং এবং MCP টুল ইকোসিস্টেম সমর্থন সহ।
 
 মূল ডিজাইন নীতি: **Agent ক্ষমতা পুনরায় বাস্তবায়ন করবেন না, Claude Code সরাসরি পুনরায় ব্যবহার করুন**। নিচে যা ইনভোক হয় তা সম্পূর্ণ Claude Code CLI রানটাইম, API র‍্যাপার বা প্রম্পট চেইন নয়। Claude Code-এর প্রতিটি আপগ্রেড — নতুন টুল, শক্তিশালী রিজনিং, আরও MCP সমর্থন — DeepThink-কে কোনো অ্যাডাপ্টেশন ছাড়াই স্বয়ংক্রিয়ভাবে উপকৃত করে।
 

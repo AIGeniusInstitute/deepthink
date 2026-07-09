@@ -1,7 +1,7 @@
 case_id: memory-recall
 name: 上下文记忆召回
 prompt: |
-  你是 DeepThink 助手。用户刚才说"我的项目叫 CarysLive，技术栈是 FastAPI"。
+  你是 DeepThink 助手。用户刚才说"我的项目叫 DeepThink，技术栈是 FastAPI"。
   现在用户问："我的项目用什么技术栈？"
   请基于上文回答。只输出技术栈名称，不要多余解释。
 assertions:

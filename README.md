@@ -26,7 +26,7 @@
 
 ## What is DeepThink
 
-DeepThink is a self-hosted, multi-user AI Agent system built on the [Claude Agent SDK](https://github.com/anthropics/claude-code/tree/main/packages/claude-agent-sdk). It wraps the complete Claude Code runtime as a service accessible via Feishu, Telegram, QQ, DingTalk, WeChat, and the Web interface, supporting file read/write, terminal operations, browser automation, multi-turn reasoning, and the MCP tool ecosystem.
+DeepThink is a self-hosted, multi-user AI Agent system built on the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). It wraps the complete Claude Code runtime as a service accessible via Feishu, Telegram, QQ, DingTalk, WeChat, and the Web interface, supporting file read/write, terminal operations, browser automation, multi-turn reasoning, and the MCP tool ecosystem.
 
 Core design principle: **Don't reimplement Agent capabilities — reuse Claude Code directly**. The underlying layer invokes the full Claude Code CLI runtime, not an API wrapper or prompt chain. Every Claude Code upgrade — new tools, stronger reasoning, broader MCP support — automatically benefits DeepThink with zero adaptation.
 
@@ -70,7 +70,7 @@ Supports configuring multiple Claude API providers (official Anthropic, various 
 
 ### Agent Execution Engine
 
-Built on the [Claude Agent SDK](https://github.com/anthropics/claude-code/tree/main/packages/claude-agent-sdk); the SDK invokes the full Claude Code CLI underneath.
+Built on the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript); the SDK invokes the full Claude Code CLI underneath.
 
 - **Per-user primary workspace** — Each user has a fixed primary workspace (admin uses host mode, member uses container mode); IM messages are routed to their respective primary workspaces
 - **Host mode** — Agent runs directly on the host, accessing the local filesystem with zero Docker dependency (default mode for the admin primary workspace)

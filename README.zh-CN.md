@@ -26,11 +26,16 @@
 
 ## DeepThink 是什么
 
-DeepThink 是一个基于 [Claude Agent SDK](https://github.com/anthropics/claude-code/tree/main/packages/claude-agent-sdk) 构建的自托管多用户 AI Agent 系统。它将完整的 Claude Code 运行时封装为可通过飞书、Telegram、QQ、钉钉、微信和 Web 界面访问的服务，支持文件读写、终端操作、浏览器自动化、多轮推理及 MCP 工具生态。
+DeepThink 是一个基于 [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) 构建的自托管多用户 AI Agent 系统。它将完整的 Claude Code 运行时封装为可通过飞书、Telegram、QQ、钉钉、微信和 Web 界面访问的服务，支持文件读写、终端操作、浏览器自动化、多轮推理及 MCP 工具生态。
 
 核心设计原则：**不重新实现 Agent 能力，直接复用 Claude Code**。底层调用的是完整的 Claude Code CLI 运行时，而非 API Wrapper 或 Prompt Chain。Claude Code 的每次升级——新工具、更强的推理、更多的 MCP 支持——DeepThink 零适配自动受益。
 
 ### 关键特性
+
+- **输入**：飞书 / Telegram / QQ / 钉钉 / WhatsApp（基于 Baileys）/ Web 界面消息（每个用户可独立配置 IM 通道）
+- **执行**：Docker 容器或宿主机进程中运行 Claude Agent（基于 Claude Agent SDK），每个用户拥有独立主容器
+- **输出**：飞书富文本卡片 / Telegram HTML / QQ 纯文本 / Web 实时流式推送
+- **记忆**：Agent 自主维护 `CLAUDE.md` 和工作区文件，实现跨会话持久记忆
 
 - **原生 Claude Code 驱动** — 基于 Claude Agent SDK，底层为完整的 Claude Code CLI 运行时，继承其全部能力
 - **多用户隔离** — Per-user 工作区、Per-user IM 通道、RBAC 权限体系、邀请码注册、审计日志，每个用户拥有独立的执行环境
@@ -70,7 +75,7 @@ DeepThink 是一个基于 [Claude Agent SDK](https://github.com/anthropics/claud
 
 ### Agent 执行引擎
 
-基于 [Claude Agent SDK](https://github.com/anthropics/claude-code/tree/main/packages/claude-agent-sdk) 构建，SDK 底层调用完整的 Claude Code CLI。
+基于 [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) 构建，SDK 底层调用完整的 Claude Code CLI。
 
 - **Per-user 主工作区** — 每个用户拥有一个固定的主工作区（admin 使用宿主机模式，member 使用容器模式），IM 消息路由到各自的主工作区
 - **宿主机模式** — Agent 直接在宿主机运行，访问本地文件系统，零 Docker 依赖（admin 主工作区默认模式）

@@ -21,7 +21,7 @@
 
 ## O que é o DeepThink?
 
-DeepThink é um sistema de AI Agent self-hosted e multiusuário construído sobre o [Claude Agent SDK](https://github.com/anthropics/claude-code/tree/main/packages/claude-agent-sdk). Ele envolve o runtime completo do Claude Code em um serviço acessível via Feishu, Telegram, QQ, DingTalk, WeChat e interface Web, com suporte a leitura/escrita de arquivos, operações de terminal, automação de navegador, raciocínio multi-turno e o ecossistema de ferramentas MCP.
+DeepThink é um sistema de AI Agent self-hosted e multiusuário construído sobre o [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Ele envolve o runtime completo do Claude Code em um serviço acessível via Feishu, Telegram, QQ, DingTalk, WeChat e interface Web, com suporte a leitura/escrita de arquivos, operações de terminal, automação de navegador, raciocínio multi-turno e o ecossistema de ferramentas MCP.
 
 Princípio de design central: **não re-implementar a capacidade do Agent, reusar diretamente o Claude Code**. O que é invocado por baixo é o runtime completo do CLI do Claude Code, não um wrapper de API ou cadeia de prompts. Cada upgrade do Claude Code — novas ferramentas, raciocínio mais forte, mais suporte MCP — beneficia o DeepThink sem necessidade de adaptação.
 
