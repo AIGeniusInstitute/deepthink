@@ -4,6 +4,12 @@
   <img src="web/public/icons/logo-1024.png" alt="DeepThink Logo" width="400" />
 </p>
 
+<p align="center">
+  <a href="static/deep-think-intro.mp4" target="_blank" title="DeepThink Intro Video">
+    <img src="static/deep-think-start-logo.png" alt="DeepThink Splash & Intro Video" width="800" />
+  </a>
+</p>
+
 <h1 align="center">DeepThink</h1>
 
 <p align="center">
