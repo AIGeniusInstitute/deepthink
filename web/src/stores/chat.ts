@@ -2626,13 +2626,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (idx === -1) {
         next = [...list, node];
       } else {
-        // Merge — preserve existing annotation fields (server is source of
-        // truth for those, only the server-side save action updates them).
+        // Merge — COALESCE semantics: a null/undefined field on the incoming
+        // event must NOT clobber an existing non-null value (e.g. tool_use_end
+        // carries no inputSummary, so it arrives as null — we must preserve the
+        // inputSummary that tool_use_start wrote). Annotations are always
+        // server-authoritative and never overwritten by stream events.
         const merged: TraceNodeEntry = {
           ...list[idx],
           ...node,
-          annotation_input: list[idx].annotation_input ?? node.annotation_input,
-          annotation_output: list[idx].annotation_output ?? node.annotation_output,
+          input_summary: node.input_summary ?? list[idx].input_summary ?? null,
+          output_summary: node.output_summary ?? list[idx].output_summary ?? null,
+          title: node.title ?? list[idx].title ?? null,
+          status: node.status ?? list[idx].status ?? null,
+          parent_node_id: node.parent_node_id ?? list[idx].parent_node_id ?? null,
+          node_type: node.node_type ?? list[idx].node_type,
+          tokens: Math.max(node.tokens ?? 0, list[idx].tokens ?? 0),
+          annotation_input: list[idx].annotation_input ?? node.annotation_input ?? null,
+          annotation_output: list[idx].annotation_output ?? node.annotation_output ?? null,
         };
         next = [...list.slice(0, idx), merged, ...list.slice(idx + 1)];
       }

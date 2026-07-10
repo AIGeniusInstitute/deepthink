@@ -56,21 +56,50 @@ describe('TraceNodeAllocator', () => {
     expect(event.traceNode!.nodeType).toBe('skill');
   });
 
-  test('tool_use_end updates node status to done and writes outputSummary', () => {
+  test('tool_use_end + tool_result updates node status and writes outputSummary', () => {
     const alloc = new TraceNodeAllocator();
     alloc.startTurn();
     const startEvent = makeToolStartEvent();
     alloc.decorate(startEvent);
+    // tool_use_end fires first — sets status=done but NOT outputSummary
+    // (the actual output arrives in a separate tool_result event).
     const endEvent: StreamEvent = {
       eventType: 'tool_use_end',
       toolUseId: 'tu_1',
-      toolResult: 'file1\nfile2',
     } as StreamEvent;
     alloc.decorate(endEvent);
     expect(endEvent.traceNode).toBeDefined();
     expect(endEvent.traceNode!.nodeType).toBe('tool');
-    expect(endEvent.traceNode!.outputSummary).toBe('file1\nfile2');
     expect(endEvent.traceNode!.status).toBe('done');
+    expect(endEvent.traceNode!.outputSummary).toBeUndefined();
+    // tool_result fires next — carries the actual output text.
+    const resultEvent: StreamEvent = {
+      eventType: 'tool_result',
+      toolUseId: 'tu_1',
+      toolResult: 'file1\nfile2',
+    } as StreamEvent;
+    alloc.decorate(resultEvent);
+    expect(resultEvent.traceNode).toBeDefined();
+    expect(resultEvent.traceNode!.outputSummary).toBe('file1\nfile2');
+    expect(resultEvent.traceNode!.status).toBe('done');
+  });
+
+  test('tool_progress updates node inputSummary from input_json_delta', () => {
+    const alloc = new TraceNodeAllocator();
+    alloc.startTurn();
+    // tool_use_start at content_block_start fires with empty input → inputSummary=null
+    const startEvent = makeToolStartEvent({ toolInputSummary: undefined });
+    alloc.decorate(startEvent);
+    expect(startEvent.traceNode!.inputSummary).toBeUndefined();
+    // tool_progress later carries the resolved input summary
+    const progressEvent: StreamEvent = {
+      eventType: 'tool_progress',
+      toolUseId: 'tu_1',
+      toolInputSummary: 'command: ls -la',
+    } as StreamEvent;
+    alloc.decorate(progressEvent);
+    expect(progressEvent.traceNode).toBeDefined();
+    expect(progressEvent.traceNode!.inputSummary).toBe('command: ls -la');
   });
 
   test('task_start allocates a subagent node', () => {
