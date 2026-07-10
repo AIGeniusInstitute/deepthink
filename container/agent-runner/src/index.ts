@@ -45,7 +45,12 @@ import {
 import { StreamEventProcessor } from './stream-processor.js';
 import { PREDEFINED_AGENTS } from './agent-definitions.js';
 import { createMcpTools } from './mcp-tools.js';
-import { TraceNodeAllocator } from './trace-node-allocator.js';
+import { traceAllocator, type TraceNodeDescriptor } from './trace-node-allocator.js';
+
+// traceAllocator is a module-level singleton (see trace-node-allocator.ts):
+// nodeIds are monotonic across queries within the agent-runner process
+// lifetime, so multiple turns in the same session do not overwrite each
+// other in the DB (which keys on (chat_jid, id)).
 
 // 路径解析：优先读取环境变量，降级到容器内默认路径（保持向后兼容）
 const WORKSPACE_GROUP = process.env.DEEPTHINK_WORKSPACE_GROUP || '/workspace/group';
@@ -1256,12 +1261,20 @@ async function runQuery(
   const assistantTextTracker = new AssistantTextTracker();
   let canonicalAssistantUuid: string | undefined;
   const initialRejected = stream.push(prompt, images);
-  // Allocate stable nodeIds for DAG visualization. Per-process monotonic
-  // counter; the main process persists nodes with upsertChatTraceNode keyed
-  // on (chat_jid, id). resetTurn() is called when a new user message arrives.
-  const traceAllocator = new TraceNodeAllocator();
+  // Reset per-turn allocator state (clears currentTurnId + tool/task maps,
+  // but NOT nextId — nodeIds stay monotonic across turns within the process).
+  traceAllocator.resetTurn();
+  // Track the current turn's nodeId so we can finalize it at query end.
+  let currentTurnNode: TraceNodeDescriptor | null = null;
+  // Accumulate assistant text to populate the turn node's outputSummary.
+  let currentTurnAssistantText = '';
   const decorateStreamEvent = (event: StreamEvent): StreamEvent => {
     const decorated = traceAllocator.decorate(event);
+    // Accumulate assistant text_delta for turn outputSummary. Only track
+    // top-level (non-nested) assistant text to avoid mixing in subagent output.
+    if (decorated.eventType === 'text_delta' && !decorated.parentToolUseId && decorated.text) {
+      currentTurnAssistantText += decorated.text;
+    }
     return {
       ...decorated,
       turnId: containerInput.turnId,
@@ -1285,6 +1298,20 @@ async function runQuery(
     }
     if (emitOutput) writeOutput(output);
   };
+
+  // Emit a turn-start trace node so the DAG canvas shows the turn root node
+  // before any tool/subagent children. This gives edges a valid source.
+  const turnStartNode = traceAllocator.startTurn(prompt.slice(0, 400));
+  currentTurnNode = turnStartNode;
+  emit({
+    status: 'stream',
+    result: null,
+    streamEvent: {
+      eventType: 'status',
+      statusText: 'turn_start',
+      traceNode: turnStartNode,
+    },
+  });
 
   // 如果有图片被拒绝，立即通知用户
   for (const reason of initialRejected) {
@@ -2097,6 +2124,25 @@ async function runQuery(
     // 定时器，以及旧 watcher 抢先 drain 本应进入新 query 的 IPC 消息。
     ipcPolling = false;
     ipcQueryWatcher.close();
+
+    // Finalize the turn trace node: emit turn-end so the DAG canvas shows the
+    // assistant's reply as the turn's outputSummary and transitions the node
+    // out of 'running'. Fires on every exit path (normal, error, interrupt).
+    if (currentTurnNode) {
+      const outputSummary = currentTurnAssistantText.slice(0, 400) || undefined;
+      const turnEnd = traceAllocator.endTurn(outputSummary, 'done');
+      if (turnEnd) {
+        emit({
+          status: 'stream',
+          result: null,
+          streamEvent: {
+            eventType: 'status',
+            statusText: 'turn_end',
+            traceNode: turnEnd,
+          },
+        });
+      }
+    }
   }
 }
 

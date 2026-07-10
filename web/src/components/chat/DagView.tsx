@@ -15,12 +15,42 @@ import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { Workflow, Loader2, RefreshCw } from 'lucide-react';
 import { useChatStore, type TraceNodeEntry } from '../../stores/chat';
 import { DagNodeDetail } from './DagNodeDetail';
+import type { Node, Edge, NodeMouseHandler } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 // Dynamic import — reactflow is ~200KB gzip, only load when canvas is opened.
-const ReactFlowLazy = lazy(async () => {
-  const mod = await import('@xyflow/react');
-  return { default: mod.ReactFlow };
+// Wraps ReactFlow + Controls + Background + MiniMap in a single lazy component
+// so they share one dynamic chunk and keep all @xyflow/react value imports
+// (MarkerType enum, etc.) inside the lazy boundary.
+const FlowCanvas = lazy(async () => {
+  const { ReactFlow, Controls, Background, MiniMap, MarkerType } = await import('@xyflow/react');
+  const Component = ({
+    nodes,
+    edges,
+    onNodeClick,
+  }: {
+    nodes: Node[];
+    edges: Edge[];
+    onNodeClick: NodeMouseHandler;
+  }) => (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodeClick={onNodeClick}
+      defaultEdgeOptions={{
+        style: { stroke: '#94a3b8', strokeWidth: 1.5 },
+        markerEnd: { type: MarkerType.ArrowClosed },
+      }}
+      fitView
+      proOptions={{ hideAttribution: true }}
+      className="bg-muted/20"
+    >
+      <Background gap={16} size={1} />
+      <Controls />
+      <MiniMap pannable zoomable className="!bg-white" />
+    </ReactFlow>
+  );
+  return { default: Component };
 });
 
 const NODE_TYPE_COLORS: Record<TraceNodeEntry['node_type'], string> = {
@@ -73,7 +103,7 @@ export function DagView({ chatJid }: DagViewProps) {
   };
 
   const { rfNodes, rfEdges } = useMemo(() => {
-    const rfNodes = nodes.map((n) => {
+    const rfNodes = nodes.map((n, index) => {
       const isSelected = n.id === selectedNodeId;
       const status = n.status ?? 'pending';
       const title = n.title?.slice(0, 30) || `#${n.id}`;
@@ -108,7 +138,9 @@ export function DagView({ chatJid }: DagViewProps) {
             </div>
           ),
         },
-        position: { x: (n.id % 5) * 180, y: Math.floor(n.id / 5) * 120 },
+        // Layout by array index (not by id) so large nodeIds don't push
+        // nodes off-screen. Simple grid: 5 columns, rows top-down.
+        position: { x: (index % 5) * 180, y: Math.floor(index / 5) * 120 },
       };
     });
     const rfEdges = nodes
@@ -117,7 +149,8 @@ export function DagView({ chatJid }: DagViewProps) {
         id: `${n.parent_node_id}-${n.id}`,
         source: String(n.parent_node_id),
         target: String(n.id),
-        className: 'text-slate-400',
+        style: { stroke: '#94a3b8', strokeWidth: 1.5 },
+        animated: n.status === 'running',
       }));
     return { rfNodes, rfEdges };
   }, [nodes, selectedNodeId]);
@@ -161,13 +194,10 @@ export function DagView({ chatJid }: DagViewProps) {
                 </div>
               }
             >
-              <ReactFlowLazy
+              <FlowCanvas
                 nodes={rfNodes}
                 edges={rfEdges}
                 onNodeClick={(_, node) => setSelectedNodeId(Number(node.id))}
-                fitView
-                proOptions={{ hideAttribution: true }}
-                className="bg-muted/20"
               />
             </Suspense>
           )}
