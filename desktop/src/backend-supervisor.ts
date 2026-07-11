@@ -60,6 +60,14 @@ export class BackendSupervisor {
       ASSISTANT_NAME: 'DeepThink',
       NODE_ENV: 'production',
       FORCE_COLOR: '0',
+      // macOS Electron GUI apps don't load shell profiles (.zshrc/.zprofile),
+      // so the inherited PATH only contains /usr/bin:/bin:/usr/sbin:/sbin.
+      // That misses homebrew (/opt/homebrew/bin or /usr/local/bin), nvm, asdf,
+      // volta, ~/.local/bin, etc. — any spawn of npx/node/npm from the backend
+      // fails with ENOENT (e.g. installSkillForUser -> npx skills add).
+      // Resolve the user's login-shell PATH once at startup and merge with
+      // the current PATH so backend subprocesses can find user-installed tools.
+      PATH: resolveBackendPath(),
     };
   }
 
@@ -171,6 +179,52 @@ export class BackendSupervisor {
   get currentPort(): number | null {
     return this.port;
   }
+}
+
+// Common user-level bin directories appended as a safety net when login-shell
+// resolution fails or the user has a non-standard setup.
+const FALLBACK_PATH_ENTRIES = [
+  '/opt/homebrew/bin',
+  '/opt/homebrew/sbin',
+  '/usr/local/bin',
+  '/usr/local/sbin',
+];
+
+let cachedBackendPath: string | null = null;
+
+// macOS Electron GUI apps don't load shell profiles (.zshrc/.zprofile), so the
+// inherited PATH only contains /usr/bin:/bin:/usr/sbin:/sbin and misses
+// homebrew, nvm, asdf, volta, ~/.local/bin, etc. Resolve the user's login-shell
+// PATH once at startup and merge with the inherited PATH + a small fallback list
+// so backend subprocesses (e.g. `npx skills add`) can find user-installed tools.
+function resolveBackendPath(): string {
+  if (cachedBackendPath !== null) return cachedBackendPath;
+
+  const inherited = (process.env.PATH || '').split(':').filter(Boolean);
+  const shell = process.env.SHELL || '/bin/zsh';
+  let shellPath: string[] = [];
+  try {
+    const out = execFileSync(shell, ['-l', '-i', '-c', 'printf %s "$PATH"'], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5_000,
+    });
+    shellPath = out.split(':').filter(Boolean);
+  } catch {
+    // Ignore — fall back to inherited + FALLBACK_PATH_ENTRIES below.
+  }
+
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const p of [...shellPath, ...inherited, ...FALLBACK_PATH_ENTRIES]) {
+    if (p && !seen.has(p)) {
+      seen.add(p);
+      merged.push(p);
+    }
+  }
+
+  cachedBackendPath = merged.join(':');
+  return cachedBackendPath;
 }
 
 function waitExit(proc: ChildProcess, timeoutMs: number): Promise<void> {
