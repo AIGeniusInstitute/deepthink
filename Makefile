@@ -339,6 +339,13 @@ DESKTOP_NODE_MODULES := $(DESKTOP_DIR)/node_modules
 # 与 scripts/fetch-node-binary.js 默认保持一致；修改时同步更新一处即可。
 DESKTOP_NODE_VERSION ?= v22.11.0
 
+# Electron 二进制（electron 包 postinstall + electron-builder 打包）默认从 GitHub
+# 下载，国内裸网络常 read ETIMEDOUT。这里默认走 npmmirror 镜像，已配置代理或自有
+# 镜像的用户可在 shell 里 export 同名变量覆盖（?= 只在未设置时赋值）。
+ELECTRON_MIRROR ?= https://npmmirror.com/mirrors/electron/
+ELECTRON_BUILDER_BINARIES_MIRROR ?= https://npmmirror.com/mirrors/electron-builder-binaries/
+export ELECTRON_MIRROR ELECTRON_BUILDER_BINARIES_MIRROR
+
 desktop-install: ## 安装桌面版子项目依赖
 	cd $(DESKTOP_DIR) && npm install --no-audit --no-fund
 
