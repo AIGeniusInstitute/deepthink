@@ -42,7 +42,7 @@ bun.lockb
 *.tsbuildinfo
 
 # Local tooling metadata
-.claude/
+# .claude/
 .mcp.json
 /.omc/
 .trae/
