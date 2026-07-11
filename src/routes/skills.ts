@@ -775,8 +775,14 @@ async function installSkillForUser(
   // Create an isolated temp directory to act as HOME so `--global` installs
   // into tempHome/.claude/skills/ instead of the real ~/.claude/skills/.
   // This avoids any race condition when multiple installs run concurrently.
+  // CLAUDE_CONFIG_DIR must also be overridden: skills CLI resolves the
+  // claude-code config dir from CLAUDE_CONFIG_DIR first and falls back to
+  // HOME/.claude only when unset. happyclaw's main process sets
+  // CLAUDE_CONFIG_DIR=data/sessions/main/.claude, so without this override
+  // skills land in the real ~/.claude/skills/ and tempHome stays empty.
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-install-'));
-  const tempSkillsDir = path.join(tempHome, '.claude', 'skills');
+  const tempClaudeDir = path.join(tempHome, '.claude');
+  const tempSkillsDir = path.join(tempClaudeDir, 'skills');
   fs.mkdirSync(tempSkillsDir, { recursive: true });
 
   try {
@@ -785,7 +791,11 @@ async function installSkillForUser(
       ['-y', 'skills', 'add', pkg, '--global', '--yes', '-a', 'claude-code'],
       {
         timeout: 60_000,
-        env: { ...process.env, HOME: tempHome },
+        env: {
+          ...process.env,
+          HOME: tempHome,
+          CLAUDE_CONFIG_DIR: tempClaudeDir,
+        },
       },
     );
 
