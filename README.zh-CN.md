@@ -725,6 +725,18 @@ DeepThink 提供两种发布到 GitHub Release 的方式：手动 `make release`
 git tag -a v1.0.0 -m "Release v1.0.0"
 git push origin v1.0.0
 
+## 
+git tag -a v1.0.1 -m "Release v1.0.1"
+git push origin v1.0.1
+
+##
+git tag -a v1.0.2 -m "Release v1.0.2"
+git push origin v1.0.2
+
+##
+git tag -a v1.0.3 -m "Release v1.0.3"
+git push origin v1.0.3
+
 # 2. 在本地构建产物（macOS 示例）
 make desktop-pack-mac
 
