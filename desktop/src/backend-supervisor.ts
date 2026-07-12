@@ -190,6 +190,37 @@ const FALLBACK_PATH_ENTRIES = [
   '/usr/local/sbin',
 ];
 
+// Homebrew installs node (and versioned node@18/node@20/...) as *keg-only*:
+// the `npx`/`node`/`npm` binaries live in `<prefix>/opt/node@XX/bin` and are
+// NOT symlinked into `<prefix>/bin`. Some users only expose this path via
+// `~/.bash_profile` (e.g. `export PATH="/usr/local/opt/node@20/bin:$PATH"`),
+// which a zsh login shell — and macOS GUI apps — never source. Login-shell PATH
+// resolution (zsh) therefore misses it, and FALLBACK_PATH_ENTRIES only has
+// `<prefix>/bin` (no npx there). Probe both Homebrew prefixes for node keg
+// `bin` dirs so backend subprocesses (e.g. `npx skills add`) can find npx.
+function homebrewNodeKegBins(): string[] {
+  const dirs: string[] = [];
+  for (const prefix of ['/usr/local/opt', '/opt/homebrew/opt']) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(prefix, { withFileTypes: true });
+    } catch {
+      continue; // prefix not present (e.g. /opt/homebrew on Intel)
+    }
+    for (const ent of entries) {
+      if (!ent.name.startsWith('node')) continue;
+      const binDir = `${prefix}/${ent.name}/bin`;
+      try {
+        // statSync follows the opt symlink, so it works for keg symlinks too.
+        if (fs.statSync(binDir).isDirectory()) dirs.push(binDir);
+      } catch {
+        // bin doesn't exist — skip this keg
+      }
+    }
+  }
+  return dirs;
+}
+
 let cachedBackendPath: string | null = null;
 
 // macOS Electron GUI apps don't load shell profiles (.zshrc/.zprofile), so the
@@ -216,7 +247,7 @@ function resolveBackendPath(): string {
 
   const merged: string[] = [];
   const seen = new Set<string>();
-  for (const p of [...shellPath, ...inherited, ...FALLBACK_PATH_ENTRIES]) {
+  for (const p of [...shellPath, ...inherited, ...homebrewNodeKegBins(), ...FALLBACK_PATH_ENTRIES]) {
     if (p && !seen.has(p)) {
       seen.add(p);
       merged.push(p);
