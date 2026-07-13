@@ -1,0 +1,214 @@
+name: Release
+
+# 触发条件：
+# 1. push v* 开头的 tag（如 v1.0.0）→ 自动构建三平台 + 发布
+# 2. workflow_dispatch 手动触发，需传 version 参数（必须已 push 对应 tag）
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本 tag（如 v1.0.0，必须已 push 到远端）'
+        required: true
+
+# 创建 Release 需要 contents: write 权限
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────
+  # macOS arm64：M1/M2/M3 dmg
+  # 必须用 arm64 runner：desktop-rebuild-natives 按当前 host arch 编 native 模块（better-sqlite3 等）
+  # ─────────────────────────────────────────────────────────
+  build-mac-arm64:
+    name: Build macOS (arm64)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.18.0'
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Build & pack macOS (arm64)
+        run: make desktop-pack-mac
+        env:
+          # 内置 Node 运行时版本需与 runner Node 版本一致，避免 native module ABI 不匹配
+          NODE_VERSION: v24.18.0
+          # 国内镜像加速 electron-builder 二进制下载
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-arm64-assets
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.dmg.blockmap
+            desktop/release/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────
+  # macOS x64：Intel dmg
+  # 必须用 Intel runner：native module 必须在 x64 host 上编译，否则 x64 dmg 在 Intel Mac 上因 ABI 不匹配崩溃
+  # 注意 macos-13 已被 GitHub 完全下线，改用 macos-15-intel（GA、x64、非 deprecated）
+  # ─────────────────────────────────────────────────────────
+  build-mac-x64:
+    name: Build macOS (x64)
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.18.0'
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Build & pack macOS (x64)
+        run: make desktop-pack-mac-x64
+        env:
+          NODE_VERSION: v24.18.0
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-x64-assets
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.dmg.blockmap
+            desktop/release/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────
+  # Windows：x64 exe 安装包
+  # ─────────────────────────────────────────────────────────
+  build-win:
+    name: Build Windows (x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.18.0'
+
+      - name: Install make (Windows runner 默认无)
+        shell: bash
+        run: choco install make -y --no-progress
+
+      - name: Install dependencies
+        shell: bash
+        run: make install
+
+      - name: Build & pack Windows
+        shell: bash
+        run: make desktop-pack-win
+        env:
+          NODE_VERSION: v24.18.0
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-assets
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.exe.blockmap
+            desktop/release/latest.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────
+  # Linux：x64 AppImage + deb
+  # ─────────────────────────────────────────────────────────
+  build-linux:
+    name: Build Linux (x64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.18.0'
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Build & pack Linux
+        run: make desktop-pack-linux
+        env:
+          NODE_VERSION: v24.18.0
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-assets
+          path: |
+            desktop/release/*.AppImage
+            desktop/release/*.deb
+            desktop/release/latest-linux.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────
+  # 汇总三平台产物 → 创建 GitHub Release
+  # ─────────────────────────────────────────────────────────
+  release:
+    name: Publish GitHub Release
+    needs: [build-mac-arm64, build-mac-x64, build-win, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine release version
+        id: ver
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            # tag 触发时 github.ref_name 即 tag 名
+            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( \
+            -name '*.dmg' -o \
+            -name '*.exe' -o \
+            -name '*.AppImage' -o \
+            -name '*.deb' -o \
+            -name '*.blockmap' -o \
+            -name 'latest*.yml' \
+          \) -exec cp {} release-assets/ \;
+          echo "=== Final release assets ==="
+          ls -la release-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: ${{ github.repository }}
+          tag_name: ${{ steps.ver.outputs.version }}
+          name: DeepThink ${{ steps.ver.outputs.version }}
+          files: release-assets/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
