@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "saving": "Saving...",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "open": "Open",
+    "loading": "Loading...",
+    "retry": "Retry",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "submit": "Submit",
+    "reset": "Reset",
+    "search": "Search",
+    "copy": "Copy",
+    "copied": "Copied",
+    "yes": "Yes",
+    "no": "No",
+    "all": "All",
+    "none": "None",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "Chat",
+    "settings": "Settings",
+    "tasks": "Tasks",
+    "memory": "Memory",
+    "monitor": "Monitor",
+    "skills": "Skills",
+    "mcpServers": "MCP Servers",
+    "users": "Users",
+    "files": "Files"
+  },
+  "login": {
+    "title": "Login",
+    "subtitle": "Sign in to DeepThink",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign in",
+    "register": "Register",
+    "logout": "Log out",
+    "errors": {
+      "invalid": "Invalid username or password",
+      "locked": "Account locked, try again later",
+      "network": "Network error, please retry"
+    }
+  },
+  "register": {
+    "title": "Register",
+    "subtitle": "Create a new account",
+    "username": "Username",
+    "password": "Password",
+    "confirmPassword": "Confirm password",
+    "inviteCode": "Invite code",
+    "submit": "Register",
+    "backToLogin": "Back to login",
+    "errors": {
+      "usernameTaken": "Username already taken",
+      "passwordMismatch": "Passwords do not match",
+      "invalidInvite": "Invalid invite code"
+    }
+  },
+  "setup": {
+    "title": "Setup",
+    "adminAccount": "Create admin account",
+    "claudeConfig": "Configure Claude",
+    "imChannels": "Configure IM channels",
+    "welcome": "Welcome to DeepThink",
+    "getStarted": "Get started"
+  },
+  "chat": {
+    "inputPlaceholder": "Type a message, Enter to send, Shift+Enter for newline",
+    "thinking": "Thinking",
+    "send": "Send",
+    "stop": "Stop",
+    "clearMessages": "Clear conversation",
+    "attachments": "Attachments",
+    "uploadFile": "Upload file",
+    "noMessages": "Start a new conversation",
+    "regenerate": "Regenerate",
+    "copyMessage": "Copy message",
+    "deleteMessage": "Delete message",
+    "tokenUsage": "Token usage"
+  },
+  "settings": {
+    "title": "Settings",
+    "sections": {
+      "profile": "Profile",
+      "appearance": "Appearance",
+      "language": "Language",
+      "claude": "Model Provider",
+      "im": "IM Channels",
+      "tasks": "Tasks",
+      "system": "System",
+      "users": "Users",
+      "audit": "Audit log",
+      "invites": "Invite codes",
+      "groups": "Groups",
+      "mcpServers": "MCP Servers",
+      "skills": "Skills",
+      "plugins": "Plugins",
+      "billing": "Billing"
+    },
+    "language": {
+      "title": "Interface language",
+      "description": "Choose the interface language. The agent will also reply in this language.",
+      "selectPlaceholder": "Select language",
+      "appliedNotice": "Language switched",
+      "rtlNotice": "Switched to right-to-left layout"
+    },
+    "profile": {
+      "username": "Username",
+      "displayName": "Display name",
+      "avatar": "Avatar",
+      "updateSuccess": "Profile updated"
+    },
+    "appearance": {
+      "theme": "Theme",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System",
+      "assistantName": "Assistant name",
+      "assistantAvatar": "Assistant avatar"
+    }
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "connecting": "Connecting",
+    "reconnecting": "Reconnecting",
+    "connected": "Connected",
+    "disconnected": "Disconnected"
+  },
+  "errors": {
+    "networkFailure": "Network request failed",
+    "unknown": "Unknown error",
+    "forbidden": "Forbidden",
+    "notFound": "Not found",
+    "serverError": "Server error",
+    "timeout": "Request timeout"
+  }
+}

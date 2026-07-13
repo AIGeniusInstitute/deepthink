@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "İptal",
+    "confirm": "Onayla",
+    "save": "Kaydet",
+    "saving": "Kaydediliyor...",
+    "delete": "Sil",
+    "edit": "Düzenle",
+    "close": "Kapat",
+    "open": "Aç",
+    "loading": "Yükleniyor...",
+    "retry": "Tekrar dene",
+    "back": "Geri",
+    "next": "İleri",
+    "previous": "Önceki",
+    "submit": "Gönder",
+    "reset": "Sıfırla",
+    "search": "Ara",
+    "copy": "Kopyala",
+    "copied": "Kopyalandı",
+    "yes": "Evet",
+    "no": "Hayır",
+    "all": "Tümü",
+    "none": "Hiçbiri",
+    "ok": "Tamam"
+  },
+  "nav": {
+    "chat": "Sohbet",
+    "settings": "Ayarlar",
+    "tasks": "Görevler",
+    "memory": "Bellek",
+    "monitor": "İzleyici",
+    "skills": "Beceriler",
+    "mcpServers": "MCP Sunucuları",
+    "users": "Kullanıcılar",
+    "files": "Dosyalar"
+  },
+  "login": {
+    "title": "Giriş",
+    "subtitle": "DeepThink'a giriş yap",
+    "username": "Kullanıcı adı",
+    "password": "Parola",
+    "submit": "Giriş yap",
+    "register": "Kayıt ol",
+    "logout": "Çıkış yap",
+    "errors": {
+      "invalid": "Geçersiz kullanıcı adı veya parola",
+      "locked": "Hesap kilitli, daha sonra tekrar deneyin",
+      "network": "Ağ hatası, lütfen tekrar deneyin"
+    }
+  },
+  "register": {
+    "title": "Kayıt ol",
+    "subtitle": "Yeni hesap oluştur",
+    "username": "Kullanıcı adı",
+    "password": "Parola",
+    "confirmPassword": "Parolayı onayla",
+    "inviteCode": "Davet kodu",
+    "submit": "Kayıt ol",
+    "backToLogin": "Girişe dön",
+    "errors": {
+      "usernameTaken": "Kullanıcı adı zaten alınmış",
+      "passwordMismatch": "Parolalar eşleşmiyor",
+      "invalidInvite": "Geçersiz davet kodu"
+    }
+  },
+  "setup": {
+    "title": "Kurulum",
+    "adminAccount": "Yönetici hesabı oluştur",
+    "claudeConfig": "Claude'u yapılandır",
+    "imChannels": "IM kanallarını yapılandır",
+    "welcome": "DeepThink'a hoş geldiniz",
+    "getStarted": "Başla"
+  },
+  "chat": {
+    "inputPlaceholder": "Mesaj yazın, göndermek için Enter, yeni satır için Shift+Enter",
+    "thinking": "Düşünüyor",
+    "send": "Gönder",
+    "stop": "Durdur",
+    "clearMessages": "Sohbeti temizle",
+    "attachments": "Ekler",
+    "uploadFile": "Dosya yükle",
+    "noMessages": "Yeni bir sohbet başlat",
+    "regenerate": "Yeniden oluştur",
+    "copyMessage": "Mesajı kopyala",
+    "deleteMessage": "Mesajı sil",
+    "tokenUsage": "Token kullanımı"
+  },
+  "settings": {
+    "title": "Ayarlar",
+    "sections": {
+      "profile": "Profil",
+      "appearance": "Görünüm",
+      "language": "Dil",
+      "claude": "Model sağlayıcı",
+      "im": "IM Kanalları",
+      "tasks": "Görevler",
+      "system": "Sistem",
+      "users": "Kullanıcılar",
+      "audit": "Denet günlüğü",
+      "invites": "Davet kodları",
+      "groups": "Gruplar",
+      "mcpServers": "MCP Sunucuları",
+      "skills": "Beceriler",
+      "plugins": "Eklentiler",
+      "billing": "Faturalama"
+    },
+    "language": {
+      "title": "Arayüz dili",
+      "description": "Arayüz dilini seçin. Ajan da bu dilde yanıt verecek.",
+      "selectPlaceholder": "Dil seçin",
+      "appliedNotice": "Dil değiştirildi",
+      "rtlNotice": "Sağdan-sola düzenine geçildi"
+    },
+    "profile": {
+      "username": "Kullanıcı adı",
+      "displayName": "Görünen ad",
+      "avatar": "Avatar",
+      "updateSuccess": "Profil güncellendi"
+    },
+    "appearance": {
+      "theme": "Tema",
+      "light": "Açık",
+      "dark": "Koyu",
+      "system": "Sistem",
+      "assistantName": "Asistan adı",
+      "assistantAvatar": "Asistan avatarı"
+    }
+  },
+  "status": {
+    "online": "Çevrimiçi",
+    "offline": "Çevrimdışı",
+    "connecting": "Bağlanıyor",
+    "reconnecting": "Yeniden bağlanıyor",
+    "connected": "Bağlandı",
+    "disconnected": "Bağlantı kesildi"
+  },
+  "errors": {
+    "networkFailure": "Ağ isteği başarısız",
+    "unknown": "Bilinmeyen hata",
+    "forbidden": "Yasaklı",
+    "notFound": "Bulunamadı",
+    "serverError": "Sunucu hatası",
+    "timeout": "İstek zaman aşımı"
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "రద్దు చేయి",
+    "confirm": "నిర్ధారించు",
+    "save": "భద్రపరచు",
+    "saving": "భద్రపరుస్తోంది...",
+    "delete": "తొలగించు",
+    "edit": "సవరించు",
+    "close": "మూసివేయి",
+    "open": "తెరవండి",
+    "loading": "లోడ్ అవుతోంది...",
+    "retry": "మళ్లీ ప్రయత్నించు",
+    "back": "వెనుకకు",
+    "next": "తదుపర",
+    "previous": "ముందుది",
+    "submit": "సమర్పించు",
+    "reset": "రీసెట్ చేయి",
+    "search": "శోధించు",
+    "copy": "కాపీ చేయి",
+    "copied": "కాపీ అయింది",
+    "yes": "అవును",
+    "no": "కాదు",
+    "all": "అన్నీ",
+    "none": "ఏదీ కాదు",
+    "ok": "సరే"
+  },
+  "nav": {
+    "chat": "చాట్",
+    "settings": "సెట్టింగ్‌లు",
+    "tasks": "పనులు",
+    "memory": "మెమరీ",
+    "monitor": "మానిటర్",
+    "skills": "నైపుణ్యాలు",
+    "mcpServers": "MCP సర్వర్‌లు",
+    "users": "వినియోగదారులు",
+    "files": "ఫైళ్లు"
+  },
+  "login": {
+    "title": "లాగిన్",
+    "subtitle": "DeepThink లోకి సైన్ ఇన్ చేయండి",
+    "username": "వినియోగదారుల పేరు",
+    "password": "పాస్‌వర్డ్",
+    "submit": "సైన్ ఇన్",
+    "register": "నమోదు చేయి",
+    "logout": "లాగ్ అవుట్",
+    "errors": {
+      "invalid": "తప్పు వినియోగదారుల పేరు లేదా పాస్‌వర్డ్",
+      "locked": "ఖాతా లాక్ చేయబడింది, తర్వాత మళ్లీ ప్రయత్నించండి",
+      "network": "నెట్‌వర్క్ లోపం, దయచేసి మళ్లీ ప్రయత్నించండి"
+    }
+  },
+  "register": {
+    "title": "నమోదు",
+    "subtitle": "కొత్త ఖాతా సృష్టించు",
+    "username": "వినియోగదారుల పేరు",
+    "password": "పాస్‌వర్డ్",
+    "confirmPassword": "పాస్‌వర్డ్ నిర్ధారించు",
+    "inviteCode": "ఆహ్వాన కోడ్",
+    "submit": "నమోదు చేయి",
+    "backToLogin": "లాగిన్‌కు తిరిగి",
+    "errors": {
+      "usernameTaken": "వినియోగదారుల పేరు ఇప్పటికే తీసుకోబడింది",
+      "passwordMismatch": "పాస్‌వర్డ్‌లు సరిపోలడం లేదు",
+      "invalidInvite": "చెల్లని ఆహ్వాన కోడ్"
+    }
+  },
+  "setup": {
+    "title": "సెటప్",
+    "adminAccount": "నిర్వాహక ఖాతా సృష్టించు",
+    "claudeConfig": "Claude ను కాన్ఫిగర్ చేయి",
+    "imChannels": "IM ఛానెళ్లను కాన్ఫిగర్ చేయి",
+    "welcome": "DeepThink కి స్వాగతం",
+    "getStarted": "ప్రారంభించండి"
+  },
+  "chat": {
+    "inputPlaceholder": "సందేశం టైప్ చేయండి, పంపడానికి Enter, కొత్త వరుసకు Shift+Enter",
+    "thinking": "ఆలోచిస్తోంది",
+    "send": "పంపు",
+    "stop": "ఆపు",
+    "clearMessages": "సంభాషణ తుడిచివేయి",
+    "attachments": "జోడింపాలు",
+    "uploadFile": "ఫైల్ అప్‌లోడ్ చేయి",
+    "noMessages": "కొత్త సంభాషణ ప్రారంభించు",
+    "regenerate": "మళ్లీ సృష్టించు",
+    "copyMessage": "సందేశం కాపీ చేయి",
+    "deleteMessage": "సందేశం తొలగించు",
+    "tokenUsage": "Token వాడుక"
+  },
+  "settings": {
+    "title": "సెట్టింగ్‌లు",
+    "sections": {
+      "profile": "ప్రొఫైల్",
+      "appearance": "రూపు",
+      "language": "భాష",
+      "claude": "మోడల్ ప్రొవైడర్",
+      "im": "IM ఛానెళ్లు",
+      "tasks": "పనులు",
+      "system": "సిస్టమ్",
+      "users": "వినియోగదారులు",
+      "audit": "ఆడిట్ లాగ్",
+      "invites": "ఆహ్వాన కోడ్‌లు",
+      "groups": "గ్రూపులు",
+      "mcpServers": "MCP సర్వర్‌లు",
+      "skills": "నైపుణ్యాలు",
+      "plugins": "ప్లగిన్‌లు",
+      "billing": "బిల్లింగ్"
+    },
+    "language": {
+      "title": "ఇంటర్‌ఫేస్ భాష",
+      "description": "ఇంటర్‌ఫేస్ భాషను ఎంచుకోండి. ఏజెంట్ కూడా ఈ భాషలోనే సమాధానమిస్తుంది.",
+      "selectPlaceholder": "భాష ఎంచుకోండి",
+      "appliedNotice": "భాష మార్చబడింది",
+      "rtlNotice": "కుడి-నుండి-ఎడమ లేఅవుట్‌కు మార్చబడింది"
+    },
+    "profile": {
+      "username": "వినియోగదారుల పేరు",
+      "displayName": "ప్రదర్శన పేరు",
+      "avatar": "అవతార్",
+      "updateSuccess": "ప్రొఫైల్ నవీకరించబడింది"
+    },
+    "appearance": {
+      "theme": "థీమ్",
+      "light": "లైట్",
+      "dark": "డార్క్",
+      "system": "సిస్టమ్",
+      "assistantName": "సహాయకుడి పేరు",
+      "assistantAvatar": "సహాయకుడి అవతార్"
+    }
+  },
+  "status": {
+    "online": "ఆన్‌లైన్",
+    "offline": "ఆఫ్‌లైన్",
+    "connecting": "కనెక్ట్ అవుతోంది",
+    "reconnecting": "మళ్లీ కనెక్ట్ అవుతోంది",
+    "connected": "కనెక్టెడ్",
+    "disconnected": "డిస్‌కనెక్టెడ్"
+  },
+  "errors": {
+    "networkFailure": "నెట్‌వర్క్ అభ్యర్థణ విఫలమైంది",
+    "unknown": "తెలియని లోపం",
+    "forbidden": "నిషేధించబడింది",
+    "notFound": "కనుగొనబడలేదు",
+    "serverError": "సర్వర్ లోపం",
+    "timeout": "అభ్యర్థన సమయం ముగిసింది"
+  }
+}

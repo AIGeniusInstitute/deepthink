@@ -1,0 +1,967 @@
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
+import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
+import { successTap } from '../../hooks/useHaptic';
+import {
+  ArrowUp,
+  Brush,
+  FileUp,
+  FolderUp,
+  X,
+  Paperclip,
+  Image as ImageIcon,
+  TerminalSquare,
+  Loader2,
+  Upload,
+} from 'lucide-react';
+import { useFileStore } from '../../stores/files';
+import { useChatStore } from '../../stores/chat';
+import { useDisplayMode } from '../../hooks/useDisplayMode';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useSkillsStore } from '../../stores/skills';
+import {
+  buildSlashCommandList,
+  detectSlashToken,
+  filterSlashCommands,
+  completeSlashToken,
+} from '../../lib/slash-commands';
+
+interface PendingFile {
+  /** Display name: relative path for folder uploads, file name otherwise */
+  label: string;
+}
+
+interface PendingImage {
+  name: string;
+  data: string; // base64 data
+  mimeType: string;
+  preview: string; // object URL for preview
+}
+
+/** 单张图片大小上限 5MB */
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+interface MessageInputProps {
+  /**
+   * 发送回调。返回 boolean 表示发送是否成功：
+   * - true：MessageInput 清空输入框和附件
+   * - false：保留输入框内容和附件，用户可重试（弱网/断网场景）
+   */
+  onSend: (
+    content: string,
+    attachments?: Array<{ data: string; mimeType: string }>,
+  ) => Promise<boolean> | boolean;
+  groupJid?: string;
+  disabled?: boolean;
+  onResetSession?: () => void;
+  onToggleTerminal?: () => void;
+}
+
+export function MessageInput({
+  onSend,
+  groupJid,
+  disabled = false,
+  onResetSession,
+  onToggleTerminal,
+}: MessageInputProps) {
+  const [content, setContent] = useState('');
+  const [showActions, setShowActions] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const prevGroupJidRef = useRef<string | undefined>(groupJid);
+  const groupJidRef = useRef(groupJid);
+  groupJidRef.current = groupJid;
+
+  // Slash command popover state
+  const [slashIndex, setSlashIndex] = useState(0);
+  const { skills } = useSkillsStore();
+  const slashCommands = useMemo(() => buildSlashCommandList(skills), [skills]);
+  const slashToken = useMemo(
+    () => detectSlashToken(content, textareaRef.current?.selectionStart ?? content.length),
+    [content],
+  );
+  const slashFiltered = useMemo(
+    () => (slashToken ? filterSlashCommands(slashCommands, slashToken.match.slice(1)) : []),
+    [slashToken, slashCommands],
+  );
+  const slashOpen = slashFiltered.length > 0;
+  useEffect(() => {
+    if (slashIndex >= slashFiltered.length) {
+      setSlashIndex(0);
+    }
+  }, [slashFiltered.length, slashIndex]);
+
+  const { uploadFiles, uploading, uploadProgress } = useFileStore();
+  const { drafts, saveDraft, clearDraft } = useChatStore();
+  const { mode: displayMode } = useDisplayMode();
+  const isCompact = displayMode === 'compact';
+  const isMobile = useMediaQuery('(max-width: 1023px)');
+
+  // iOS keyboard adaptation
+  useKeyboardHeight();
+
+  // Restore draft when groupJid changes (including initial mount)
+  useEffect(() => {
+    // Save current draft before switching
+    if (prevGroupJidRef.current && prevGroupJidRef.current !== groupJid) {
+      const currentText = content.trim();
+      if (currentText) {
+        saveDraft(prevGroupJidRef.current, currentText);
+      } else {
+        clearDraft(prevGroupJidRef.current);
+      }
+    }
+    prevGroupJidRef.current = groupJid;
+
+    // Load draft for new group
+    const draft = groupJid ? drafts[groupJid] || '' : '';
+    setContent(draft);
+    // Drop pending attachments staged for the previous group — they must not
+    // leak into the newly-selected conversation (会话隔离). Release image
+    // preview object URLs to avoid a memory leak.
+    setPendingImages((prev) => {
+      prev.forEach((img) => URL.revokeObjectURL(img.preview));
+      return [];
+    });
+    setPendingFiles([]);
+    // Clear any pending debounce timer
+    if (draftTimerRef.current) {
+      clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = undefined;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupJid]);
+
+  // Cleanup debounce timer on unmount, save current draft
+  useEffect(() => {
+    return () => {
+      if (draftTimerRef.current) {
+        clearTimeout(draftTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Debounced draft save
+  const debouncedSaveDraft = useCallback(
+    (text: string) => {
+      if (draftTimerRef.current) {
+        clearTimeout(draftTimerRef.current);
+      }
+      draftTimerRef.current = setTimeout(() => {
+        if (groupJid) {
+          saveDraft(groupJid, text.trim());
+        }
+      }, 300);
+    },
+    [groupJid, saveDraft],
+  );
+
+  // Auto-resize textarea (1-6 lines)
+  // useLayoutEffect runs BEFORE paint → height update is invisible to the user (no jitter)
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    // Temporarily hide overflow to prevent scrollbar flash during measurement
+    const prevOverflow = textarea.style.overflow;
+    textarea.style.overflow = 'hidden';
+    textarea.style.height = '0px';
+    const scrollHeight = textarea.scrollHeight;
+    const lineHeight = 24;
+    const maxHeight = lineHeight * 6;
+    const newHeight = Math.max(lineHeight, Math.min(scrollHeight, maxHeight));
+    textarea.style.height = `${newHeight}px`;
+    textarea.style.overflow = newHeight >= maxHeight ? 'auto' : prevOverflow || '';
+  }, [content]);
+
+  // IME composition state — prevent Enter from sending while composing (e.g. Chinese input)
+  // On Chrome macOS, compositionEnd fires before the Enter keyDown, so we track
+  // the timestamp and ignore Enter within 100ms after composition ends.
+  const composingRef = useRef(false);
+  const compositionEndTimeRef = useRef(0);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (composingRef.current || e.nativeEvent.isComposing) return;
+
+    // Slash command popover navigation — takes precedence over Enter-send
+    // so arrow keys and Tab don't get hijacked by the textarea's native behavior.
+    if (slashOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSlashIndex((i) => (i + 1) % slashFiltered.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSlashIndex((i) => (i - 1 + slashFiltered.length) % slashFiltered.length);
+        return;
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault();
+        const cmd = slashFiltered[slashIndex];
+        if (cmd && slashToken) {
+          const cursorPos = textareaRef.current?.selectionStart ?? content.length;
+          const { text: nextText, cursorPos: nextCursor } = completeSlashToken(
+            content,
+            slashToken.start,
+            cursorPos,
+            cmd,
+          );
+          setContent(nextText);
+          debouncedSaveDraft(nextText);
+          // Restore cursor position after React re-renders
+          requestAnimationFrame(() => {
+            const ta = textareaRef.current;
+            if (ta) {
+              ta.selectionStart = ta.selectionEnd = nextCursor;
+              ta.focus();
+            }
+          });
+          return;
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        // Clear the slash token by trimming back to the start of the match
+        if (slashToken) {
+          const before = content.slice(0, slashToken.start);
+          const after = content.slice((textareaRef.current?.selectionStart ?? content.length));
+          const nextText = before + after;
+          setContent(nextText);
+          debouncedSaveDraft(nextText);
+        }
+        return;
+      }
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
+      if (Date.now() - compositionEndTimeRef.current < 100) return;
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleSend = async () => {
+    const trimmed = content.trim();
+    const hasPending = pendingFiles.length > 0;
+    const hasImages = pendingImages.length > 0;
+
+    if (!trimmed && !hasPending && !hasImages) return;
+    if (disabled || sending) return;
+
+    setSending(true);
+    setSendError(null);
+
+    // 先组装 message 但不立刻清空 pendingFiles/pendingImages，
+    // 让 onSend 失败时用户的附件也能保留、可以重试。
+    let message = trimmed;
+    if (hasPending) {
+      const list = pendingFiles.map((f) => `- ${f.label}`).join('\n');
+      const prefix = `[我上传了以下文件到工作区，请查看并使用]\n${list}`;
+      message = message ? `${prefix}\n\n${message}` : prefix;
+    }
+    const attachments = hasImages
+      ? pendingImages.map((img) => ({ data: img.data, mimeType: img.mimeType }))
+      : undefined;
+
+    let ok = false;
+    try {
+      ok = await onSend(message, attachments);
+    } catch {
+      ok = false;
+    }
+
+    if (ok) {
+      successTap();
+      setContent('');
+      if (groupJid) clearDraft(groupJid);
+      if (draftTimerRef.current) {
+        clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = undefined;
+      }
+      if (hasPending) setPendingFiles([]);
+      if (hasImages) {
+        pendingImages.forEach((img) => URL.revokeObjectURL(img.preview));
+        setPendingImages([]);
+      }
+    } else {
+      // 失败：保留输入、保留附件；同步保存草稿，刷新/崩溃也能恢复。
+      if (groupJid && trimmed) saveDraft(groupJid, trimmed);
+      setSendError('发送失败，输入已保留，请重试');
+      setTimeout(() => setSendError(null), 4000);
+    }
+    setSending(false);
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!groupJid) return;
+    const fileList = e.target.files;
+    if (fileList && fileList.length > 0) {
+      const files = Array.from(fileList);
+      setShowActions(false);
+
+      // Separate image files from regular files
+      const imageFiles: File[] = [];
+      const regularFiles: File[] = [];
+      files.forEach((file) => {
+        if (file.type.startsWith('image/')) {
+          imageFiles.push(file);
+        } else {
+          regularFiles.push(file);
+        }
+      });
+
+      // Process image files
+      if (imageFiles.length > 0) {
+        const newImages: PendingImage[] = [];
+        for (const file of imageFiles) {
+          try {
+            const base64 = await readFileAsBase64(file);
+            newImages.push({
+              name: file.name,
+              data: base64,
+              mimeType: file.type,
+              preview: URL.createObjectURL(file),
+            });
+          } catch {
+            // Skip failed images
+          }
+        }
+        setPendingImages((prev) => [...prev, ...newImages]);
+      }
+
+      // Upload regular files to workspace
+      if (regularFiles.length > 0) {
+        const ok = await uploadFiles(groupJid, regularFiles);
+        if (ok) {
+          const newPending = regularFiles.map((f) => ({
+            label: f.webkitRelativePath || f.name,
+          }));
+          setPendingFiles((prev) => [...prev, ...newPending]);
+        }
+      }
+
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (fileList && fileList.length > 0) {
+      const files = Array.from(fileList);
+      setShowActions(false);
+
+      const newImages: PendingImage[] = [];
+      for (const file of files) {
+        if (file.type.startsWith('image/')) {
+          try {
+            const base64 = await readFileAsBase64(file);
+            newImages.push({
+              name: file.name,
+              data: base64,
+              mimeType: file.type,
+              preview: URL.createObjectURL(file),
+            });
+          } catch {
+            // Skip failed images
+          }
+        }
+      }
+      setPendingImages((prev) => [...prev, ...newImages]);
+
+      if (imageInputRef.current) imageInputRef.current.value = '';
+    }
+  };
+
+  const readFileAsBase64 = (file: File): Promise<string> => {
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      return Promise.reject(new Error(`图片 ${file.name} 超过 5MB 限制 (${(file.size / 1024 / 1024).toFixed(1)}MB)`));
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove data URL prefix (e.g., "data:image/png;base64,")
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const imageItems: DataTransferItem[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        imageItems.push(items[i]);
+      }
+    }
+
+    if (imageItems.length > 0) {
+      e.preventDefault();
+      const newImages: PendingImage[] = [];
+
+      for (const item of imageItems) {
+        const file = item.getAsFile();
+        if (file) {
+          try {
+            const base64 = await readFileAsBase64(file);
+            newImages.push({
+              name: file.name || `pasted-${Date.now()}.png`,
+              data: base64,
+              mimeType: file.type,
+              preview: URL.createObjectURL(file),
+            });
+          } catch {
+            // Skip failed images
+          }
+        }
+      }
+
+      setPendingImages((prev) => [...prev, ...newImages]);
+    }
+  };
+
+  // --- Drag and drop helpers ---
+
+  /** Recursively traverse a dropped directory entry and collect all files */
+  const readEntriesRecursively = (entry: FileSystemDirectoryEntry): Promise<File[]> => {
+    return new Promise((resolve, reject) => {
+      const reader = entry.createReader();
+      const allFiles: File[] = [];
+
+      const readBatch = () => {
+        reader.readEntries(
+          async (entries) => {
+            if (entries.length === 0) {
+              resolve(allFiles);
+              return;
+            }
+            for (const e of entries) {
+              if (e.isFile) {
+                const file = await new Promise<File>((res, rej) =>
+                  (e as FileSystemFileEntry).file(res, (err) => rej(err)),
+                );
+                // Attach relative path for display
+                Object.defineProperty(file, 'webkitRelativePath', {
+                  value: e.fullPath.slice(1), // remove leading "/"
+                  writable: false,
+                });
+                allFiles.push(file);
+              } else if (e.isDirectory) {
+                const subFiles = await readEntriesRecursively(e as FileSystemDirectoryEntry);
+                allFiles.push(...subFiles);
+              }
+            }
+            // readEntries may return partial results; keep reading until empty
+            readBatch();
+          },
+          (err) => reject(err),
+        );
+      };
+      readBatch();
+    });
+  };
+
+  // --- Drag and drop handlers ---
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    // Only handle file drops; let text/URL drops through to the textarea
+    if (!e.dataTransfer.types.includes('Files')) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+
+    // Guard: respect disabled/sending/uploading state
+    if (!groupJid || disabled || sending || uploading) return;
+
+    // Capture groupJid at drop time to prevent stale-chat attachment
+    const targetGroupJid = groupJid;
+
+    // Collect files, expanding directories via webkitGetAsEntry.
+    // 同步提取所有 item 的 entry/file，避免 drop 事件结束后 DataTransferItemList
+    // 被浏览器清理（Firefox/Safari）导致后续 item 返回 null 而静默丢失。
+    const items = Array.from(e.dataTransfer.items);
+    const collected: Array<{ entry: FileSystemEntry | null; file: File | null }> = [];
+    for (const item of items) {
+      collected.push({
+        entry: item.webkitGetAsEntry?.() ?? null,
+        file: item.getAsFile(),
+      });
+    }
+
+    const allFiles: File[] = [];
+    let hasDirectory = false;
+
+    for (const { entry, file } of collected) {
+      if (entry?.isDirectory) {
+        hasDirectory = true;
+        try {
+          const dirFiles = await readEntriesRecursively(entry as FileSystemDirectoryEntry);
+          allFiles.push(...dirFiles);
+        } catch (err) {
+          setSendError('读取文件夹失败');
+          setTimeout(() => setSendError(null), 4000);
+          console.warn('读取文件夹失败:', err);
+          return;
+        }
+      } else if (file) {
+        allFiles.push(file);
+      }
+    }
+
+    if (allFiles.length === 0) return;
+
+    // If a directory was dropped, upload ALL files to workspace (including images)
+    // to match the button-based folder upload behavior.
+    if (hasDirectory) {
+      const ok = await uploadFiles(targetGroupJid, allFiles);
+      if (ok && targetGroupJid === groupJidRef.current) {
+        const newPending = allFiles.map((f) => ({
+          label: (f as unknown as { webkitRelativePath?: string }).webkitRelativePath || f.name,
+        }));
+        setPendingFiles((prev) => [...prev, ...newPending]);
+      }
+      return;
+    }
+
+    // For individual files: split images (inline) from regular files (workspace)
+    const imageFiles: File[] = [];
+    const regularFiles: File[] = [];
+    allFiles.forEach((file) => {
+      if (file.type.startsWith('image/')) {
+        imageFiles.push(file);
+      } else {
+        regularFiles.push(file);
+      }
+    });
+
+    // Process images inline (same as handleImageSelect)
+    if (imageFiles.length > 0) {
+      const newImages: PendingImage[] = [];
+      for (const file of imageFiles) {
+        try {
+          const base64 = await readFileAsBase64(file);
+          newImages.push({
+            name: file.name,
+            data: base64,
+            mimeType: file.type,
+            preview: URL.createObjectURL(file),
+          });
+        } catch (err) {
+          console.warn('跳过图片:', err instanceof Error ? err.message : err);
+        }
+      }
+      // Verify groupJid hasn't changed during async processing (use ref for live value)
+      if (targetGroupJid === groupJidRef.current) {
+        setPendingImages((prev) => [...prev, ...newImages]);
+      } else {
+        // Conversation switched — revoke preview URLs to avoid memory leak
+        newImages.forEach((img) => URL.revokeObjectURL(img.preview));
+      }
+    }
+
+    // Upload non-image files to workspace (same as handleFileSelect)
+    if (regularFiles.length > 0) {
+      const ok = await uploadFiles(targetGroupJid, regularFiles);
+      if (ok && targetGroupJid === groupJidRef.current) {
+        const newPending = regularFiles.map((f) => ({ label: f.name }));
+        setPendingFiles((prev) => [...prev, ...newPending]);
+      }
+    }
+  }, [groupJid, disabled, sending, uploading, uploadFiles]);
+
+  const handleFolderSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!groupJid) return;
+    const fileList = e.target.files;
+    if (fileList && fileList.length > 0) {
+      const files = Array.from(fileList);
+      setShowActions(false);
+      const ok = await uploadFiles(groupJid, files);
+      if (ok) {
+        const newPending = files.map((f) => ({
+          label: f.webkitRelativePath || f.name,
+        }));
+        setPendingFiles((prev) => [...prev, ...newPending]);
+      }
+      if (folderInputRef.current) folderInputRef.current.value = '';
+    }
+  };
+
+  const removePendingFile = (index: number) => {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removePendingImage = (index: number) => {
+    setPendingImages((prev) => {
+      const img = prev[index];
+      if (img) URL.revokeObjectURL(img.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const clearPendingFiles = () => {
+    setPendingFiles([]);
+  };
+
+  const clearPendingImages = () => {
+    pendingImages.forEach((img) => URL.revokeObjectURL(img.preview));
+    setPendingImages([]);
+  };
+
+  const hasContent = content.trim().length > 0;
+  const canSend = (hasContent || pendingFiles.length > 0 || pendingImages.length > 0) && !sending;
+
+  const progressPercent =
+    uploadProgress && uploadProgress.totalBytes > 0
+      ? Math.round((uploadProgress.uploadedBytes / uploadProgress.totalBytes) * 100)
+      : 0;
+
+  return (
+    <div
+      className="pt-1 pb-3 bg-surface dark:bg-background max-lg:bg-background/60 max-lg:backdrop-blur-xl max-lg:saturate-[1.8] max-lg:border-t max-lg:border-border/40 relative"
+      style={{ paddingBottom: `max(0.75rem, env(safe-area-inset-bottom, 0px), var(--keyboard-height, 0px))` }}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-primary/5 dark:bg-primary/10 backdrop-blur-[2px] border-2 border-dashed border-primary rounded-xl pointer-events-none">
+          <div className="flex flex-col items-center gap-2 text-primary">
+            <Upload className="w-8 h-8" />
+            <span className="text-sm font-medium">松开上传文件</span>
+          </div>
+        </div>
+      )}
+      {/* lg:pl-[60px] = avatar w-8 (32px) + gap-3 (12px) + visual balance (16px), aligns input left edge with message card content */}
+      <div className={isCompact ? 'mx-auto px-4' : 'max-w-4xl mx-auto px-4 lg:pl-[60px]'}>
+        {/* Upload progress bar */}
+        {uploading && uploadProgress && (
+          <div className={`mb-2 px-4 py-2.5 ${isCompact ? 'bg-surface border border-border' : 'bg-surface rounded-xl border border-border shadow-sm'}`}>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs text-foreground/70 truncate max-w-[65%]">
+                {uploadProgress.currentFile || '完成'}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {uploadProgress.completed}/{uploadProgress.total} · {progressPercent}%
+              </span>
+            </div>
+            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Main input card */}
+        <div className={isCompact ? 'bg-surface border border-border rounded-lg' : 'bg-surface rounded-2xl border border-border shadow-sm'}>
+          {/* Send error banner */}
+          {sendError && (
+            <div className={`px-4 py-2 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-xs font-medium border-b border-red-100 dark:border-red-800 flex items-center gap-2 ${isCompact ? 'rounded-t-lg' : 'rounded-t-2xl'}`}>
+              <span>{sendError}</span>
+            </div>
+          )}
+
+          {/* Pending images preview */}
+          {pendingImages.length > 0 && (
+            <div className="px-3 pt-2.5 pb-1 border-b border-border">
+              <div className="flex items-center gap-1 mb-1.5">
+                <ImageIcon className="w-3 h-3 text-muted-foreground" />
+                <span className="text-[11px] text-muted-foreground">
+                  已添加 {pendingImages.length} 张图片
+                </span>
+                <button
+                  onClick={clearPendingImages}
+                  className="ml-auto text-[11px] text-muted-foreground hover:text-foreground/70 cursor-pointer"
+                >
+                  清空
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2 pb-1.5">
+                {pendingImages.map((img, i) => (
+                  <div key={i} className="relative group">
+                    <img
+                      src={img.preview}
+                      alt={img.name}
+                      className="w-16 h-16 object-cover rounded-lg border border-border"
+                    />
+                    <button
+                      onClick={() => removePendingImage(i)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-foreground/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-foreground/90"
+                      aria-label="移除图片"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Pending files chips */}
+          {pendingFiles.length > 0 && (
+            <div className="px-3 pt-2.5 pb-1 border-b border-border">
+              <div className="flex items-center gap-1 mb-1">
+                <Paperclip className="w-3 h-3 text-muted-foreground" />
+                <span className="text-[11px] text-muted-foreground">
+                  已上传 {pendingFiles.length} 个文件，发送时将告知 AI
+                </span>
+                <button
+                  onClick={clearPendingFiles}
+                  className="ml-auto text-[11px] text-muted-foreground hover:text-foreground/70 cursor-pointer"
+                >
+                  清空
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1 pb-1">
+                {pendingFiles.map((file, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1 max-w-[200px] px-2 py-0.5 bg-brand-50 text-primary text-[11px] rounded-md"
+                  >
+                    <span className="truncate">{file.label}</span>
+                    <button
+                      onClick={() => removePendingFile(i)}
+                      className="flex-shrink-0 hover:text-primary cursor-pointer p-1 min-w-[28px] min-h-[28px] flex items-center justify-center"
+                      aria-label="移除文件"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Action row — shown when attach is toggled */}
+          {showActions && groupJid && (
+            <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5 border-b border-border">
+              <button
+                onClick={() => imageInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors cursor-pointer"
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+                添加图片
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary bg-brand-50 hover:bg-brand-100 rounded-lg transition-colors cursor-pointer disabled:opacity-40"
+              >
+                <FileUp className="w-3.5 h-3.5" />
+                上传文件
+              </button>
+              <button
+                onClick={() => folderInputRef.current?.click()}
+                disabled={uploading}
+                className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-foreground/70 bg-muted hover:bg-muted/80 rounded-lg transition-colors cursor-pointer disabled:opacity-40"
+              >
+                <FolderUp className="w-3.5 h-3.5" />
+                上传文件夹
+              </button>
+            </div>
+          )}
+
+          {/* Textarea + slash command popover */}
+          <div className="px-4 pt-3 pb-1 relative">
+            <textarea
+              ref={textareaRef}
+              value={content}
+              onChange={(e) => {
+                setContent(e.target.value);
+                debouncedSaveDraft(e.target.value);
+              }}
+              onKeyDown={handleKeyDown}
+              onCompositionStart={() => { composingRef.current = true; }}
+              onCompositionEnd={() => { composingRef.current = false; compositionEndTimeRef.current = Date.now(); }}
+              onPaste={handlePaste}
+              placeholder="输入消息...（输入 / 触发命令）"
+              disabled={disabled}
+              className="w-full text-base leading-6 resize-none focus:outline-none placeholder:text-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed bg-transparent"
+              rows={1}
+              style={{ minHeight: '28px', maxHeight: '144px' }}
+            />
+            {slashOpen && (
+              <div className="absolute left-4 right-4 bottom-full mb-1 max-h-60 overflow-y-auto rounded-md border border-border bg-popover shadow-lg z-50">
+                {slashFiltered.map((cmd, i) => (
+                  <button
+                    key={`${cmd.source}:${cmd.name}`}
+                    type="button"
+                    onMouseDown={(e) => {
+                      // Prevent textarea blur before click fires
+                      e.preventDefault();
+                      const cursorPos = textareaRef.current?.selectionStart ?? content.length;
+                      const { text: nextText, cursorPos: nextCursor } = completeSlashToken(
+                        content,
+                        slashToken!.start,
+                        cursorPos,
+                        cmd,
+                      );
+                      setContent(nextText);
+                      debouncedSaveDraft(nextText);
+                      requestAnimationFrame(() => {
+                        const ta = textareaRef.current;
+                        if (ta) {
+                          ta.selectionStart = ta.selectionEnd = nextCursor;
+                          ta.focus();
+                        }
+                      });
+                    }}
+                    className={`w-full flex items-start gap-2 px-3 py-2 text-left cursor-pointer ${
+                      i === slashIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'
+                    }`}
+                  >
+                    <span className="font-mono text-xs text-primary flex-shrink-0 mt-0.5">
+                      /{cmd.name}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs text-foreground truncate">
+                        {cmd.description}
+                      </span>
+                      {cmd.argumentHint && (
+                        <span className="block text-[10px] text-muted-foreground mt-0.5">
+                          参数: <code className="font-mono">{cmd.argumentHint}</code>
+                        </span>
+                      )}
+                      <span className="block text-[10px] text-muted-foreground/70 mt-0.5">
+                        {cmd.source === 'builtin' ? '内置命令' : 'Skill'}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Bottom action bar */}
+          <div className="flex items-center px-2 pb-2.5">
+            {/* Left: action icons */}
+            <div className="flex items-center gap-0.5">
+              {groupJid && (
+                <button
+                  type="button"
+                  onClick={() => setShowActions(!showActions)}
+                  disabled={uploading}
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                    showActions
+                      ? 'bg-brand-50 text-primary'
+                      : 'hover:bg-muted text-muted-foreground hover:text-foreground/70'
+                  } ${uploading ? 'opacity-40 pointer-events-none' : ''}`}
+                  title="添加文件"
+                  aria-label="添加文件"
+                >
+                  <Paperclip className="w-4.5 h-4.5" />
+                </button>
+              )}
+              {onResetSession && (
+                <button
+                  type="button"
+                  onClick={onResetSession}
+                  className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-amber-50 dark:hover:bg-amber-950/40 text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-all cursor-pointer"
+                  title="清除上下文"
+                >
+                  <Brush className="w-4.5 h-4.5" />
+                </button>
+              )}
+              {onToggleTerminal && (
+                <button
+                  type="button"
+                  onClick={onToggleTerminal}
+                  className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-brand-50 text-muted-foreground hover:text-primary transition-all cursor-pointer"
+                  title="终端"
+                  aria-label="终端"
+                >
+                  <TerminalSquare className="w-4.5 h-4.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Spacer */}
+            <div className="flex-1" />
+
+            {/* Right: send button */}
+            <button
+              onClick={handleSend}
+              disabled={!canSend || disabled || sending}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-90 ${
+                canSend && !disabled && !sending
+                  ? 'bg-primary text-white hover:bg-primary/90 max-lg:shadow-[0_2px_8px_rgba(249,115,22,0.3)]'
+                  : 'bg-muted text-muted-foreground'
+              }`}
+            >
+              {sending ? <Loader2 className="w-4.5 h-4.5 animate-spin" /> : <ArrowUp className="w-4.5 h-4.5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Hidden file inputs */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleImageSelect}
+        className="hidden"
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        onChange={handleFileSelect}
+        className="hidden"
+        disabled={uploading}
+      />
+      <input
+        ref={folderInputRef}
+        type="file"
+        // @ts-expect-error webkitdirectory is non-standard but widely supported
+        webkitdirectory=""
+        onChange={handleFolderSelect}
+        className="hidden"
+        disabled={uploading}
+      />
+    </div>
+  );
+}

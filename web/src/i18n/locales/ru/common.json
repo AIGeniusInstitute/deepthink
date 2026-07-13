@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Отмена",
+    "confirm": "Подтвердить",
+    "save": "Сохранить",
+    "saving": "Сохранение...",
+    "delete": "Удалить",
+    "edit": "Изменить",
+    "close": "Закрыть",
+    "open": "Открыть",
+    "loading": "Загрузка...",
+    "retry": "Повторить",
+    "back": "Назад",
+    "next": "Далее",
+    "previous": "Назад",
+    "submit": "Отправить",
+    "reset": "Сбросить",
+    "search": "Поиск",
+    "copy": "Копировать",
+    "copied": "Скопировано",
+    "yes": "Да",
+    "no": "Нет",
+    "all": "Все",
+    "none": "Ничего",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "Чат",
+    "settings": "Настройки",
+    "tasks": "Задачи",
+    "memory": "Память",
+    "monitor": "Монитор",
+    "skills": "Skills",
+    "mcpServers": "Серверы MCP",
+    "users": "Пользователи",
+    "files": "Файлы"
+  },
+  "login": {
+    "title": "Вход",
+    "subtitle": "Войдите в DeepThink",
+    "username": "Имя пользователя",
+    "password": "Пароль",
+    "submit": "Войти",
+    "register": "Регистрация",
+    "logout": "Выйти",
+    "errors": {
+      "invalid": "Неверное имя пользователя или пароль",
+      "locked": "Аккаунт заблокирован, попробуйте позже",
+      "network": "Ошибка сети, повторите попытку"
+    }
+  },
+  "register": {
+    "title": "Регистрация",
+    "subtitle": "Создать новый аккаунт",
+    "username": "Имя пользователя",
+    "password": "Пароль",
+    "confirmPassword": "Подтвердите пароль",
+    "inviteCode": "Код приглашения",
+    "submit": "Зарегистрироваться",
+    "backToLogin": "Вернуться к входу",
+    "errors": {
+      "usernameTaken": "Имя пользователя уже занято",
+      "passwordMismatch": "Пароли не совпадают",
+      "invalidInvite": "Недействительный код приглашения"
+    }
+  },
+  "setup": {
+    "title": "Настройка",
+    "adminAccount": "Создать аккаунт администратора",
+    "claudeConfig": "Настроить Claude",
+    "imChannels": "Настроить каналы сообщений",
+    "welcome": "Добро пожаловать в DeepThink",
+    "getStarted": "Начать"
+  },
+  "chat": {
+    "inputPlaceholder": "Введите сообщение, Enter для отправки, Shift+Enter для новой строки",
+    "thinking": "Думает",
+    "send": "Отправить",
+    "stop": "Остановить",
+    "clearMessages": "Очистить беседу",
+    "attachments": "Вложения",
+    "uploadFile": "Загрузить файл",
+    "noMessages": "Начните новый разговор",
+    "regenerate": "Сгенерировать заново",
+    "copyMessage": "Копировать сообщение",
+    "deleteMessage": "Удалить сообщение",
+    "tokenUsage": "Использование Token"
+  },
+  "settings": {
+    "title": "Настройки",
+    "sections": {
+      "profile": "Профиль",
+      "appearance": "Оформление",
+      "language": "Язык",
+      "claude": "Провайдер моделей",
+      "im": "Каналы сообщений",
+      "tasks": "Задачи",
+      "system": "Система",
+      "users": "Пользователи",
+      "audit": "Журнал аудита",
+      "invites": "Коды приглашений",
+      "groups": "Группы",
+      "mcpServers": "Серверы MCP",
+      "skills": "Skills",
+      "plugins": "Плагины",
+      "billing": "Биллинг"
+    },
+    "language": {
+      "title": "Язык интерфейса",
+      "description": "Выберите язык интерфейса. Агент также будет отвечать на этом языке.",
+      "selectPlaceholder": "Выберите язык",
+      "appliedNotice": "Язык изменен",
+      "rtlNotice": "Переключено на макет справа налево"
+    },
+    "profile": {
+      "username": "Имя пользователя",
+      "displayName": "Отображаемое имя",
+      "avatar": "Аватар",
+      "updateSuccess": "Профиль обновлен"
+    },
+    "appearance": {
+      "theme": "Тема",
+      "light": "Светлая",
+      "dark": "Тёмная",
+      "system": "Системная",
+      "assistantName": "Имя ассистента",
+      "assistantAvatar": "Аватар ассистента"
+    }
+  },
+  "status": {
+    "online": "В сети",
+    "offline": "Не в сети",
+    "connecting": "Подключение",
+    "reconnecting": "Переподключение",
+    "connected": "Подключено",
+    "disconnected": "Отключено"
+  },
+  "errors": {
+    "networkFailure": "Сбой сетевого запроса",
+    "unknown": "Неизвестная ошибка",
+    "forbidden": "Доступ запрещён",
+    "notFound": "Не найдено",
+    "serverError": "Ошибка сервера",
+    "timeout": "Время запроса истекло"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "deepthink-agent-runner",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Container-side agent runner for DeepThink",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "*",
+    "@anthropic-ai/claude-code": "*",
+    "cron-parser": "^5.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "typescript": "^5.9.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AIGeniusInstitute/deep-think.git",
+    "directory": "container/agent-runner"
+  },
+  "author": "aigeniusinstitute",
+  "keywords": [
+    "claude-agent-sdk",
+    "agent-runner",
+    "mcp",
+    "deepthink"
+  ]
+}

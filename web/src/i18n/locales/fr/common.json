@@ -1,0 +1,146 @@
+{
+  "common": {
+    "cancel": "Annuler",
+    "confirm": "Confirmer",
+    "save": "Enregistrer",
+    "saving": "Enregistrement...",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "close": "Fermer",
+    "open": "Ouvrir",
+    "loading": "Chargement...",
+    "retry": "Réessayer",
+    "back": "Retour",
+    "next": "Suivant",
+    "previous": "Précédent",
+    "submit": "Envoyer",
+    "reset": "Réinitialiser",
+    "search": "Rechercher",
+    "copy": "Copier",
+    "copied": "Copié",
+    "yes": "Oui",
+    "no": "Non",
+    "all": "Tout",
+    "none": "Aucun",
+    "ok": "OK"
+  },
+  "nav": {
+    "chat": "Discussion",
+    "settings": "Paramètres",
+    "tasks": "Tâches",
+    "memory": "Mémoire",
+    "monitor": "Moniteur",
+    "skills": "Compétences",
+    "mcpServers": "Serveurs MCP",
+    "users": "Utilisateurs",
+    "files": "Fichiers"
+  },
+  "login": {
+    "title": "Connexion",
+    "subtitle": "Se connecter à DeepThink",
+    "username": "Nom d'utilisateur",
+    "password": "Mot de passe",
+    "submit": "Se connecter",
+    "register": "S'inscrire",
+    "logout": "Déconnexion",
+    "errors": {
+      "invalid": "Nom d'utilisateur ou mot de passe invalide",
+      "locked": "Compte verrouillé, réessayez plus tard",
+      "network": "Erreur réseau, veuillez réessayer"
+    }
+  },
+  "register": {
+    "title": "Inscription",
+    "subtitle": "Créer un nouveau compte",
+    "username": "Nom d'utilisateur",
+    "password": "Mot de passe",
+    "confirmPassword": "Confirmer le mot de passe",
+    "inviteCode": "Code d'invitation",
+    "submit": "S'inscrire",
+    "backToLogin": "Retour à la connexion",
+    "errors": {
+      "usernameTaken": "Nom d'utilisateur déjà pris",
+      "passwordMismatch": "Les mots de passe ne correspondent pas",
+      "invalidInvite": "Code d'invitation invalide"
+    }
+  },
+  "setup": {
+    "title": "Configuration",
+    "adminAccount": "Créer un compte administrateur",
+    "claudeConfig": "Configurer Claude",
+    "imChannels": "Configurer les canaux IM",
+    "welcome": "Bienvenue sur DeepThink",
+    "getStarted": "Commencer"
+  },
+  "chat": {
+    "inputPlaceholder": "Saisissez un message, Entrée pour envoyer, Shift+Enter pour une nouvelle ligne",
+    "thinking": "Réflexion",
+    "send": "Envoyer",
+    "stop": "Arrêter",
+    "clearMessages": "Effacer la conversation",
+    "attachments": "Pièces jointes",
+    "uploadFile": "Télécharger un fichier",
+    "noMessages": "Démarrer une nouvelle conversation",
+    "regenerate": "Régénérer",
+    "copyMessage": "Copier le message",
+    "deleteMessage": "Supprimer le message",
+    "tokenUsage": "Utilisation de Token"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "sections": {
+      "profile": "Profil",
+      "appearance": "Apparence",
+      "language": "Langue",
+      "claude": "Fournisseur de modèle",
+      "im": "Canaux IM",
+      "tasks": "Tâches",
+      "system": "Système",
+      "users": "Utilisateurs",
+      "audit": "Journal d'audit",
+      "invites": "Codes d'invitation",
+      "groups": "Groupes",
+      "mcpServers": "Serveurs MCP",
+      "skills": "Compétences",
+      "plugins": "Plugins",
+      "billing": "Facturation"
+    },
+    "language": {
+      "title": "Langue de l'interface",
+      "description": "Choisissez la langue de l'interface. L'agent répondra également dans cette langue.",
+      "selectPlaceholder": "Sélectionner une langue",
+      "appliedNotice": "Langue changée",
+      "rtlNotice": "Passage en disposition de droite à gauche"
+    },
+    "profile": {
+      "username": "Nom d'utilisateur",
+      "displayName": "Nom affiché",
+      "avatar": "Avatar",
+      "updateSuccess": "Profil mis à jour"
+    },
+    "appearance": {
+      "theme": "Thème",
+      "light": "Clair",
+      "dark": "Sombre",
+      "system": "Système",
+      "assistantName": "Nom de l'assistant",
+      "assistantAvatar": "Avatar de l'assistant"
+    }
+  },
+  "status": {
+    "online": "En ligne",
+    "offline": "Hors ligne",
+    "connecting": "Connexion en cours",
+    "reconnecting": "Reconnexion en cours",
+    "connected": "Connecté",
+    "disconnected": "Déconnecté"
+  },
+  "errors": {
+    "networkFailure": "Échec de la requête réseau",
+    "unknown": "Erreur inconnue",
+    "forbidden": "Interdit",
+    "notFound": "Introuvable",
+    "serverError": "Erreur serveur",
+    "timeout": "Délai de requête dépassé"
+  }
+}
