@@ -72,6 +72,7 @@ export interface RegisteredGroup {
   binding_mode?: ImBindingMode; // IM 绑定模式（默认 single_context）
   feishu_chat_mode?: string; // 飞书群模式：group/topic/p2p 等
   feishu_group_message_type?: string; // 飞书群消息形式：chat/thread
+  engine?: 'claude' | 'atomcode'; // Agent 执行引擎（默认 'claude'）
 }
 
 export interface GroupMember {

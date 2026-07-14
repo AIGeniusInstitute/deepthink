@@ -123,6 +123,7 @@ interface GroupPayloadItem {
   activation_mode?: 'auto' | 'always' | 'when_mentioned' | 'owner_mentioned' | 'disabled';
   conversation_source?: 'manual' | 'feishu_thread';
   conversation_nav_mode?: 'horizontal' | 'vertical_threads';
+  engine?: 'claude' | 'atomcode';
 }
 
 function buildGroupsPayload(user: AuthUser): Record<string, GroupPayloadItem> {
@@ -223,6 +224,7 @@ function buildGroupsPayload(user: AuthUser): Record<string, GroupPayloadItem> {
         chats.get(jid)?.last_message_time ||
         group.added_at,
       execution_mode: group.executionMode || 'container',
+      engine: group.engine || 'claude',
       custom_cwd: isAdmin ? group.customCwd : undefined,
       is_home: isHome || undefined,
       is_my_home: (isHome && group.created_by === user.id) || undefined,
@@ -644,6 +646,7 @@ groupRoutes.patch('/:jid', authMiddleware, async (c) => {
     is_pinned,
     activation_mode,
     execution_mode,
+    engine,
   } = validation.data;
   const name = rawName ? normalizeGroupName(rawName) : undefined;
 
@@ -652,7 +655,8 @@ groupRoutes.patch('/:jid', authMiddleware, async (c) => {
     !name &&
     is_pinned === undefined &&
     activation_mode === undefined &&
-    execution_mode === undefined
+    execution_mode === undefined &&
+    engine === undefined
   ) {
     return c.json({ error: 'No fields to update' }, 400);
   }
@@ -678,7 +682,8 @@ groupRoutes.patch('/:jid', authMiddleware, async (c) => {
     is_pinned !== undefined &&
     !name &&
     activation_mode === undefined &&
-    execution_mode === undefined;
+    execution_mode === undefined &&
+    engine === undefined;
   if (isPinOnly) {
     if (
       !canAccessGroup(
@@ -720,8 +725,8 @@ groupRoutes.patch('/:jid', authMiddleware, async (c) => {
     unpinGroup(authUser.id, jid);
   }
 
-  // Update registered group if name, activation_mode, or execution_mode changed
-  if (name || activation_mode !== undefined || execution_mode !== undefined) {
+  // Update registered group if name, activation_mode, execution_mode, or engine changed
+  if (name || activation_mode !== undefined || execution_mode !== undefined || engine !== undefined) {
     // Spread `...existing` instead of rebuilding from an explicit field list.
     // setRegisteredGroup is INSERT OR REPLACE (full-row overwrite), so every
     // field omitted from the object gets silently nulled. The old explicit list
@@ -741,6 +746,7 @@ groupRoutes.patch('/:jid', authMiddleware, async (c) => {
         activation_mode !== undefined
           ? activation_mode
           : existing.activation_mode,
+      engine: engine !== undefined ? engine : existing.engine ?? 'claude',
     };
 
     setRegisteredGroup(jid, updated);

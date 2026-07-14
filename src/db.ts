@@ -909,6 +909,8 @@ export function initDatabase(): void {
   ensureColumn('registered_groups', 'feishu_chat_mode', 'TEXT');
   ensureColumn('registered_groups', 'feishu_group_message_type', 'TEXT');
   ensureColumn('registered_groups', 'sender_allowlist', 'TEXT');
+  ensureColumn('registered_groups', 'engine', "TEXT DEFAULT 'claude'");
+  ensureColumn('sessions', 'atomcode_session_id', 'TEXT');
   ensureColumn('messages', 'token_usage', 'TEXT');
   ensureColumn('messages', 'turn_id', 'TEXT');
   ensureColumn('messages', 'session_id', 'TEXT');
@@ -1545,7 +1547,7 @@ export function initDatabase(): void {
     db.exec('ALTER TABLE scheduled_tasks ADD COLUMN loop_run_id TEXT');
   }
 
-  const SCHEMA_VERSION = '43';
+  const SCHEMA_VERSION = '44';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -3402,6 +3404,49 @@ export function setSessionProviderId(
   ).run(groupFolder, effectiveAgentId, providerId);
 }
 
+/**
+ * AtomCode engine session helpers. AtomCode session IDs are stored in a
+ * separate column (atomcode_session_id) to avoid colliding with Claude SDK
+ * session IDs in the same (group_folder, agent_id) row.
+ */
+export function getAtomcodeSessionId(
+  groupFolder: string,
+  agentId?: string | null,
+): string | undefined {
+  const effectiveAgentId = agentId || '';
+  const row = db
+    .prepare(
+      'SELECT atomcode_session_id FROM sessions WHERE group_folder = ? AND agent_id = ?',
+    )
+    .get(groupFolder, effectiveAgentId) as
+    | { atomcode_session_id: string | null }
+    | undefined;
+  return row?.atomcode_session_id ?? undefined;
+}
+
+export function setAtomcodeSessionId(
+  groupFolder: string,
+  sessionId: string,
+  agentId?: string | null,
+): void {
+  const effectiveAgentId = agentId || '';
+  db.prepare(
+    `INSERT INTO sessions (group_folder, session_id, agent_id, atomcode_session_id)
+     VALUES (?, '', ?, ?)
+     ON CONFLICT(group_folder, agent_id) DO UPDATE SET atomcode_session_id = excluded.atomcode_session_id`,
+  ).run(groupFolder, effectiveAgentId, sessionId);
+}
+
+export function clearAtomcodeSessionId(
+  groupFolder: string,
+  agentId?: string | null,
+): void {
+  const effectiveAgentId = agentId || '';
+  db.prepare(
+    `UPDATE sessions SET atomcode_session_id = NULL WHERE group_folder = ? AND agent_id = ?`,
+  ).run(groupFolder, effectiveAgentId);
+}
+
 export function deleteAllSessionsForFolder(groupFolder: string): void {
   db.prepare('DELETE FROM sessions WHERE group_folder = ?').run(groupFolder);
 }
@@ -3498,6 +3543,7 @@ type RegisteredGroupRow = {
   feishu_chat_mode: string | null;
   feishu_group_message_type: string | null;
   sender_allowlist: string | null;
+  engine: string | null;
 };
 
 /** Convert a raw DB row into a RegisteredGroup domain object. */
@@ -3572,6 +3618,7 @@ function parseGroupRow(
     feishu_chat_mode: row.feishu_chat_mode ?? undefined,
     feishu_group_message_type: row.feishu_group_message_type ?? undefined,
     sender_allowlist: senderAllowlist,
+    engine: row.engine === 'atomcode' ? 'atomcode' : 'claude',
   };
 }
 
@@ -3603,8 +3650,8 @@ export function getRegisteredGroup(
 
 export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
   db.prepare(
-    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, added_at, container_config, execution_mode, custom_cwd, init_source_path, init_git_url, created_by, is_home, selected_skills, target_agent_id, target_main_jid, reply_policy, require_mention, activation_mode, owner_im_id, mcp_mode, selected_mcps, conversation_source, conversation_nav_mode, binding_mode, feishu_chat_mode, feishu_group_message_type, sender_allowlist)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, added_at, container_config, execution_mode, custom_cwd, init_source_path, init_git_url, created_by, is_home, selected_skills, target_agent_id, target_main_jid, reply_policy, require_mention, activation_mode, owner_im_id, mcp_mode, selected_mcps, conversation_source, conversation_nav_mode, binding_mode, feishu_chat_mode, feishu_group_message_type, sender_allowlist, engine)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     jid,
     group.name,
@@ -3632,6 +3679,7 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
     group.feishu_chat_mode ?? null,
     group.feishu_group_message_type ?? null,
     group.sender_allowlist != null ? JSON.stringify(group.sender_allowlist) : null,
+    group.engine ?? 'claude',
   );
 }
 

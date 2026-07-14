@@ -47,6 +47,12 @@ export interface ContainerInput {
    * directive. Defaults to 'zh-CN' when undefined.
    */
   userLanguage?: string;
+  /**
+   * Agent execution engine. 'claude' (default) uses Claude Agent SDK query().
+   * 'atomcode' routes to atomcode-engine.ts which drives atomcode-daemon's
+   * HTTP/SSE /chat endpoint instead.
+   */
+  engine?: 'claude' | 'atomcode';
 }
 
 export interface ContainerOutput {

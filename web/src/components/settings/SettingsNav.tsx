@@ -33,6 +33,7 @@ const systemItems: NavItem[] = [
   { key: 'registration', label: '注册管理', icon: <UserPlus className="w-4 h-4" />, group: 'system' },
   { key: 'appearance', label: '全局外观', icon: <Palette className="w-4 h-4" />, group: 'system' },
   { key: 'system', label: '系统参数', icon: <SlidersHorizontal className="w-4 h-4" />, group: 'system' },
+  { key: 'atomcode', label: 'AtomCode 引擎', icon: <Server className="w-4 h-4" />, group: 'system' },
 ];
 
 const accountItems: NavItem[] = [

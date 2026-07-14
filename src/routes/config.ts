@@ -3131,4 +3131,250 @@ configRoutes.put('/supervisor', authMiddleware, async (c) => {
   return c.json({ chat_jid: chatJid, enabled });
 });
 
+// ─── AtomCode Engine Config & Provider Management ─────────────
+
+import {
+  getAtomcodeConfig,
+  saveAtomcodeConfig,
+  toPublicAtomcodeConfig,
+} from '../runtime-config.js';
+import {
+  AtomcodeConfigSchema,
+  AtomcodeProviderCreateSchema,
+  AtomcodeProviderPatchSchema,
+} from '../schemas.js';
+import {
+  startAtomcodeDaemon,
+  stopAtomcodeDaemon,
+  checkAtomcodeHealth,
+  type AtomcodeDaemonInstance,
+} from '../atomcode-daemon-manager.js';
+import os from 'os';
+
+/**
+ * Start a temporary atomcode-daemon for provider management operations.
+ * The daemon is bound to ATOMCODE_HOME (user-configured or default ~/.atomcode)
+ * so provider edits persist to disk. Caller must stop the daemon when done.
+ */
+async function withTempDaemon<T>(
+  fn: (inst: AtomcodeDaemonInstance) => Promise<T>,
+): Promise<T> {
+  const cfg = getAtomcodeConfig();
+  if (!cfg.binaryPath) {
+    throw new Error('AtomCode 二进制路径未配置，请先在设置页填写');
+  }
+  const home = cfg.atomcodeHome || path.join(os.homedir(), '.atomcode');
+  const inst = await startAtomcodeDaemon({
+    binaryPath: cfg.binaryPath,
+    basePort: cfg.basePort,
+    portRange: cfg.portRange,
+    host: cfg.host,
+    atomcodeHome: home,
+    timeoutMs: 30_000,
+  });
+  try {
+    return await fn(inst);
+  } finally {
+    await stopAtomcodeDaemon(inst, 5_000);
+  }
+}
+
+/** GET /api/config/atomcode — get AtomCode config (admin) */
+configRoutes.get('/atomcode', authMiddleware, systemConfigMiddleware, (c) => {
+  const cfg = getAtomcodeConfig();
+  return c.json(toPublicAtomcodeConfig(cfg));
+});
+
+/** PUT /api/config/atomcode — save AtomCode config (admin) */
+configRoutes.put('/atomcode', authMiddleware, systemConfigMiddleware, async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const validation = AtomcodeConfigSchema.safeParse(body);
+  if (!validation.success) {
+    return c.json({ error: 'Invalid config', details: validation.error.flatten() }, 400);
+  }
+  const saved = saveAtomcodeConfig(validation.data);
+  const actor = (c.get('user') as AuthUser).username;
+  logger.info({ actor, enabled: saved.enabled }, 'AtomCode config updated');
+  return c.json(toPublicAtomcodeConfig(saved));
+});
+
+/** POST /api/config/atomcode/test — spawn temporary daemon, health check, list providers */
+configRoutes.post('/atomcode/test', authMiddleware, systemConfigMiddleware, async (c) => {
+  try {
+    const result = await withTempDaemon(async (inst) => {
+      const health = await checkAtomcodeHealth(inst.baseUrl, 5_000);
+      const providersRes = await fetch(`${inst.baseUrl}/providers`);
+      const providersBody = providersRes.ok
+        ? ((await providersRes.json()) as {
+            default_provider?: string;
+            providers?: unknown[];
+          })
+        : { providers: [] };
+      const modelsRes = await fetch(`${inst.baseUrl}/models`);
+      const modelsBody = modelsRes.ok ? ((await modelsRes.json()) as unknown[]) : [];
+      return {
+        health,
+        defaultProvider: providersBody.default_provider ?? null,
+        providerCount: providersBody.providers?.length ?? 0,
+        modelCount: Array.isArray(modelsBody) ? modelsBody.length : 0,
+      };
+    });
+    return c.json(result);
+  } catch (err) {
+    return c.json(
+      {
+        health: { ok: false, error: err instanceof Error ? err.message : String(err) },
+        defaultProvider: null,
+        providerCount: 0,
+        modelCount: 0,
+      },
+      200,
+    );
+  }
+});
+
+/** GET /api/config/atomcode/providers — list providers via temp daemon */
+configRoutes.get('/atomcode/providers', authMiddleware, systemConfigMiddleware, async (c) => {
+  try {
+    const result = await withTempDaemon(async (inst) => {
+      const res = await fetch(`${inst.baseUrl}/providers`);
+      if (!res.ok) {
+        throw new Error(`daemon GET /providers returned HTTP ${res.status}`);
+      }
+      return await res.json();
+    });
+    return c.json(result);
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      500,
+    );
+  }
+});
+
+/** POST /api/config/atomcode/providers — create provider via temp daemon */
+configRoutes.post('/atomcode/providers', authMiddleware, systemConfigMiddleware, async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const validation = AtomcodeProviderCreateSchema.safeParse(body);
+  if (!validation.success) {
+    return c.json({ error: 'Invalid provider', details: validation.error.flatten() }, 400);
+  }
+  try {
+    const result = await withTempDaemon(async (inst) => {
+      const res = await fetch(`${inst.baseUrl}/providers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validation.data),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`daemon POST /providers HTTP ${res.status}: ${text}`);
+      }
+      return await res.json();
+    });
+    return c.json(result);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+/** PATCH /api/config/atomcode/providers/:name — update provider */
+configRoutes.patch(
+  '/atomcode/providers/:name',
+  authMiddleware,
+  systemConfigMiddleware,
+  async (c) => {
+    const name = c.req.param('name');
+    const body = await c.req.json().catch(() => ({}));
+    const validation = AtomcodeProviderPatchSchema.safeParse(body);
+    if (!validation.success) {
+      return c.json({ error: 'Invalid patch', details: validation.error.flatten() }, 400);
+    }
+    try {
+      const result = await withTempDaemon(async (inst) => {
+        const res = await fetch(`${inst.baseUrl}/providers/${encodeURIComponent(name)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validation.data),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`daemon PATCH /providers/${name} HTTP ${res.status}: ${text}`);
+        }
+        return await res.json();
+      });
+      return c.json(result);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  },
+);
+
+/** DELETE /api/config/atomcode/providers/:name */
+configRoutes.delete(
+  '/atomcode/providers/:name',
+  authMiddleware,
+  systemConfigMiddleware,
+  async (c) => {
+    const name = c.req.param('name');
+    try {
+      const result = await withTempDaemon(async (inst) => {
+        const res = await fetch(`${inst.baseUrl}/providers/${encodeURIComponent(name)}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`daemon DELETE /providers/${name} HTTP ${res.status}: ${text}`);
+        }
+        return await res.json();
+      });
+      return c.json(result);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  },
+);
+
+/** POST /api/config/atomcode/providers/:name/default — set as default */
+configRoutes.post(
+  '/atomcode/providers/:name/default',
+  authMiddleware,
+  systemConfigMiddleware,
+  async (c) => {
+    const name = c.req.param('name');
+    try {
+      const result = await withTempDaemon(async (inst) => {
+        const res = await fetch(
+          `${inst.baseUrl}/providers/${encodeURIComponent(name)}/default`,
+          { method: 'POST' },
+        );
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`daemon POST /providers/${name}/default HTTP ${res.status}: ${text}`);
+        }
+        return await res.json();
+      });
+      return c.json(result);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  },
+);
+
+/** GET /api/config/atomcode/models — list models */
+configRoutes.get('/atomcode/models', authMiddleware, systemConfigMiddleware, async (c) => {
+  try {
+    const result = await withTempDaemon(async (inst) => {
+      const res = await fetch(`${inst.baseUrl}/models`);
+      if (!res.ok) {
+        throw new Error(`daemon GET /models HTTP ${res.status}`);
+      }
+      return await res.json();
+    });
+    return c.json(result);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
 export default configRoutes;

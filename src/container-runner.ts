@@ -32,6 +32,7 @@ import {
   resolveProviderById,
   shellQuoteEnvLines,
   writeCredentialsFile,
+  getAtomcodeConfig,
 } from './runtime-config.js';
 import { providerPool } from './provider-pool.js';
 import {
@@ -39,6 +40,9 @@ import {
   getSessionProviderId,
   setSessionProviderId,
   getUserById,
+  getAtomcodeSessionId,
+  setAtomcodeSessionId,
+  clearAtomcodeSessionId,
 } from './db.js';
 import { DEFAULT_LANGUAGE } from './i18n-languages.js';
 import { isApiError } from './agent-output-parser.js';
@@ -238,6 +242,13 @@ export interface ContainerInput {
    * directive. Defaults to 'zh-CN' when undefined.
    */
   userLanguage?: string;
+  /**
+   * Agent execution engine. 'claude' (default, Claude Agent SDK) or 'atomcode'
+   * (open-source Rust coding agent via atomcode-daemon HTTP/SSE).
+   * When 'atomcode', agent-runner branches to atomcode-engine.ts instead of
+   * calling SDK query().
+   */
+  engine?: 'claude' | 'atomcode';
 }
 
 export interface ContainerOutput {
@@ -779,6 +790,24 @@ export function buildVolumeMounts(
   if (sysSettings.subagentModel && sysSettings.subagentModel !== 'inherit') {
     envLines.push(`SUBAGENT_MODEL=${sysSettings.subagentModel}`);
   }
+  // AtomCode 引擎配置：注入到 /workspace/env-dir/env，agent-runner 读取
+  // ATOMCODE_BINARY_PATH 等环境变量。仅当 group.engine === 'atomcode' 时注入。
+  const groupEngine = (group.engine ?? 'claude') as 'claude' | 'atomcode';
+  if (groupEngine === 'atomcode') {
+    const atomcodeCfg = getAtomcodeConfig();
+    if (!atomcodeCfg.enabled || !atomcodeCfg.binaryPath) {
+      throw new Error(
+        `Group ${group.folder} has engine=atomcode but AtomCode is not enabled or binaryPath is empty. Configure in Settings → AtomCode 引擎.`,
+      );
+    }
+    envLines.push(`ATOMCODE_BINARY_PATH=${atomcodeCfg.binaryPath}`);
+    envLines.push(`ATOMCODE_HOST=${atomcodeCfg.host || '127.0.0.1'}`);
+    envLines.push(`ATOMCODE_BASE_PORT=${atomcodeCfg.basePort}`);
+    envLines.push(`ATOMCODE_PORT_RANGE=${atomcodeCfg.portRange}`);
+    if (atomcodeCfg.atomcodeHome) {
+      envLines.push(`ATOMCODE_HOME=${atomcodeCfg.atomcodeHome}`);
+    }
+  }
   if (envLines.length > 0) {
     const envFilePath = path.join(envDir, 'env');
     const quotedLines = shellQuoteEnvLines(envLines);
@@ -1019,9 +1048,11 @@ export async function runContainerAgent(
       const ownerLanguage = group.created_by
         ? getUserById(group.created_by)?.language ?? DEFAULT_LANGUAGE
         : DEFAULT_LANGUAGE;
+      const engine = (group.engine ?? 'claude') as 'claude' | 'atomcode';
       const dockerInput: ContainerInput = {
         ...input,
         userLanguage: input.userLanguage ?? ownerLanguage,
+        engine,
         plugins: group.created_by
           ? loadUserPlugins(group.created_by, { runtime: 'docker' })
           : [],
@@ -1485,6 +1516,7 @@ export async function runHostAgent(
   hostClaudeContextPlan.audit.warnings = hostClaudeContextSync.warnings;
 
   // 5. 构建环境变量
+  const groupEngine = (group.engine ?? 'claude') as 'claude' | 'atomcode';
   const hostEnv: Record<string, string> = {
     ...(process.env as Record<string, string>),
   };
@@ -1671,6 +1703,24 @@ export async function runHostAgent(
     // 相当于显式沙箱，故无条件声明而不再仅限 root —— 非 root 部署也保留语义对齐。
     hostEnv['IS_SANDBOX'] = '1';
 
+    // AtomCode 引擎：注入 env vars 供 agent-runner 的 atomcode-engine.ts 读取
+    if (groupEngine === 'atomcode') {
+      const atomcodeCfg = getAtomcodeConfig();
+      if (!atomcodeCfg.enabled || !atomcodeCfg.binaryPath) {
+        return hostModeSetupError(
+          'AtomCode 引擎未启用或二进制路径为空。请在 设置 → AtomCode 引擎 中配置。',
+        );
+      }
+      hostEnv['ATOMCODE_BINARY_PATH'] = atomcodeCfg.binaryPath;
+      hostEnv['ATOMCODE_HOST'] = atomcodeCfg.host || '127.0.0.1';
+      hostEnv['ATOMCODE_BASE_PORT'] = String(atomcodeCfg.basePort);
+      hostEnv['ATOMCODE_PORT_RANGE'] = String(atomcodeCfg.portRange);
+      if (atomcodeCfg.atomcodeHome) {
+        hostEnv['ATOMCODE_HOME'] = atomcodeCfg.atomcodeHome;
+      }
+      hostEnv['ATOMCODE_WORKING_DIR'] = groupDir;
+    }
+
     // 5b. Host capability preflight — detect external tools & inject env vars
     const capResult = await checkHostCapabilities();
     logCapabilityPreflight(group.name, capResult);
@@ -1814,8 +1864,17 @@ export async function runHostAgent(
       const ownerLanguage = group.created_by
         ? getUserById(group.created_by)?.language ?? DEFAULT_LANGUAGE
         : DEFAULT_LANGUAGE;
+      // AtomCode 引擎：session 走 atomcode_session_id 列；agent-runner 的
+      // atomcode-engine.ts 把 done 事件的 session_id 写回该列。
+      const engineSessionId =
+        groupEngine === 'atomcode'
+          ? (getAtomcodeSessionId(group.folder, input.agentId || '') ??
+            input.sessionId)
+          : input.sessionId;
       const hostInput: ContainerInput = {
         ...input,
+        sessionId: engineSessionId,
+        engine: groupEngine,
         userLanguage: input.userLanguage ?? ownerLanguage,
         plugins: prepareHostPlugins(group.created_by),
         contextAudit: hostClaudeContextPlan.audit,

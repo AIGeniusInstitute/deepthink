@@ -63,6 +63,7 @@ import {
   setRegisteredGroup,
   setRouterState,
   setSession,
+  setAtomcodeSessionId,
   deleteSession,
   storeMessageDirect,
   updateLatestMessageTokenUsage,
@@ -4889,7 +4890,11 @@ async function runAgent(
           !output.providerFailure
         ) {
           sessions[group.folder] = output.newSessionId;
-          setSession(group.folder, output.newSessionId);
+          if (group.engine === 'atomcode') {
+            setAtomcodeSessionId(group.folder, output.newSessionId);
+          } else {
+            setSession(group.folder, output.newSessionId);
+          }
         }
         await onOutput(output);
       }
@@ -4968,7 +4973,11 @@ async function runAgent(
       !output.providerFailure
     ) {
       sessions[group.folder] = output.newSessionId;
-      setSession(group.folder, output.newSessionId);
+      if (group.engine === 'atomcode') {
+        setAtomcodeSessionId(group.folder, output.newSessionId);
+      } else {
+        setSession(group.folder, output.newSessionId);
+      }
     }
 
     // Agent was interrupted by _close sentinel (home folder drain).
@@ -7442,7 +7451,11 @@ async function processAgentConversation(
       output.status !== 'error' &&
       !output.providerFailure
     ) {
-      setSession(effectiveGroup.folder, output.newSessionId, agentId);
+      if (effectiveGroup.engine === 'atomcode') {
+        setAtomcodeSessionId(effectiveGroup.folder, output.newSessionId, agentId);
+      } else {
+        setSession(effectiveGroup.folder, output.newSessionId, agentId);
+      }
       currentAgentSessionId = output.newSessionId;
     }
 
@@ -8020,7 +8033,11 @@ async function processAgentConversation(
       output.status !== 'error' &&
       !output.providerFailure
     ) {
-      setSession(effectiveGroup.folder, output.newSessionId, agentId);
+      if (effectiveGroup.engine === 'atomcode') {
+        setAtomcodeSessionId(effectiveGroup.folder, output.newSessionId, agentId);
+      } else {
+        setSession(effectiveGroup.folder, output.newSessionId, agentId);
+      }
     }
 
     // 不可恢复的转录错误（如超大图片/MIME 错配被固化在会话历史中）
