@@ -20,10 +20,7 @@
 ---
 
 <p align="center">
-  <iframe src="//player.bilibili.com/player.html?bvid=BV1SgNR6QE9c&page=1&high_quality=1&danmaku=0" 
-    scrolling="no" border="0" frameborder="no" framespacing="0" 
-    allowfullscreen="true" width="800" height="450"
-    style="max-width:100%;"></iframe>
+  <img src="static/deep-think-intro.gif" alt="DeepThink Intro" width="800" />
 </p>
 
 
