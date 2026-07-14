@@ -33,7 +33,7 @@
 
 ## DeepThink 是什么
 
-DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness Engineering 到 Loop Engineering 范式的先行者，是面向企业客户的新一代 AI 基础设施(AI Infra)。DeepThink 平台以多 Agent 协作框架为核心，融合 AI 自主编程（AI Coding）、自主进化（Self-Evolving）、全栈可观测性（Full-Stack Observability）、Bug 自修复闭环（Bug Auto-Fix Loop） 与 程序员-Agent 共生协作（Human-Agent Symbiosis），构建一个能持续学习、自我改进、最终成长为超级智能体的企业级 AI 系统：
+DeepThink, 开源企业级自主 Agent 超级智能体自进化平台，从 Harness Engineering 到 Loop Engineering 范式的先行者，是面向企业客户的新一代 AI 基础设施(AI Infra)。DeepThink 平台以多 Agent 协作框架为核心，融合 AI 自主编程（AI Coding）、自主进化（Self-Evolving）、全栈可观测性（Full-Stack Observability）、Bug 自修复闭环（Bug Auto-Fix Loop） 与 程序员-Agent 共生协作（Human-Agent Symbiosis），构建一个能持续学习、自我改进、最终成长为超级智能体的企业级 AI 系统：
 
 - **AI 自主研发平台** —— Agent 独立完成软件研发全生命周期，无需人类工程师介入常规编码任务
 - **自进化智能体引擎** —— Agent 持续从错误中学习、从代码库中吸收知识、从用户反馈中进化

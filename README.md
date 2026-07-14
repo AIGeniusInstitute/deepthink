@@ -33,7 +33,7 @@
 
 ## What is DeepThink
 
-DeepThink, an enterprise-grade autonomous Agent self-evolving superintelligence platform, is a pioneer in the transition from Harness Engineering to the Loop Engineering paradigm and a new generation of AI Infrastructure (AI Infra) for enterprise customers. The DeepThink platform centers on a multi-Agent collaboration framework, fusing AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop, and Human-Agent Symbiosis to build an enterprise-grade AI system that continuously learns, self-improves, and ultimately grows into a superintelligence:
+DeepThink, an Open Source Enterprise-grade Autonomous Agent self-evolving superintelligence platform, is a pioneer in the transition from Harness Engineering to the Loop Engineering paradigm and a new generation of AI Infrastructure (AI Infra) for enterprise customers. The DeepThink platform centers on a multi-Agent collaboration framework, fusing AI Coding, Self-Evolving, Full-Stack Observability, Bug Auto-Fix Loop, and Human-Agent Symbiosis to build an enterprise-grade AI system that continuously learns, self-improves, and ultimately grows into a superintelligence:
 
 - **AI Autonomous R&D Platform** — Agents independently complete the full software development lifecycle, eliminating the need for human engineers on routine coding tasks
 - **Self-Evolving Agent Engine** — Agents continuously learn from errors, absorb knowledge from the codebase, and evolve from user feedback
