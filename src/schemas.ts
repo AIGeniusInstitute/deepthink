@@ -241,6 +241,51 @@ export const GroupPatchSchema = z.object({
     .enum(['auto', 'always', 'when_mentioned', 'owner_mentioned', 'disabled'])
     .optional(),
   execution_mode: z.enum(['container', 'host']).optional(),
+  engine: z.enum(['claude', 'atomcode']).optional(),
+});
+
+export const AtomcodeConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  binaryPath: z.string().max(512).optional(),
+  host: z.string().max(64).optional(),
+  basePort: z.number().int().min(1024).max(65535).optional(),
+  portRange: z.number().int().min(1).max(65535).optional(),
+  atomcodeHome: z.string().max(512).optional(),
+});
+
+export const AtomcodeProviderCreateSchema = z.object({
+  name: z.string().min(1).max(64),
+  type: z.string().min(1).max(32),
+  model: z.string().min(1).max(128),
+  api_key: z.string().max(512).optional(),
+  base_url: z.string().max(512).optional(),
+  context_window: z.number().int().min(1).max(10_000_000).optional(),
+  max_tokens: z.number().int().min(1).max(1_000_000).optional(),
+  thinking_enabled: z.boolean().optional(),
+  thinking_budget: z.number().int().min(1024).max(1_000_000).optional(),
+  thinking_type: z.string().max(32).optional(),
+  thinking_keep: z.string().max(32).optional(),
+  reasoning_history: z.string().max(32).optional(),
+  skip_tls_verify: z.boolean().optional(),
+  set_default: z.boolean().optional(),
+});
+
+export const AtomcodeProviderPatchSchema = z.object({
+  type: z.string().max(32).optional(),
+  model: z.string().max(128).optional(),
+  api_key: z.string().max(512).optional(),
+  clear_api_key: z.boolean().optional(),
+  base_url: z.string().max(512).optional(),
+  clear_base_url: z.boolean().optional(),
+  context_window: z.number().int().min(1).max(10_000_000).optional(),
+  max_tokens: z.number().int().min(1).max(1_000_000).optional(),
+  clear_max_tokens: z.boolean().optional(),
+  thinking_enabled: z.boolean().optional(),
+  thinking_budget: z.number().int().min(1024).max(1_000_000).optional(),
+  thinking_type: z.string().max(32).optional(),
+  thinking_keep: z.string().max(32).optional(),
+  reasoning_history: z.string().max(32).optional(),
+  skip_tls_verify: z.boolean().optional(),
 });
 
 export const LoginSchema = z.object({

@@ -4074,3 +4074,90 @@ export function parseOAuthUsageBucket(v: unknown): OAuthUsageBucket | null {
     return null;
   return { utilization: obj.utilization, resets_at: obj.resets_at };
 }
+
+// ========== AtomCode Engine Config ==========
+
+export interface AtomcodeConfig {
+  enabled: boolean;
+  /** 宿主机绝对路径或容器内固定路径 /usr/local/bin/atomcode-daemon */
+  binaryPath: string;
+  /** daemon 绑定地址，默认 127.0.0.1 */
+  host: string;
+  /** 起始端口，默认 14000 */
+  basePort: number;
+  /** 端口池大小，默认 100 */
+  portRange: number;
+  /** ATOMCODE_HOME 目录，空则使用容器默认 ~/.atomcode */
+  atomcodeHome: string;
+  updatedAt: string | null;
+}
+
+const ATOMCODE_CONFIG_FILE = path.join(CLAUDE_CONFIG_DIR, 'atomcode.json');
+
+const DEFAULT_ATOMCODE_CONFIG: AtomcodeConfig = {
+  enabled: false,
+  binaryPath: '',
+  host: '127.0.0.1',
+  basePort: 14000,
+  portRange: 100,
+  atomcodeHome: '',
+  updatedAt: null,
+};
+
+export function getAtomcodeConfig(): AtomcodeConfig {
+  try {
+    if (!fs.existsSync(ATOMCODE_CONFIG_FILE)) {
+      return { ...DEFAULT_ATOMCODE_CONFIG };
+    }
+    const raw = fs.readFileSync(ATOMCODE_CONFIG_FILE, 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<AtomcodeConfig>;
+    return {
+      ...DEFAULT_ATOMCODE_CONFIG,
+      ...parsed,
+      binaryPath: typeof parsed.binaryPath === 'string' ? parsed.binaryPath : '',
+      host: typeof parsed.host === 'string' && parsed.host ? parsed.host : '127.0.0.1',
+      basePort:
+        typeof parsed.basePort === 'number' && parsed.basePort > 0
+          ? Math.floor(parsed.basePort)
+          : 14000,
+      portRange:
+        typeof parsed.portRange === 'number' && parsed.portRange > 0
+          ? Math.floor(parsed.portRange)
+          : 100,
+      atomcodeHome: typeof parsed.atomcodeHome === 'string' ? parsed.atomcodeHome : '',
+      enabled: !!parsed.enabled,
+      updatedAt: parsed.updatedAt ?? null,
+    };
+  } catch (err) {
+    logger.warn({ err }, 'getAtomcodeConfig: failed to read, using defaults');
+    return { ...DEFAULT_ATOMCODE_CONFIG };
+  }
+}
+
+export function saveAtomcodeConfig(cfg: Partial<AtomcodeConfig>): AtomcodeConfig {
+  const current = getAtomcodeConfig();
+  const merged: AtomcodeConfig = {
+    enabled: !!cfg.enabled,
+    binaryPath: typeof cfg.binaryPath === 'string' ? cfg.binaryPath : current.binaryPath,
+    host: typeof cfg.host === 'string' && cfg.host ? cfg.host : '127.0.0.1',
+    basePort:
+      typeof cfg.basePort === 'number' && cfg.basePort > 0
+        ? Math.floor(cfg.basePort)
+        : current.basePort,
+    portRange:
+      typeof cfg.portRange === 'number' && cfg.portRange > 0
+        ? Math.floor(cfg.portRange)
+        : current.portRange,
+    atomcodeHome:
+      typeof cfg.atomcodeHome === 'string' ? cfg.atomcodeHome : current.atomcodeHome,
+    updatedAt: new Date().toISOString(),
+  };
+  fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
+  writeSecretFile(ATOMCODE_CONFIG_FILE, JSON.stringify(merged, null, 2) + '\n');
+  return merged;
+}
+
+/** 脱敏版用于 API 响应 */
+export function toPublicAtomcodeConfig(cfg: AtomcodeConfig): AtomcodeConfig {
+  return { ...cfg };
+}

@@ -293,6 +293,7 @@ interface ChatState {
   createFlow: (name: string, options?: { execution_mode?: 'container' | 'host'; custom_cwd?: string; init_source_path?: string; init_git_url?: string }) => Promise<{ jid: string; folder: string } | null>;
   renameFlow: (jid: string, name: string) => Promise<void>;
   togglePin: (jid: string) => Promise<void>;
+  switchEngine: (jid: string, engine: 'claude' | 'atomcode') => Promise<void>;
   deleteFlow: (jid: string) => Promise<void>;
   handleStreamEvent: (chatJid: string, event: StreamEvent, agentId?: string) => void;
   handleWsNewMessage: (chatJid: string, wsMsg: any, agentId?: string, source?: string) => void;
@@ -1676,6 +1677,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
               ...g,
               pinned_at: willPin ? (data.pinned_at || new Date().toISOString()) : undefined,
             },
+          },
+        };
+      });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+
+  switchEngine: async (jid: string, engine: 'claude' | 'atomcode') => {
+    try {
+      await api.patch<{ success: boolean }>(`/api/groups/${encodeURIComponent(jid)}`, { engine });
+      set((s) => {
+        const g = s.groups[jid];
+        if (!g) return s;
+        return {
+          groups: {
+            ...s.groups,
+            [jid]: { ...g, engine },
           },
         };
       });

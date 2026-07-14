@@ -2182,6 +2182,29 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Engine branch: atomcode routes to atomcode-engine.ts, bypassing the
+  // Claude Agent SDK query() path entirely.
+  const engine = (containerInput.engine ?? 'claude') as 'claude' | 'atomcode';
+  if (engine === 'atomcode') {
+    log('Engine = atomcode, routing to atomcode-engine adapter');
+    const { runAtomcodeEngine } = await import('./atomcode-engine.js');
+    try {
+      await runAtomcodeEngine({
+        containerInput,
+        writeOutput,
+        log,
+      });
+    } catch (err) {
+      writeOutput({
+        status: 'error',
+        result: null,
+        error: `AtomCode engine error: ${err instanceof Error ? err.message : String(err)}`,
+        turnId: containerInput.turnId,
+      });
+    }
+    process.exit(0);
+  }
+
   // 模型是 provider 配置的硬契约（经 ANTHROPIC_MODEL 注入）。缺失即配置错误——
   // 明确 fail-fast，而不是用官方模型兜底向第三方端点发出必然失败的请求。
   if (!CLAUDE_MODEL) {
