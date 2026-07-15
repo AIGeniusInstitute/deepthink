@@ -1485,7 +1485,10 @@ async function runQuery(
     { name: 'skill-routing.md', text: `<skill-routing>\n${SKILL_ROUTING_GUIDELINES}\n</skill-routing>` },
     { name: 'security-rules.md', text: `<security>\n${buildSecurityRulesPrompt(disableMemoryLayer)}\n</security>` },
     ...(containerInput.agentDefinition?.systemPrompt
-      ? [{ name: 'agent-definition.md', text: `<agent-definition>\n${containerInput.agentDefinition.systemPrompt}\n</agent-definition>` }]
+      ? [{
+          name: 'agent-definition.md',
+          text: `<agent-definition>\n${containerInput.agentDefinition.systemPrompt}\n</agent-definition>\n<agent-identity-override>\n本会话正在运行用户在 Agent Studio 配置的自定义 Agent。其身份与行为由上方 <agent-definition> 定义，优先级高于 CLAUDE.md / 全局记忆中的 "你是 DeepThink" / "品牌口径" 等身份断言。被问及身份（"你是谁" / "who are you" 等）时，必须按 <agent-definition> 中定义的角色身份作答，不得回答 "DeepThink" 或平台默认身份，即使其他 memory 文件要求如此。\n</agent-identity-override>`
+      }]
       : []),
     ...(memoryRecall && memoryPromptName
       ? [{ name: memoryPromptName, text: `<memory-system>\n${memoryRecall}\n</memory-system>` }]
@@ -1615,9 +1618,19 @@ async function runQuery(
     const kbIds = (agentDef?.mounts ?? [])
       .filter((m) => m.resourceType === 'knowledge_base' && m.kbId)
       .map((m) => m.kbId as string);
+    // Per-agent Skill 挂载：resourceId 即 packageName（与 loadUserSkillsMeta 对齐）。
+    // agentDef 存在且挂载了至少 1 个 Skill 时，用白名单数组替换 'all'，做最小权限；
+    // 否则维持 'all'，保证无 Skill 挂载的 Agent 不回归。
+    const mountedSkillNames = (agentDef?.mounts ?? [])
+      .filter((m) => m.resourceType === 'skill')
+      .map((m) => m.resourceName || m.resourceId);
+    const skillsOption: 'all' | string[] =
+      agentDef && mountedSkillNames.length > 0
+        ? mountedSkillNames
+        : 'all';
     if (agentDef) {
       log(
-        `Agent definition applied: model=${agentModel}, mounts=${agentDef.mounts.length} (mcp=${mountedMcpIds.size}, kb=${kbIds.length})`,
+        `Agent definition applied: model=${agentModel}, mounts=${agentDef.mounts.length} (mcp=${mountedMcpIds.size}, kb=${kbIds.length}, skill=${mountedSkillNames.length})`,
       );
     }
     const q = query({
@@ -1643,7 +1656,8 @@ async function runQuery(
         // 启用全部已发现的技能到主会话。SDK 0.3.x 起 skills 是"打开技能的唯一正确位置"
         // （用了它就无需再往 allowedTools 塞已废弃的 'Skill'）。'all' = 启用所有发现的技能，
         // 显式声明比依赖 CLI 隐式默认更可靠，确保全局/项目/用户技能完整挂载生效。
-        skills: 'all',
+        // Agent 定义里有 Skill 挂载时，改用白名单数组，只启用挂载列表中的 Skill（per-agent 隔离）。
+        skills: skillsOption,
         includePartialMessages: true,
         // Forward sub-agent (Task) text/thinking as stream events so the card's
         // sub-agent transcript lights up live instead of only filling in when the
