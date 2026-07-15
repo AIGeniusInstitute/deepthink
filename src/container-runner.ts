@@ -1039,6 +1039,62 @@ function loadGroupAgentDefinition(
   };
 }
 
+/**
+ * Agent PaaS: 写入 project-level CLAUDE.md 到工作区目录。
+ *
+ * 背景：admin 用户的测试对话组 / 生产组绑定 Agent 后，syncHostClaudeContext 会把
+ * 全局 CLAUDE.md 模板（含 "你是 DeepThink" + "品牌口径" 强制规则）符号链接到
+ * data/sessions/{folder}/.claude/CLAUDE.md，SDK 把它作为 user memory 加载，
+ * 顺序在 systemPrompt.append 之后，覆盖了 <agent-definition> 里的自定义身份。
+ *
+ * 修复：当 Agent 有 systemPrompt 时，把 prompt 写到 data/groups/{folder}/CLAUDE.md，
+ * SDK 把它作为 project memory 加载（在 user memory 之后），压在 "你是 DeepThink" 之上，
+ * 让 Agent 自定义身份生效。Agent 有自己的 memory 可写到 MEMORY.md 等其他文件，
+ * 提示文案中明确"不要修改上方身份段落"，降低被覆盖概率。
+ *
+ * 幂等：每次 Agent 启动都重写，确保 systemPrompt 最新。
+ */
+function writeAgentProjectClaudeMd(
+  group: RegisteredGroup,
+  agentDef: ContainerInput['agentDefinition'],
+): void {
+  if (!agentDef?.systemPrompt) return;
+  const groupDir = path.join(GROUPS_DIR, group.folder);
+  mkdirForContainer(groupDir);
+  const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
+  const content = buildAgentProjectClaudeMdContent(agentDef);
+  try {
+    const tmp = `${claudeMdPath}.tmp`;
+    fs.writeFileSync(tmp, content, 'utf8');
+    fs.renameSync(tmp, claudeMdPath);
+  } catch (err) {
+    logger.warn({ err, folder: group.folder }, 'Failed to write agent project CLAUDE.md');
+  }
+}
+
+function buildAgentProjectClaudeMdContent(
+  agentDef: NonNullable<ContainerInput['agentDefinition']>,
+): string {
+  return [
+    '# Agent Identity（由 Agent Studio 注入）',
+    '',
+    agentDef.systemPrompt ?? '',
+    '',
+    '---',
+    '',
+    '## Identity Override（系统注入，请勿修改）',
+    '',
+    '本工作区正在运行用户在 Agent Studio 配置的自定义 Agent。该 Agent 的身份与行为由上方 `system_prompt` 定义，',
+    '**优先级高于** `~/.claude/CLAUDE.md` 中的 "你是 DeepThink" / "品牌口径" 等身份断言。',
+    '',
+    '当用户问 "你是谁"、"你是做什么的"、"who are you" 等身份类问题时，**必须按上方 system_prompt 定义的角色身份作答**，',
+    '不得回答 "DeepThink" 或平台默认身份，即使其他 memory 文件要求如此。',
+    '',
+    '如需记录会话记忆，请使用 `MEMORY.md` 或其他文件，不要修改或删除上方身份段落。',
+    '',
+  ].join('\n');
+}
+
 export async function runContainerAgent(
   group: RegisteredGroup,
   input: ContainerInput,
@@ -1148,6 +1204,11 @@ export async function runContainerAgent(
         ? getUserById(group.created_by)?.language ?? DEFAULT_LANGUAGE
         : DEFAULT_LANGUAGE;
       const engine = (group.engine ?? 'claude') as 'claude' | 'atomcode';
+      const dockerAgentDef = loadGroupAgentDefinition(
+        group.agentDefId,
+        group.created_by,
+      );
+      writeAgentProjectClaudeMd(group, dockerAgentDef);
       const dockerInput: ContainerInput = {
         ...input,
         userLanguage: input.userLanguage ?? ownerLanguage,
@@ -1155,10 +1216,7 @@ export async function runContainerAgent(
         plugins: group.created_by
           ? loadUserPlugins(group.created_by, { runtime: 'docker' })
           : [],
-        agentDefinition: loadGroupAgentDefinition(
-          group.agentDefId,
-          group.created_by,
-        ),
+        agentDefinition: dockerAgentDef,
         contextAudit: buildClaudeContextPlan({
           executionMode: 'container',
           group,
@@ -1974,16 +2032,18 @@ export async function runHostAgent(
           ? (getAtomcodeSessionId(group.folder, input.agentId || '') ??
             input.sessionId)
           : input.sessionId;
+      const hostAgentDef = loadGroupAgentDefinition(
+        group.agentDefId,
+        group.created_by,
+      );
+      writeAgentProjectClaudeMd(group, hostAgentDef);
       const hostInput: ContainerInput = {
         ...input,
         sessionId: engineSessionId,
         engine: groupEngine,
         userLanguage: input.userLanguage ?? ownerLanguage,
         plugins: prepareHostPlugins(group.created_by),
-        agentDefinition: loadGroupAgentDefinition(
-          group.agentDefId,
-          group.created_by,
-        ),
+        agentDefinition: hostAgentDef,
         contextAudit: hostClaudeContextPlan.audit,
       };
       proc.stdin.write(JSON.stringify(hostInput));

@@ -31,6 +31,7 @@ export function AgentStudioPage() {
   const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [model, setModel] = useState('');
   const [engine, setEngine] = useState<'claude' | 'atomcode'>('claude');
@@ -56,6 +57,7 @@ export function AgentStudioPage() {
     if (used >= quota) { toast.error(`Quota exceeded (${used}/${quota})`); return; }
     const ag = await create({
       name: name.trim(),
+      description: description.trim() || undefined,
       system_prompt: systemPrompt || undefined,
       model: model || null,
       engine,
@@ -63,7 +65,7 @@ export function AgentStudioPage() {
     });
     if (ag) {
       toast.success('Agent created');
-      setName(''); setSystemPrompt(''); setModel(''); setEngine('claude'); setShowCreate(false);
+      setName(''); setDescription(''); setSystemPrompt(''); setModel(''); setEngine('claude'); setShowCreate(false);
       setSelectedId(ag.id);
     } else toast.error('Create failed');
   };
@@ -129,9 +131,30 @@ export function AgentStudioPage() {
             <Card>
               <CardContent className="p-4 space-y-4">
                 <div className="flex items-center justify-between">
-                  <div className="min-w-0">
-                    <div className="text-lg font-semibold truncate">{selected.name}</div>
-                    <div className="text-sm text-muted-foreground">{selected.description || '无描述'}</div>
+                  <div className="min-w-0 flex-1 mr-2">
+                    <input
+                      className="w-full text-lg font-semibold bg-transparent border-b border-transparent hover:border-border focus:border-teal-500 outline-none px-0 py-0.5"
+                      defaultValue={selected.name}
+                      placeholder="Agent 名称"
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        if (v && v !== selected.name) {
+                          update(selected.id, { name: v }).then((ok) => ok && toast.success('已保存'));
+                        }
+                      }}
+                    />
+                    <textarea
+                      className="w-full text-sm text-muted-foreground bg-transparent border-b border-transparent hover:border-border focus:border-teal-500 outline-none resize-none px-0 py-0.5 mt-0.5"
+                      rows={2}
+                      defaultValue={selected.description ?? ''}
+                      placeholder="点击编辑描述…"
+                      onBlur={(e) => {
+                        const v = e.target.value;
+                        if (v !== (selected.description ?? '')) {
+                          update(selected.id, { description: v }).then((ok) => ok && toast.success('已保存'));
+                        }
+                      }}
+                    />
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Button
@@ -296,6 +319,13 @@ export function AgentStudioPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
+              <textarea
+                className="w-full px-3 py-2 border rounded-md bg-background text-sm"
+                rows={2}
+                placeholder="描述（可空，留空则后续在详情面板编辑）"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
               <div className="flex gap-2 items-center">
                 <select
                   className="px-3 py-2 border rounded-md bg-background text-sm"
@@ -353,12 +383,16 @@ function MountsSection({
 }) {
   const [adding, setAdding] = useState<ResourceType | null>(null);
   const mounts = agent.mounts ?? [];
+  const loadAvailable = useAgentsPaasStore((s) => s.loadAvailable);
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium">挂载（{mounts.length}）</div>
         <div className="flex gap-1">
+          <Button size="sm" variant="ghost" onClick={() => loadAvailable()} title="刷新挂载资源列表">
+            <RotateCcw className="size-3 mr-1" /> 刷新
+          </Button>
           {(['mcp_server', 'skill', 'knowledge_base'] as ResourceType[]).map((t) => (
             <Button key={t} size="sm" variant="outline" onClick={() => setAdding(t)}>
               <Plus className="size-3 mr-1" /> {RESOURCE_LABEL[t]}
@@ -393,7 +427,21 @@ function MountsSection({
                 adding === 'mcp_server' ? (available.mcp_servers.map((s: { id: string; name: string }) => ({ id: s.id, label: `${s.name} (${s.id})` })))
                 : adding === 'skill' ? (available.skills.map((s: { id: string; name: string }) => ({ id: s.id, label: s.name })))
                 : (available.knowledge_bases.map((k: { id: string; name: string; doc_count: number }) => ({ id: k.id, label: `${k.name} (${k.doc_count} docs)` })));
-              if (opts.length === 0) return <div className="text-xs text-muted-foreground">无可挂载资源</div>;
+              if (opts.length === 0) {
+                return (
+                  <div className="text-xs text-muted-foreground">
+                    {adding === 'skill' ? (
+                      <>
+                        暂无可挂载 Skill。前往{' '}
+                        <a href="/skills" className="text-teal-600 hover:underline">Skills 管理页</a>
+                        {' '}安装后，回到本页点"刷新挂载资源"按钮即可挂载。
+                      </>
+                    ) : (
+                      '无可挂载资源'
+                    )}
+                  </div>
+                );
+              }
               return opts.map((o: { id: string; label: string }) => (
                 <button
                   key={o.id}
