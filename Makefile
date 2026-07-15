@@ -4,6 +4,7 @@
        backup restore help _ensure-docker-image logs status stop \
        _check-sync _build-web-if-stale _build-ar-if-stale _build-backend-if-stale \
        _start-pm2 _start-direct \
+       admin-create admin-passwd \
        desktop-install desktop-build-deps desktop-build desktop-fetch-node \
        desktop-rebuild-natives desktop-dev desktop-pack-mac desktop-pack-mac-x64 \
        desktop-pack-mac-all desktop-pack-win desktop-pack-linux
@@ -279,6 +280,26 @@ clean: ## 清理构建产物
 reset-init: ## 完全重置为首装状态（清空所有运行时数据）
 	rm -rf data store groups
 	@echo "✅ 已完全重置为首装状态（数据库、配置、工作区、记忆、会话全部清除）"
+
+# ─── Admin Account Ops ───────────────────────────────────────
+# 运维脚本：创建 / 修改 管理员账号。
+# 用法：
+#   make admin-create USERNAME=alice PASSWORD=YourStr0ngPass
+#   make admin-passwd USERNAME=alice PASSWORD=NewStr0ngPass
+# 省略 PASSWORD 时走交互式隐藏输入，避免密码落入 shell history：
+#   make admin-create USERNAME=alice
+
+admin-create: ## 创建管理员账号（USERNAME=xxx [PASSWORD=xxx]，省略 PASSWORD 则交互式输入）
+	@if [ -z "$(USERNAME)" ]; then echo "❌ 用法: make admin-create USERNAME=alice [PASSWORD=xxx]"; exit 1; fi
+	@ARGS="create $(USERNAME)"; \
+	  [ -n "$(PASSWORD)" ] && ARGS="$$ARGS $(PASSWORD)"; \
+	  npx tsx src/admin-account-cli.js $$ARGS
+
+admin-passwd: ## 修改管理员密码（USERNAME=xxx [PASSWORD=xxx]，省略 PASSWORD 则交互式输入；清掉该账号所有旧登录会话）
+	@if [ -z "$(USERNAME)" ]; then echo "❌ 用法: make admin-passwd USERNAME=alice [PASSWORD=xxx]"; exit 1; fi
+	@ARGS="passwd $(USERNAME)"; \
+	  [ -n "$(PASSWORD)" ] && ARGS="$$ARGS $(PASSWORD)"; \
+	  npx tsx src/admin-account-cli.js $$ARGS
 
 # ─── Backup / Restore ────────────────────────────────────────
 
