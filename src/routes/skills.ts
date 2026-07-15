@@ -49,7 +49,7 @@ const skillsRoutes = new Hono<{ Variables: Variables }>();
 
 // --- Types ---
 
-interface Skill {
+export interface Skill {
   id: string;
   name: string;
   description: string;
@@ -154,7 +154,7 @@ function scanDirectory(rootDir: string, source: 'user' | 'project'): Skill[] {
   return scanSkillDirectory(rootDir, source) as Skill[];
 }
 
-function discoverSkills(userId: string, userRole?: string): Skill[] {
+export function discoverSkills(userId: string, userRole?: string): Skill[] {
   const userSkills = scanDirectory(getUserSkillsDir(userId), 'user');
   const projectSkills = scanDirectory(getProjectSkillsDir(), 'project');
 

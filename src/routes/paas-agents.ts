@@ -52,6 +52,7 @@ import { getWebDeps } from '../web-context.js';
 import { GROUPS_DIR } from '../config.js';
 import fs from 'node:fs';
 import path from 'node:path';
+import { discoverSkills, type Skill } from './skills.js';
 
 export const paasAgentsRoute = new Hono<{ Variables: Variables }>();
 
@@ -270,13 +271,33 @@ paasAgentsRoute.get('/resources/available', async (c) => {
     name: r.name,
     doc_count: r.doc_count,
   }));
-  const skills = await loadUserSkillsMeta(user.id);
+  const skills = listMountableSkills(user.id, user.role);
   return c.json({
     mcp_servers: mcpServers,
     knowledge_bases: kbs,
     skills,
   });
 });
+
+function listMountableSkills(
+  userId: string,
+  userRole?: string,
+): Array<{ id: string; name: string; description: string; source: string }> {
+  try {
+    const all = discoverSkills(userId, userRole);
+    return all
+      .filter((s) => s.enabled)
+      .map((s: Skill) => ({
+        id: s.id,
+        name: s.name || s.id,
+        description: s.description || '',
+        source: s.source,
+      }));
+  } catch (err) {
+    logger.warn({ err, userId }, 'Failed to list mountable skills');
+    return [];
+  }
+}
 
 async function loadUserMcpServersMeta(
   userId: string,
@@ -304,28 +325,6 @@ async function loadUserMcpServersMeta(
       name: s.name ?? id,
       type: s.type ?? 'stdio',
       enabled: s.enabled !== false,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-async function loadUserSkillsMeta(
-  userId: string,
-): Promise<Array<{ id: string; name: string; description: string }>> {
-  try {
-    const dir = path.join(process.cwd(), 'data', 'skills', userId);
-    if (!fs.existsSync(dir)) return [];
-    const manifestPath = path.join(dir, '.skills-manifest.json');
-    if (!fs.existsSync(manifestPath)) return [];
-    const data = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Array<{
-      packageName: string;
-      source?: string;
-    }>;
-    return data.map((s) => ({
-      id: s.packageName,
-      name: s.packageName,
-      description: s.source ?? '',
     }));
   } catch {
     return [];
