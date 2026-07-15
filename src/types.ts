@@ -588,7 +588,17 @@ export type WsMessageOut =
         activeHook?: { hookName: string; hookEvent: string } | null;
         turnId?: string;
       };
-    };
+    }
+  // --- Sandbox real-time channel ---
+  | { type: 'sandbox_terminal_started'; sessionId: string; cols: number; rows: number }
+  | { type: 'sandbox_terminal_output'; sessionId: string; data: string }
+  | { type: 'sandbox_terminal_exit'; sessionId: string; exitCode: number }
+  | { type: 'sandbox_terminal_stopped'; sessionId: string }
+  | { type: 'sandbox_browser_started'; sessionId: string }
+  | { type: 'sandbox_browser_stopped'; sessionId: string }
+  | { type: 'sandbox_browser_frame'; sessionId: string; dataUrl: string }
+  | { type: 'sandbox_status'; sessionId: string; status: string }
+  | { type: 'sandbox_error'; sessionId?: string; error: string };
 
 export type WsMessageIn =
   | {
@@ -601,7 +611,17 @@ export type WsMessageIn =
   | { type: 'terminal_start'; chatJid: string; cols: number; rows: number }
   | { type: 'terminal_input'; chatJid: string; data: string }
   | { type: 'terminal_resize'; chatJid: string; cols: number; rows: number }
-  | { type: 'terminal_stop'; chatJid: string };
+  | { type: 'terminal_stop'; chatJid: string }
+  | {
+      type: 'sandbox_terminal_start';
+      sessionId: string;
+      cols?: number;
+      rows?: number;
+    }
+  | { type: 'sandbox_terminal_input'; sessionId: string; data: string }
+  | { type: 'sandbox_terminal_stop'; sessionId: string }
+  | { type: 'sandbox_browser_subscribe'; sessionId: string; url?: string }
+  | { type: 'sandbox_browser_unsubscribe'; sessionId: string };
 
 // --- Streaming event types (canonical source: shared/stream-event.ts) ---
 export type { StreamEventType } from './stream-event.types.js';

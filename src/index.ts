@@ -6967,8 +6967,230 @@ async function processTaskIpc(
       }
       break;
 
+    case 'sandbox_run_code':
+    case 'sandbox_browser_navigate':
+    case 'sandbox_browser_click':
+    case 'sandbox_browser_type':
+    case 'sandbox_browser_screenshot':
+    case 'sandbox_browser_evaluate':
+    case 'sandbox_close':
+      await handleSandboxIpc(data, sourceGroup, sourceGroupEntry, tasksDir);
+      break;
+
     default:
       logger.warn({ type: data.type }, 'Unknown IPC task type');
+  }
+}
+
+/**
+ * Handle sandbox-related IPC requests from agent-runner.
+ *
+ * Each agent session is associated with at most one sandbox (stored in the
+ * `sessions.sandbox_session_id` column). On first call we lazily create a
+ * sandbox for that agent session; subsequent calls reuse it.
+ *
+ * Result file: `{type}_result_{requestId}.json` written back to the source
+ * group's tasks dir.
+ */
+async function handleSandboxIpc(
+  data: {
+    type: string;
+    requestId?: string;
+    language?: string;
+    code?: string;
+    stdin?: string;
+    timeoutMs?: number;
+    url?: string;
+    selector?: string;
+    text?: string;
+    script?: string;
+  },
+  sourceGroup: string,
+  sourceGroupEntry: RegisteredGroup | undefined,
+  tasksDir: string,
+): Promise<void> {
+  const requestId = data.requestId;
+  if (!requestId || !SAFE_REQUEST_ID_RE.test(requestId)) {
+    logger.warn({ sourceGroup, requestId }, 'Rejected sandbox IPC: invalid requestId');
+    return;
+  }
+  const resultFileName = `${data.type}_result_${requestId}.json`;
+  const tasksRoot = path.resolve(tasksDir);
+  const resultFilePath = path.resolve(tasksDir, resultFileName);
+  if (!resultFilePath.startsWith(`${tasksRoot}${path.sep}`)) {
+    logger.warn({ sourceGroup, requestId, resultFilePath }, 'Rejected sandbox IPC: unsafe result path');
+    return;
+  }
+  fs.mkdirSync(path.dirname(resultFilePath), { recursive: true });
+
+  const writeResult = (payload: object): void => {
+    const tmp = `${resultFilePath}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(payload));
+    fs.renameSync(tmp, resultFilePath);
+  };
+
+  try {
+    const { getSandboxManager } = await import('./sandbox/index.js');
+    const manager = getSandboxManager();
+
+    // Resolve the owner user for this agent session
+    const ownerId = sourceGroupEntry?.created_by;
+    if (!ownerId) {
+      writeResult({ success: false, error: 'Group has no owner — sandbox access denied' });
+      return;
+    }
+
+    // Resolve or lazily create a per-session sandbox
+    const resolveSandboxId = async (browserEnabled: boolean): Promise<string> => {
+      const { getSandboxSessionId, setSandboxSessionId } = await import('./db.js');
+      const existingId = getSandboxSessionId(sourceGroup);
+      if (existingId) {
+        const sess = manager.get(existingId);
+        if (sess && sess.status !== 'stopped') return existingId;
+      }
+      // Create a new sandbox
+      const s = await manager.create(ownerId, {
+        language: 'python',
+        browserEnabled,
+      });
+      setSandboxSessionId(sourceGroup, s.id);
+      return s.id;
+    };
+
+    switch (data.type) {
+      case 'sandbox_run_code': {
+        const language = (data.language as 'python' | 'node' | 'sh') || 'python';
+        const code = data.code ?? '';
+        if (!code.trim()) {
+          writeResult({ success: false, error: 'empty code' });
+          return;
+        }
+        // Reuse existing sandbox (browser mode auto-detected from session creation)
+        const sid = await resolveSandboxId(false);
+        const result = await manager.executeCode(sid, ownerId, {
+          language,
+          code,
+          stdin: data.stdin,
+          timeoutMs: data.timeoutMs,
+        });
+        writeResult({
+          success: true,
+          result: {
+            status: result.status,
+            exit_code: result.exitCode,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            truncated: result.truncated,
+            duration_ms: result.durationMs,
+            session_id: result.sessionId,
+          },
+        });
+        return;
+      }
+      case 'sandbox_browser_navigate': {
+        const url = data.url ?? '';
+        if (!url) {
+          writeResult({ success: false, error: 'empty url' });
+          return;
+        }
+        // For browser tools, ensure a browser-enabled sandbox exists. If the
+        // existing sandbox was created without browser, destroy it first and
+        // create a new one. P0 simplification: one browser sandbox per agent.
+        const { getSandboxSessionId, setSandboxSessionId } = await import('./db.js');
+        let sid = getSandboxSessionId(sourceGroup);
+        if (sid) {
+          const sess = manager.get(sid);
+          if (!sess || sess.status === 'stopped' || !sess.browserEnabled) {
+            if (sess && sess.status !== 'stopped') {
+              await manager.destroy(sid, 'switching_to_browser_mode');
+            }
+            sid = null;
+          }
+        }
+        if (!sid) {
+          const s = await manager.create(ownerId, { language: 'python', browserEnabled: true });
+          sid = s.id;
+          setSandboxSessionId(sourceGroup, sid);
+        }
+        // Start browser (idempotent) + navigate
+        await manager.startBrowser(sid, () => {});
+        const browser = await manager.getBrowser(sid);
+        if (!browser) {
+          writeResult({ success: false, error: 'browser not available' });
+          return;
+        }
+        await browser.navigate(url);
+        writeResult({ success: true });
+        return;
+      }
+      case 'sandbox_browser_click':
+      case 'sandbox_browser_type':
+      case 'sandbox_browser_screenshot':
+      case 'sandbox_browser_evaluate': {
+        const { getSandboxSessionId } = await import('./db.js');
+        const sid = getSandboxSessionId(sourceGroup);
+        if (!sid) {
+          writeResult({ success: false, error: 'no sandbox session for this agent — call sandbox_browser_navigate first' });
+          return;
+        }
+        const browser = await manager.getBrowser(sid);
+        if (!browser) {
+          writeResult({ success: false, error: 'browser not started — call sandbox_browser_navigate first' });
+          return;
+        }
+        if (data.type === 'sandbox_browser_click') {
+          await browser.click(data.selector ?? '');
+          writeResult({ success: true });
+        } else if (data.type === 'sandbox_browser_type') {
+          await browser.type(data.selector ?? '', data.text ?? '');
+          writeResult({ success: true });
+        } else if (data.type === 'sandbox_browser_screenshot') {
+          const dataUrl = await browser.screenshot();
+          // Persist PNG to workspace downloads dir so user can retrieve later
+          const base64 = dataUrl.split(',')[1] ?? '';
+          const buf = Buffer.from(base64, 'base64');
+          const downloadsDir = path.join(GROUPS_DIR, sourceGroup, 'downloads', 'sandbox');
+          fs.mkdirSync(downloadsDir, { recursive: true });
+          const fileName = `screenshot-${Date.now()}.png`;
+          const savedTo = path.join(downloadsDir, fileName);
+          fs.writeFileSync(savedTo, buf);
+          const url = await browser.getCurrentUrl().catch(() => null);
+          const title = await browser.getTitle().catch(() => null);
+          writeResult({
+            success: true,
+            result: {
+              saved_to: savedTo,
+              url,
+              title,
+            },
+          });
+        } else if (data.type === 'sandbox_browser_evaluate') {
+          const value = await browser.evaluate(data.script ?? '');
+          writeResult({ success: true, result: { value } });
+        }
+        return;
+      }
+      case 'sandbox_close': {
+        const { getSandboxSessionId, clearSandboxSessionId } = await import('./db.js');
+        const sid = getSandboxSessionId(sourceGroup);
+        if (!sid) {
+          writeResult({ success: true });
+          return;
+        }
+        await manager.destroy(sid, 'agent_requested_close');
+        clearSandboxSessionId(sourceGroup);
+        writeResult({ success: true });
+        return;
+      }
+      default:
+        writeResult({ success: false, error: `unknown sandbox type: ${data.type}` });
+    }
+  } catch (err) {
+    logger.error({ err, sourceGroup, type: data.type }, 'sandbox IPC failed');
+    writeResult({
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
