@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Download, ShoppingBag, Star, Send, Check, X, MessageSquare } from 'lucide-react';
+import { Download, ShoppingBag, Star, Send, Check, X, MessageSquare, Flag } from 'lucide-react';
 
 const TYPE_LABEL: Record<MarketplaceItemType, string> = {
   agent_template: 'Agent',
@@ -204,6 +204,7 @@ function ItemDetailDrawer({
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [reportingId, setReportingId] = useState<string | null>(null);
 
   useEffect(() => { loadReviews(item.id); }, [item.id, loadReviews]);
   const reviewList = reviews[item.id] ?? [];
@@ -288,12 +289,81 @@ function ItemDetailDrawer({
                     <div className="flex items-center gap-2 text-xs">
                       <Stars avg={r.rating} count={0} />
                       <span className="text-muted-foreground">{new Date(r.createdAt).toLocaleString('zh-CN')}</span>
+                      <button
+                        className="ml-auto text-xs text-muted-foreground hover:text-red-600 flex items-center gap-1"
+                        onClick={() => setReportingId(r.id)}
+                      >
+                        <Flag className="size-3" /> 举报
+                      </button>
                     </div>
                     {r.comment && <div className="text-sm mt-1 whitespace-pre-wrap">{r.comment}</div>}
                   </div>
                 ))}
               </div>
             )}
+          </div>
+
+          {reportingId && (
+            <ReportDialog
+              reviewId={reportingId}
+              onClose={() => setReportingId(null)}
+              onSubmitted={() => {
+                setReportingId(null);
+                toast.success('举报已提交，管理员将审核处理');
+              }}
+            />
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ReportDialog({
+  reviewId,
+  onClose,
+  onSubmitted,
+}: {
+  reviewId: string;
+  onClose: () => void;
+  onSubmitted: () => void;
+}) {
+  const { reportReview } = useMarketplaceStore();
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    const trimmed = reason.trim();
+    if (trimmed.length < 5) { toast.error('请填写至少 5 字符的举报理由'); return; }
+    setSubmitting(true);
+    const ok = await reportReview(reviewId, trimmed);
+    setSubmitting(false);
+    if (ok) onSubmitted();
+    else toast.error('举报失败（该评论可能已被你举报过）');
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <CardContent className="p-4 space-y-3">
+          <div className="font-semibold flex items-center gap-2">
+            <Flag className="size-4" /> 举报评论
+          </div>
+          <div className="text-xs text-muted-foreground">
+            举报后管理员会审核该评论。多次被举报的评论可能被删除。
+          </div>
+          <textarea
+            className="w-full px-3 py-2 border rounded-md bg-background text-sm"
+            rows={4}
+            placeholder="说明该评论存在的问题（5-500 字符）"
+            value={reason}
+            onChange={(e) => setReason(e.target.value.slice(0, 500))}
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={onClose}>取消</Button>
+            <Button size="sm" onClick={handleSubmit} disabled={submitting}>
+              {submitting ? '提交中…' : '提交举报'}
+            </Button>
           </div>
         </CardContent>
       </Card>

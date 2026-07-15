@@ -7,8 +7,9 @@ import { UserListTab } from '../components/users/UserListTab';
 import { InviteCodesTab } from '../components/users/InviteCodesTab';
 import { AuditLogTab } from '../components/users/AuditLogTab';
 import { AgentQuotaTab } from '../components/users/AgentQuotaTab';
+import { ReviewReportsTab } from '../components/users/ReviewReportsTab';
 
-type Tab = 'users' | 'invites' | 'audit' | 'quotas';
+type Tab = 'users' | 'invites' | 'audit' | 'quotas' | 'reports';
 
 export function UsersPage() {
   const [tab, setTab] = useState<Tab>('users');
@@ -28,6 +29,7 @@ export function UsersPage() {
     const list: Array<{ key: Tab; label: string; visible: boolean }> = [
       { key: 'users', label: '用户列表', visible: canManageUsers },
       { key: 'quotas', label: 'Agent 配额', visible: isAdmin },
+      { key: 'reports', label: '评论举报', visible: isAdmin },
       { key: 'invites', label: '邀请码', visible: canManageInvites },
       { key: 'audit', label: '审计日志', visible: canViewAudit },
     ];
@@ -85,6 +87,9 @@ export function UsersPage() {
         )}
         {tab === 'quotas' && isAdmin && (
           <AgentQuotaTab setNotice={setNotice} setError={setError} />
+        )}
+        {tab === 'reports' && isAdmin && (
+          <ReviewReportsTab setNotice={setNotice} setError={setError} />
         )}
         {tab === 'invites' && canManageInvites && (
           <InviteCodesTab currentUser={currentUser} setNotice={setNotice} setError={setError} />

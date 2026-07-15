@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { createRequire } from 'module';
 import Database from './sqlite-compat.js';
 import fs from 'fs';
 import path from 'path';
@@ -48,6 +49,21 @@ import {
 import { getDefaultPermissions, normalizePermissions } from './permissions.js';
 
 let db: InstanceType<typeof Database>;
+let vecExtensionLoaded = false;
+
+export function isVecExtensionLoaded(): boolean {
+  return vecExtensionLoaded;
+}
+
+export function vecVersion(): string | null {
+  if (!vecExtensionLoaded) return null;
+  try {
+    const r = db.prepare('SELECT vec_version() as v').get() as { v: string } | undefined;
+    return r?.v ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // Prepared statement cache — lazy-initialized on first use after initDatabase()
 let _stmts: {
@@ -267,6 +283,28 @@ export function initDatabase(): void {
   } catch (err) {
     logger.error({ err }, 'Failed to enable foreign-key enforcement');
   }
+
+  // Phase 3: 加载 sqlite-vec 扩展（向量索引）。失败时回退线性扫描。
+  try {
+    const sqliteVecReq = createRequire(import.meta.url);
+    const sqliteVec = sqliteVecReq('sqlite-vec');
+    sqliteVec.load(db);
+    vecExtensionLoaded = true;
+    try {
+      db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS kb_documents_vec USING vec0(
+        doc_id TEXT PRIMARY KEY,
+        embedding FLOAT[1536]
+      )`);
+    } catch (err) {
+      logger.warn({ err }, 'kb_documents_vec virtual table creation failed — vector index disabled');
+      vecExtensionLoaded = false;
+    }
+    logger.info({ version: vecVersion() }, 'sqlite-vec extension loaded — vector index enabled');
+  } catch (err) {
+    logger.warn({ err }, 'sqlite-vec extension load failed — falling back to linear scan');
+    vecExtensionLoaded = false;
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS chats (
       jid TEXT PRIMARY KEY,
@@ -942,6 +980,42 @@ export function initDatabase(): void {
       FOREIGN KEY (agent_def_id) REFERENCES agent_definitions(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_agent_versions_def ON agent_definition_versions(agent_def_id);
+
+    CREATE TABLE IF NOT EXISTS agent_shares (
+      id TEXT PRIMARY KEY,
+      agent_def_id TEXT NOT NULL,
+      share_token TEXT NOT NULL UNIQUE,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at TEXT,
+      install_count INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (agent_def_id) REFERENCES agent_definitions(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_shares_def ON agent_shares(agent_def_id);
+
+    CREATE TABLE IF NOT EXISTS agent_collaborators (
+      agent_def_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'viewer',
+      added_by TEXT NOT NULL,
+      added_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (agent_def_id, user_id),
+      FOREIGN KEY (agent_def_id) REFERENCES agent_definitions(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS marketplace_review_reports (
+      id TEXT PRIMARY KEY,
+      review_id TEXT NOT NULL,
+      reporter_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      handled_by TEXT,
+      handled_at TEXT,
+      UNIQUE(review_id, reporter_id),
+      FOREIGN KEY (review_id) REFERENCES marketplace_reviews(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_review_reports_status ON marketplace_review_reports(status);
   `);
 
   // Phase 2 columns
@@ -1663,7 +1737,7 @@ export function initDatabase(): void {
     db.exec('ALTER TABLE scheduled_tasks ADD COLUMN loop_run_id TEXT');
   }
 
-  const SCHEMA_VERSION = '49';
+  const SCHEMA_VERSION = '50';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -7419,6 +7493,15 @@ export function deleteKnowledgeBase(id: string, userId: string): boolean {
   // FTS trigger handles cascade delete of docs
   // But FTS5 content table is `kb_documents` — deletion via FK cascade works only if docs deleted via SQL.
   // Explicit delete to ensure FTS triggers fire:
+  if (vecExtensionLoaded) {
+    try {
+      db.prepare(
+        `DELETE FROM kb_documents_vec WHERE doc_id IN (SELECT id FROM kb_documents WHERE kb_id = ?)`,
+      ).run(id);
+    } catch (err) {
+      logger.warn({ err, kbId: id }, 'Failed to clean kb_documents_vec on KB delete');
+    }
+  }
   db.prepare('DELETE FROM kb_documents WHERE kb_id = ?').all(id);
   const result = db
     .prepare('DELETE FROM knowledge_bases WHERE id = ? AND user_id = ?')
@@ -7486,6 +7569,7 @@ export function deleteKbDocument(
     .prepare('SELECT kb_id FROM kb_documents WHERE id = ? AND user_id = ?')
     .get(docId, userId) as { kb_id: string } | undefined;
   if (!doc) return false;
+  deleteDocFromVecIndex(docId);
   const result = db
     .prepare('DELETE FROM kb_documents WHERE id = ? AND user_id = ?')
     .run(docId, userId);
@@ -7648,6 +7732,26 @@ export function updateDocEmbedding(
   db.prepare(
     'UPDATE kb_documents SET embedding = ?, embedding_model = ? WHERE id = ?',
   ).run(buf, model, docId);
+  // Phase 3: 同步写入 sqlite-vec 虚拟表（若扩展已加载）
+  if (vecExtensionLoaded) {
+    try {
+      db.prepare(
+        `INSERT INTO kb_documents_vec (doc_id, embedding) VALUES (?, ?)
+         ON CONFLICT(doc_id) DO UPDATE SET embedding = excluded.embedding`,
+      ).run(docId, buf);
+    } catch (err) {
+      logger.warn({ err, docId }, 'Failed to upsert into kb_documents_vec');
+    }
+  }
+}
+
+export function deleteDocFromVecIndex(docId: string): void {
+  if (!vecExtensionLoaded) return;
+  try {
+    db.prepare('DELETE FROM kb_documents_vec WHERE doc_id = ?').run(docId);
+  } catch (err) {
+    logger.warn({ err, docId }, 'Failed to delete from kb_documents_vec');
+  }
 }
 
 export function getKbDocumentContent(docId: string): string | null {
@@ -7690,7 +7794,7 @@ export interface HybridSearchRow {
 }
 
 /**
- * Vector search: linear scan over all embedded docs in the given KBs.
+ * Vector search: dispatches to sqlite-vec when loaded, else falls back to linear scan.
  * Returns top-K by cosine similarity to the query embedding.
  */
 export function vectorSearchKbDocuments(
@@ -7699,6 +7803,46 @@ export function vectorSearchKbDocuments(
   limit: number,
 ): Array<{ doc_id: string; kb_id: string; filename: string; score: number; snippet: string }> {
   if (kbIds.length === 0) return [];
+  if (vecExtensionLoaded) return vectorSearchViaVec(kbIds, queryEmbedding, limit);
+  return vectorSearchKbDocumentsLinear(kbIds, queryEmbedding, limit);
+}
+
+function vectorSearchViaVec(
+  kbIds: string[],
+  queryEmbedding: Float32Array,
+  limit: number,
+): Array<{ doc_id: string; kb_id: string; filename: string; score: number; snippet: string }> {
+  const placeholders = kbIds.map(() => '?').join(',');
+  const qbuf = Buffer.from(queryEmbedding.buffer, queryEmbedding.byteOffset, queryEmbedding.byteLength);
+  try {
+    const rows = db
+      .prepare(
+        `SELECT v.doc_id as doc_id, v.distance as distance, d.kb_id as kb_id, d.filename as filename, d.content as content
+         FROM kb_documents_vec v
+         JOIN kb_documents d ON d.id = v.doc_id
+         WHERE v.embedding MATCH ? AND d.kb_id IN (${placeholders})
+         ORDER BY v.distance
+         LIMIT ?`,
+      )
+      .all(qbuf, ...kbIds, limit) as Array<{ doc_id: string; kb_id: string; filename: string; content: string; distance: number }>;
+    return rows.map((r) => ({
+      doc_id: r.doc_id,
+      kb_id: r.kb_id,
+      filename: r.filename,
+      score: Math.max(0, 1 - r.distance),
+      snippet: r.content.slice(0, 200).replace(/\s+/g, ' ').trim(),
+    }));
+  } catch (err) {
+    logger.warn({ err }, 'vec table KNN query failed — falling back to linear scan');
+    return vectorSearchKbDocumentsLinear(kbIds, queryEmbedding, limit);
+  }
+}
+
+function vectorSearchKbDocumentsLinear(
+  kbIds: string[],
+  queryEmbedding: Float32Array,
+  limit: number,
+): Array<{ doc_id: string; kb_id: string; filename: string; score: number; snippet: string }> {
   const placeholders = kbIds.map(() => '?').join(',');
   const rows = db
     .prepare(
@@ -8101,4 +8245,202 @@ export function restoreAgentVersion(
     addAgentMount(agentDefId, m.resource_type, m.resource_id);
   }
   return next;
+}
+
+// ─── Agent PaaS Phase 3: Share / Collaborator / Review Report ───
+
+export interface AgentShareRow {
+  id: string;
+  agent_def_id: string;
+  share_token: string;
+  created_by: string;
+  created_at: string;
+  expires_at: string | null;
+  install_count: number;
+}
+
+export function createAgentShare(
+  agentDefId: string,
+  userId: string,
+  expiresAt: string | null,
+): AgentShareRow {
+  const id = crypto.randomUUID();
+  const token = crypto.randomUUID();
+  db.prepare(
+    `INSERT INTO agent_shares (id, agent_def_id, share_token, created_by, expires_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(id, agentDefId, token, userId, expiresAt);
+  return getAgentShare(id)!;
+}
+
+export function getAgentShare(id: string): AgentShareRow | null {
+  const row = db
+    .prepare('SELECT * FROM agent_shares WHERE id = ?')
+    .get(id) as AgentShareRow | undefined;
+  return row ?? null;
+}
+
+export function getAgentShareByToken(token: string): AgentShareRow | null {
+  const row = db
+    .prepare('SELECT * FROM agent_shares WHERE share_token = ?')
+    .get(token) as AgentShareRow | undefined;
+  return row ?? null;
+}
+
+export function listAgentShares(agentDefId: string): AgentShareRow[] {
+  return db
+    .prepare('SELECT * FROM agent_shares WHERE agent_def_id = ? ORDER BY created_at DESC')
+    .all(agentDefId) as AgentShareRow[];
+}
+
+export function deleteAgentShare(id: string): boolean {
+  const r = db.prepare('DELETE FROM agent_shares WHERE id = ?').run(id);
+  return r.changes > 0;
+}
+
+export function incrementShareInstall(token: string): void {
+  db.prepare('UPDATE agent_shares SET install_count = install_count + 1 WHERE share_token = ?').run(token);
+}
+
+export interface AgentCollaboratorRow {
+  agent_def_id: string;
+  user_id: string;
+  role: 'editor' | 'viewer';
+  added_by: string;
+  added_at: string;
+}
+
+export function addAgentCollaborator(
+  agentDefId: string,
+  userId: string,
+  role: 'editor' | 'viewer',
+  addedBy: string,
+): AgentCollaboratorRow {
+  db.prepare(
+    `INSERT INTO agent_collaborators (agent_def_id, user_id, role, added_by)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(agent_def_id, user_id) DO UPDATE SET role = excluded.role, added_by = excluded.added_by`,
+  ).run(agentDefId, userId, role, addedBy);
+  return {
+    agent_def_id: agentDefId,
+    user_id: userId,
+    role,
+    added_by: addedBy,
+    added_at: new Date().toISOString(),
+  };
+}
+
+export function removeAgentCollaborator(agentDefId: string, userId: string): boolean {
+  const r = db
+    .prepare('DELETE FROM agent_collaborators WHERE agent_def_id = ? AND user_id = ?')
+    .run(agentDefId, userId);
+  return r.changes > 0;
+}
+
+export function listAgentCollaborators(agentDefId: string): Array<AgentCollaboratorRow & { username: string | null }> {
+  return db
+    .prepare(
+      `SELECT c.*, u.username FROM agent_collaborators c
+       LEFT JOIN users u ON u.id = c.user_id
+       WHERE c.agent_def_id = ? ORDER BY c.added_at DESC`,
+    )
+    .all(agentDefId) as Array<AgentCollaboratorRow & { username: string | null }>;
+}
+
+export function getAgentCollaboratorRole(
+  agentDefId: string,
+  userId: string,
+): 'editor' | 'viewer' | null {
+  const row = db
+    .prepare('SELECT role FROM agent_collaborators WHERE agent_def_id = ? AND user_id = ?')
+    .get(agentDefId, userId) as { role: 'editor' | 'viewer' } | undefined;
+  return row?.role ?? null;
+}
+
+export interface ReviewReportRow {
+  id: string;
+  review_id: string;
+  reporter_id: string;
+  reason: string;
+  status: 'pending' | 'dismissed' | 'resolved';
+  created_at: string;
+  handled_by: string | null;
+  handled_at: string | null;
+}
+
+export function createReviewReport(
+  reviewId: string,
+  reporterId: string,
+  reason: string,
+): ReviewReportRow | null {
+  const id = crypto.randomUUID();
+  try {
+    db.prepare(
+      `INSERT INTO marketplace_review_reports (id, review_id, reporter_id, reason)
+       VALUES (?, ?, ?, ?)`,
+    ).run(id, reviewId, reporterId, reason);
+  } catch (err) {
+    logger.warn({ err, reviewId, reporterId }, 'createReviewReport failed (likely duplicate)');
+    return null;
+  }
+  const row = db
+    .prepare('SELECT * FROM marketplace_review_reports WHERE id = ?')
+    .get(id) as ReviewReportRow | undefined;
+  return row ?? null;
+}
+
+export function listPendingReviewReports(): Array<ReviewReportRow & {
+  rating: number;
+  comment: string | null;
+  item_id: string;
+  item_name: string;
+  reporter_username: string | null;
+}> {
+  return db
+    .prepare(
+      `SELECT r.*, rev.rating as rating, rev.comment as comment, rev.item_id as item_id, m.name as item_name, u.username as reporter_username
+       FROM marketplace_review_reports r
+       JOIN marketplace_reviews rev ON rev.id = r.review_id
+       LEFT JOIN marketplace_items m ON m.id = rev.item_id
+       LEFT JOIN users u ON u.id = r.reporter_id
+       WHERE r.status = 'pending'
+       ORDER BY r.created_at DESC`,
+    )
+    .all() as Array<ReviewReportRow & {
+    rating: number;
+    comment: string | null;
+    item_id: string;
+    item_name: string;
+    reporter_username: string | null;
+  }>;
+}
+
+export function resolveReviewReport(
+  reportId: string,
+  action: 'dismiss' | 'delete_review',
+  handlerId: string,
+): boolean {
+  const report = db
+    .prepare('SELECT review_id FROM marketplace_review_reports WHERE id = ? AND status = ?')
+    .get(reportId, 'pending') as { review_id: string } | undefined;
+  if (!report) return false;
+  if (action === 'delete_review') {
+    db.prepare('DELETE FROM marketplace_reviews WHERE id = ?').run(report.review_id);
+    // report 会通过 CASCADE 删除，但保险起见再 UPDATE 一次状态（如果没被 CASCADE 删除）
+    db.prepare(
+      `UPDATE marketplace_review_reports SET status = 'resolved', handled_by = ?, handled_at = datetime('now')
+       WHERE id = ?`,
+    ).run(handlerId, reportId);
+  } else {
+    db.prepare(
+      `UPDATE marketplace_review_reports SET status = 'dismissed', handled_by = ?, handled_at = datetime('now')
+       WHERE id = ?`,
+    ).run(handlerId, reportId);
+  }
+  return true;
+}
+
+export function deleteMarketplaceReview(reviewId: string): boolean {
+  const r = db.prepare('DELETE FROM marketplace_reviews WHERE id = ?').run(reviewId);
+  return r.changes > 0;
 }

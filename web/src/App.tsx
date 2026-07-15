@@ -13,6 +13,7 @@ import { AgentDefinitionsPage } from './pages/AgentDefinitionsPage';
 import { KnowledgeBasesPage } from './pages/KnowledgeBasesPage';
 import { AgentStudioPage } from './pages/AgentStudioPage';
 import { MarketplacePage } from './pages/MarketplacePage';
+import { SharePage } from './pages/SharePage';
 import { UsersPage } from './pages/UsersPage';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { AppLayout } from './components/layout/AppLayout';
@@ -37,6 +38,7 @@ export function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/setup" element={<SetupPage />} />
+        <Route path="/share/:token" element={<SharePage />} />
         <Route
           path="/setup/providers"
           element={
