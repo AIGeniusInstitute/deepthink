@@ -144,23 +144,37 @@ RUN pip install --index-url "${PIP_INDEX_URL}" "headroom-ai[code,mcp]~=0.27.0" \
     && headroom --version
 
 # Install feishu-cli (binary + builtin skills), 始终跟踪 latest release。
-# 通过 302 redirect 从 github.com/releases/latest 的 Location header 提取 tag
-# （和 install.sh 作者自己用的技巧一致），不经 api.github.com 规避 rate limit。
-# CACHEBUST 已在此前触发，每次构建都会重新解析 latest。
+#
+# 网络兜底: github.com 直连在国内裸网络下常 hang (curl 默认无超时会无限等待),
+# 且第三方 mirror (gh-proxy.com 等) 不透传 302 redirect (返回 200 HTML),
+# 原来的 `curl -sI .../releases/latest | grep location` 方式在 mirror 下无法解析版本。
+# 改为:
+#   1. GITHUB_MIRROR ARG: 默认 https://gh-proxy.com/, 代理前缀拼到 URL 前;
+#      海外/CI 直连设 `--build-arg GITHUB_MIRROR=` (空字符串)
+#   2. 版本解析走 api.github.com (通过 mirror 代理, 规避 rate limit), jq 提取 tag_name
+#   3. 所有 curl 加 --connect-timeout 30 --max-time 300, 避免无限 hang
+# CACHEBUST 已在此前触发, 每次构建都会重新解析 latest。
+ARG GITHUB_MIRROR=https://gh-proxy.com/
 ARG TARGETARCH
 RUN set -e && \
     ARCH="${TARGETARCH:-$(dpkg --print-architecture)}" && \
-    VERSION=$(curl -sI "https://github.com/riba2534/feishu-cli/releases/latest" \
-      | grep -i '^location:' | head -1 \
-      | sed 's|.*/tag/\([^[:space:]]*\).*|\1|' | tr -d '\r\n') && \
-    if [ -z "$VERSION" ]; then echo "ERROR: 无法从 github.com 302 redirect 解析 feishu-cli 最新版本"; exit 1; fi && \
-    echo "Installing feishu-cli $VERSION for $ARCH" && \
-    curl -fsSL "https://github.com/riba2534/feishu-cli/releases/download/${VERSION}/feishu-cli_${VERSION}_linux-${ARCH}.tar.gz" \
+    MIRROR="${GITHUB_MIRROR}" && \
+    gh_url() { echo "${MIRROR}${1}"; } && \
+    VERSION=$(curl -fsSL --connect-timeout 30 --max-time 60 \
+      "$(gh_url https://api.github.com/repos/riba2534/feishu-cli/releases/latest)" \
+      | jq -r .tag_name) && \
+    if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then \
+      echo "ERROR: 无法解析 feishu-cli 最新版本 (GITHUB_MIRROR=${MIRROR:-direct})"; exit 1; \
+    fi && \
+    echo "Installing feishu-cli $VERSION for $ARCH (mirror: ${MIRROR:-direct})" && \
+    curl -fsSL --connect-timeout 30 --max-time 300 \
+      "$(gh_url https://github.com/riba2534/feishu-cli/releases/download/${VERSION}/feishu-cli_${VERSION}_linux-${ARCH}.tar.gz)" \
       | tar -xz --strip-components=1 -C /usr/local/bin && \
     feishu-cli --version && \
     mkdir -p /opt/builtin-skills && \
     SKILLS_TMP=$(mktemp -d) && \
-    curl -fsSL "https://github.com/riba2534/feishu-cli/archive/refs/tags/${VERSION}.tar.gz" \
+    curl -fsSL --connect-timeout 30 --max-time 300 \
+      "$(gh_url https://github.com/riba2534/feishu-cli/archive/refs/tags/${VERSION}.tar.gz)" \
       | tar -xz -C "$SKILLS_TMP" && \
     cp -r "$SKILLS_TMP"/*/skills/. /opt/builtin-skills/ && \
     rm -rf "$SKILLS_TMP" && \

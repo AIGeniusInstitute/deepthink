@@ -18,14 +18,20 @@ echo "Image: ${IMAGE_NAME}:${TAG}"
 # GitHub fetch in the feishu-cli step. Host networking reuses the host's working
 # DNS resolver. Override with BUILD_NETWORK=default if your environment differs.
 #
-# NPM_REGISTRY / PIP_INDEX_URL: container build does NOT read host ~/.npmrc or
-# pip.conf, so a host-side mirror config has no effect inside `docker build`.
-# Defaults point to China mirrors (npmmirror / Tsinghua) to avoid npm/pip
-# timeouts on CN networks. Overseas/CI users override with:
-#   NPM_REGISTRY=https://registry.npmjs.org PIP_INDEX_URL=https://pypi.org/simple ./container/build.sh
+# NPM_REGISTRY / PIP_INDEX_URL / GITHUB_MIRROR: container build does NOT read host
+# ~/.npmrc / pip.conf / etc, so host-side mirror configs have no effect inside
+# `docker build`. Defaults point to China mirrors (npmmirror / Tsinghua / gh-proxy)
+# to avoid npm/pip/github timeouts on CN networks. Overseas/CI users override with:
+#   NPM_REGISTRY=https://registry.npmjs.org \
+#   PIP_INDEX_URL=https://pypi.org/simple \
+#   GITHUB_MIRROR= \
+#   ./container/build.sh
+# GITHUB_MIRROR uses `${var-default}` (no colon) so GITHUB_MIRROR= (empty) means
+# "direct connection" rather than "fall back to default mirror".
 BUILD_NETWORK="${BUILD_NETWORK:-host}"
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
 PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+GITHUB_MIRROR="${GITHUB_MIRROR-https://gh-proxy.com/}"
 
 build_with_args() {
   docker build \
@@ -33,6 +39,7 @@ build_with_args() {
     --build-arg CACHEBUST="$(date +%s)" \
     --build-arg NPM_REGISTRY="${NPM_REGISTRY}" \
     --build-arg PIP_INDEX_URL="${PIP_INDEX_URL}" \
+    --build-arg GITHUB_MIRROR="${GITHUB_MIRROR}" \
     -t "${IMAGE_NAME}:${TAG}" .
 }
 

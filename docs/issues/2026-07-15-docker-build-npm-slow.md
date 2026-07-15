@@ -1,11 +1,16 @@
-# `make dev` 重建 Docker 镜像时 `npm install` 卡死
+# `make dev` 重建 Docker 镜像时 `npm install` / feishu-cli 下载卡死
 
 - 日期：2026-07-15
 - 触发命令：`make dev`（内部调用 `./container/build.sh`）
 - 平台：macOS 25.2.0（arm64）+ Docker Desktop v5.0.2
 - 用户网络：中国大陆（`~/.npmrc` 已设 `registry=https://registry.npmmirror.com`）
+- 修复阶段：
+  - 阶段一（npm/pip）：commit afbb972
+  - 阶段二（github feishu-cli）：本日第二次提交
 
 ## 1. 用户现象
+
+### 阶段一：npm install 卡死
 
 执行 `make dev` 时，Makefile 检测到容器源码变更，触发 `./container/build.sh` 重建镜像。构建日志卡在 `[stage-0 8/18] RUN npm install` 长达 96.5s 仍未完成：
 
@@ -199,3 +204,205 @@ RUN <pkg-manager> config set registry "${${PKG}_MIRROR}"
 grep -nE "RUN (npm|pip|cargo|go) install" container/Dockerfile
 # 对应每个步骤，确认前文有 ARG + config set 或 --index-url / -registry= 参数
 ```
+
+---
+
+## 阶段二：feishu-cli 从 github.com 下载 hang 死
+
+### 2-1. 用户现象
+
+阶段一修完 npm/pip 后，`make dev` 能走过 `npm install`（35s）和 `pip install`（85s），但卡在 step 11 `RUN ... feishu-cli ...`。日志只输出 `Installing feishu-cli v1.35.0 for arm64` 后 90s+ 无任何新输出，`curl -fsSL https://github.com/.../feishu-cli_*.tar.gz` hang 住不退出，整个构建进程组被信号挂起（T 状态），Ctrl+C 后才能退出。
+
+后端 9898 端口始终未监听，`http://localhost:9898/` 报 `ERR_CONNECTION_REFUSED`。
+
+### 2-2. 问题描述
+
+feishu-cli 的安装步骤从 github.com 下载两类资源：
+
+1. **版本号解析**：`curl -sI https://github.com/riba2534/feishu-cli/releases/latest` 走 302 redirect，从 Location header 提取 tag 名（`v1.35.0`）
+2. **release tar.gz 下载**：`curl -fsSL https://github.com/riba2534/feishu-cli/releases/download/${VERSION}/...tar.gz`
+3. **源码 tar.gz 下载**：`curl -fsSL https://github.com/riba2534/feishu-cli/archive/refs/tags/${VERSION}.tar.gz`
+
+三个 curl 命令都**没有超时参数**（`--connect-timeout` / `--max-time`），在 github.com 连接被 GFW 阻断时不会失败退出，而是无限 hang。容器内 curl 也读不到宿主机任何代理配置。
+
+### 2-3. 根因
+
+**github.com release 下载在国内裸网络下 hang + curl 无超时**。
+
+阶段一修了 npm/pip 的同类问题，但 github.com 是另一类源——没有官方国内镜像，只能走第三方加速代理。且第三方代理（gh-proxy.com 等）对 `releases/latest` 的 302 redirect 不透传（直接代理返回 200 HTML 或 403），原代码的 `curl -sI | grep location` 方式在 mirror 下无法解析版本号。
+
+证据：
+
+```bash
+# 1. 直连 github releases/latest HEAD —— 10s 超时（hang）
+$ time curl -sI --connect-timeout 10 --max-time 15 https://github.com/riba2534/feishu-cli/releases/latest
+# (无输出, 10s 超时退出)
+
+# 2. ghproxy.com / mirror.ghproxy.com —— 10s 超时（服务已停）
+# 3. gh-proxy.com HEAD —— 2.2s 返回 200 HTML, 没有 Location header（不透传 302）
+
+# 4. gh-proxy.com 能代理 api.github.com, 返回完整 JSON:
+$ curl -sL https://gh-proxy.com/https://api.github.com/repos/riba2534/feishu-cli/releases/latest | jq -r .tag_name
+v1.35.0
+
+# 5. gh-proxy.com 下载 release tar.gz (12.67MB, 4.8s ≈ 2.6 MB/s):
+$ curl -sL -o /tmp/feishu-cli-test.tar.gz https://gh-proxy.com/https://github.com/riba2534/feishu-cli/releases/download/v1.35.0/feishu-cli_v1.35.0_linux-arm64.tar.gz
+$ ls -la /tmp/feishu-cli-test.tar.gz
+-rw-r--r--  12673189  /tmp/feishu-cli-test.tar.gz
+$ file /tmp/feishu-cli-test.tar.gz
+gzip compressed data, from Unix
+```
+
+外部依据：
+- gh-proxy.com 是基于 Cloudflare Workers 的 github 加速代理，对 `github.com/<user>/<repo>/releases/download/...`、`api.github.com/...`、`raw.githubusercontent.com/...` 等均能代理。
+- 原代码用 302 redirect 方式（CLAUDE.md 注释："和 install.sh 作者自己用的技巧一致，不经 api.github.com 规避 rate limit"），在直连 github 时有效；但 mirror 不透传 redirect，必须改用 api.github.com + jq。
+
+### 2-4. 复现路径
+
+```bash
+# 清空构建缓存, 强制 feishu-cli 步骤重跑
+docker builder prune -f
+
+# 直连 github (默认 GITHUB_MIRROR 空) → hang
+GITHUB_MIRROR= ./container/build.sh
+# 日志卡在: Installing feishu-cli v1.35.0 for arm64  ← 无进展
+
+# 修复后走 mirror → 16s 完成
+./container/build.sh
+# 或显式: GITHUB_MIRROR=https://gh-proxy.com/ ./container/build.sh
+```
+
+### 2-5. 诊断方法
+
+```bash
+# (1) 看构建日志里 feishu-cli 步骤的 MIRROR 值
+docker history deepthink-agent:latest --format '{{.CreatedBy}}' | grep -oE "MIRROR=[^ ]+"
+
+# (2) 验证 mirror 能否解析版本号 (应输出 v1.35.0)
+curl -sL --max-time 15 https://gh-proxy.com/https://api.github.com/repos/riba2534/feishu-cli/releases/latest | jq -r .tag_name
+
+# (3) 验证 mirror 能否下载 release tar.gz (应 200 + gzip 数据)
+curl -sLI --max-time 15 https://gh-proxy.com/https://github.com/riba2534/feishu-cli/releases/download/v1.35.0/feishu-cli_v1.35.0_linux-arm64.tar.gz | head -1
+
+# (4) 测当前网络到 github.com 的延迟 (判断是否需要 mirror)
+time curl -sI --connect-timeout 10 https://github.com/riba2534/feishu-cli/releases/latest -o /dev/null
+```
+
+### 2-6. 修复方案
+
+**container/Dockerfile**（关键 diff）：
+
+```diff
+ ARG TARGETARCH
++# GITHUB_MIRROR default to gh-proxy.com: github.com release 下载在国内裸网络下 hang,
++# 第三方 mirror 不透传 302 redirect (返回 200 HTML), 原来的 `curl -sI | grep location`
++# 在 mirror 下无法解析版本. 改走 api.github.com (通过 mirror 代理, 规避 rate limit) +
++# jq 解析 tag_name. 所有 curl 加超时, 避免无限 hang.
++# 海外/CI 直连: --build-arg GITHUB_MIRROR= (空字符串)
++ARG GITHUB_MIRROR=https://gh-proxy.com/
+ RUN set -e && \
+     ARCH="${TARGETARCH:-$(dpkg --print-architecture)}" && \
+-    VERSION=$(curl -sI "https://github.com/riba2534/feishu-cli/releases/latest" \
+-      | grep -i '^location:' | head -1 \
+-      | sed 's|.*/tag/\([^[:space:]]*\).*|\1|' | tr -d '\r\n') && \
++    MIRROR="${GITHUB_MIRROR}" && \
++    gh_url() { echo "${MIRROR}${1}"; } && \
++    VERSION=$(curl -fsSL --connect-timeout 30 --max-time 60 \
++      "$(gh_url https://api.github.com/repos/riba2534/feishu-cli/releases/latest)" \
++      | jq -r .tag_name) && \
+     ...
+-    curl -fsSL "https://github.com/riba2534/feishu-cli/releases/download/${VERSION}/..." \
++    curl -fsSL --connect-timeout 30 --max-time 300 \
++      "$(gh_url https://github.com/riba2534/feishu-cli/releases/download/${VERSION}/...)" \
+       | tar -xz --strip-components=1 -C /usr/local/bin && \
+```
+
+**container/build.sh**（关键 diff）：
+
+```diff
+-GITHUB_MIRROR="${GITHUB_MIRROR:-https://gh-proxy.com/}"
++# 用 ${var-default} (不带冒号), 允许 GITHUB_MIRROR= (空) 表示直连
++GITHUB_MIRROR="${GITHUB_MIRROR-https://gh-proxy.com/}"
+
+ build_with_args() {
+   docker build \
+     ...
+     --build-arg GITHUB_MIRROR="${GITHUB_MIRROR}" \
+     -t "${IMAGE_NAME}:${TAG}" .
+ }
+```
+
+**选型理由**：
+
+- `GITHUB_MIRROR` 默认指向 `gh-proxy.com`：国内用户开箱即用。gh-proxy 基于 Cloudflare Workers，全球节点，海外用户走它也不会显著变慢。
+- `${var-default}` 不带冒号：让 `GITHUB_MIRROR=` (空字符串) 表示"直连"，而不是"用默认值"。区分"用户未设"和"用户明确要直连"。
+- 版本解析从 302 redirect 改成 api.github.com + jq：mirror 不透传 302，但能代理 api.github.com 返回 JSON。通过 mirror 代理 api 调用，rate limit 走 mirror IP，规避了 CLAUDE.md 说的"不经 api.github.com 规避 rate limit"顾虑。
+- 所有 curl 加 `--connect-timeout 30 --max-time 300`：即使 mirror 也挂了，5 分钟内必然失败退出，不会无限 hang 卡死整个 `make dev`。
+- 不动 oh-my-zsh 下载（line 180）：已有 `timeout -k 5 90` + `|| echo` 兜底，best-effort 失败不影响构建。
+
+### 2-7. 处理卡住的状态
+
+如果 `make dev` 当前卡在 feishu-cli 下载：
+
+```bash
+# 1. Ctrl+C 中断 build.sh
+# 2. 清掉所有挂起的 build 进程 (T 状态的僵尸)
+pkill -9 -f "buildx build" ; pkill -9 -f "docker build" ; pkill -9 -f "container/build.sh"
+
+# 3. 确认端口空闲 (旧 make dev 的孤儿前端可能占 5173)
+lsof -ti:5173 -sTCP:LISTEN | xargs -r kill -9
+lsof -ti:9898 -sTCP:LISTEN | xargs -r kill -9
+
+# 4. 重新构建 (修复后会走 gh-proxy, 16s 完成该步骤)
+./container/build.sh
+
+# 5. 再 make dev
+make dev
+```
+
+如果手头急需用后端而构建卡着，可临时绕过 Docker 重建，直接用 tsx 跑后端（不依赖容器）：
+
+```bash
+make dev-backend   # 后端 9898
+make dev-web       # 前端 5173 (另开终端)
+```
+
+### 2-8. 经验沉淀 / 预防
+
+**核心经验**：Docker 构建里凡是 `RUN curl` 下载外部资源，**必须带 `--connect-timeout` + `--max-time`**，否则一次网络抖动就会让整个构建无限 hang。这是比"镜像源配置"更底层的兜底——镜像源解决"慢"，超时解决"卡死"。
+
+**github 加速的几种方式对比**：
+
+| 方式 | 版本解析 | release 下载 | 可用性 |
+|------|---------|-------------|--------|
+| 直连 github | 302 redirect 可解析 | 可下载(慢) | 国内 hang |
+| gh-proxy.com | ❌ 不透传 302 (返回 200 HTML) | ✓ 2.6 MB/s | Cloudflare, 稳定 |
+| gh-proxy + api.github.com | ✓ JSON + jq | ✓ | 推荐 |
+| ghproxy.com / mirror.ghproxy.com | - | - | 服务已停 |
+
+**通用模式**：
+
+```dockerfile
+ARG GITHUB_MIRROR=https://gh-proxy.com/
+RUN MIRROR="${GITHUB_MIRROR}" && \
+    gh_url() { echo "${MIRROR}${1}"; } && \
+    curl -fsSL --connect-timeout 30 --max-time 300 "$(gh_url https://github.com/...)" ...
+```
+
+**预防清单**：
+
+- 新增 `RUN curl` 下载 github.com / raw.githubusercontent.com / api.github.com 资源时：
+  1. 用 `$(gh_url ...)` 走 mirror
+  2. 加 `--connect-timeout 30 --max-time 300`
+  3. 版本号用 `api.github.com + jq` 而非 302 redirect
+- `docker build --check` 校验 Dockerfile 语法
+- `docker history <image>` 验证 ARG 生效 + 每步耗时
+
+**巡检命令**：
+
+```bash
+# 检查所有 RUN curl 是否带了 --max-time (防止再出现无超时的 hang)
+grep -nE "RUN.*curl" container/Dockerfile | grep -vE "max-time|connect-timeout"
+# 期望无输出; 有输出说明该 curl 缺超时, 需补上
+```
+
