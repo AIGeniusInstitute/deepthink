@@ -31,6 +31,11 @@ import {
   removeAgentCollaborator,
   listAgentCollaborators,
   getAgentCollaboratorRole,
+  getRegisteredGroup,
+  setRegisteredGroup,
+  ensureChatExists,
+  updateChatName,
+  addGroupMember,
   type AgentDefinitionRow,
   type AgentMountRow,
   type KnowledgeBaseRow,
@@ -41,8 +46,10 @@ import {
   AgentDefinitionPatchSchema,
   AgentMountCreateSchema,
 } from '../schemas.js';
-import type { AgentDefinition, AgentMount, ResourceType } from '../types.js';
+import type { AgentDefinition, AgentMount, ResourceType, RegisteredGroup } from '../types.js';
 import { logger } from '../logger.js';
+import { getWebDeps } from '../web-context.js';
+import { GROUPS_DIR } from '../config.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -502,6 +509,69 @@ paasAgentsRoute.get('/:id/versions/:vid/diff', (c) => {
     promptDiff,
     promptSame: snapshot.system_prompt === current.system_prompt,
   });
+});
+
+// POST /api/paas/agents/:id/test-chat
+// 为该 Agent 创建/复用确定性测试 group（jid=web:agent-test-{agentId}），
+// 绑定 agent_def_id，返回 { jid, folder, name }，前端跳转 /chat/{folder} 即可对话。
+paasAgentsRoute.post('/:id/test-chat', (c) => {
+  const user = c.get('user');
+  const agentId = c.req.param('id');
+  const def = getAgentDefinition(agentId, user.id);
+  if (!def) {
+    return c.json({ error: 'Agent not found' }, 404);
+  }
+  if (!def.enabled) {
+    return c.json({ error: 'Agent is disabled, enable it first' }, 400);
+  }
+
+  const jid = `web:agent-test-${agentId}`;
+  const folder = `agent-test-${agentId}`;
+  const name = `测试: ${def.name}`;
+  const now = new Date().toISOString();
+
+  const existing = getRegisteredGroup(jid);
+  if (existing) {
+    if (existing.agentDefId !== agentId || existing.name !== name) {
+      const updated: RegisteredGroup = {
+        ...existing,
+        name,
+        agentDefId: agentId,
+      };
+      setRegisteredGroup(jid, updated);
+      updateChatName(jid, name);
+      const deps = getWebDeps();
+      if (deps) deps.getRegisteredGroups()[jid] = updated;
+    }
+    return c.json({ jid, folder: existing.folder, name });
+  }
+
+  const isAdmin = user.role === 'admin';
+  const group: RegisteredGroup = {
+    name,
+    folder,
+    added_at: now,
+    executionMode: isAdmin ? 'host' : 'container',
+    created_by: user.id,
+    agentDefId: agentId,
+  };
+  setRegisteredGroup(jid, group);
+  ensureChatExists(jid);
+  updateChatName(jid, name);
+  addGroupMember(folder, user.id, 'owner', user.id);
+
+  try {
+    fs.mkdirSync(path.join(GROUPS_DIR, folder), { recursive: true });
+  } catch (err) {
+    logger.error({ folder, err }, 'Failed to create test-chat workspace dir');
+  }
+
+  const deps = getWebDeps();
+  if (deps) deps.getRegisteredGroups()[jid] = group;
+
+  logger.info({ agentId, jid, folder, userId: user.id }, 'Agent test-chat group created');
+
+  return c.json({ jid, folder, name });
 });
 
 export default paasAgentsRoute;
