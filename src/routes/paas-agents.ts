@@ -24,10 +24,17 @@ import {
   listAgentVersions,
   getAgentVersionSnapshot,
   restoreAgentVersion,
-  listAgentMounts as _listAgentMountsForSnapshot,
+  createAgentShare,
+  listAgentShares,
+  deleteAgentShare,
+  addAgentCollaborator,
+  removeAgentCollaborator,
+  listAgentCollaborators,
+  getAgentCollaboratorRole,
   type AgentDefinitionRow,
   type AgentMountRow,
   type KnowledgeBaseRow,
+  type AgentShareRow,
 } from '../db.js';
 import {
   AgentDefinitionCreateSchema,
@@ -317,5 +324,184 @@ async function loadUserSkillsMeta(
     return [];
   }
 }
+
+// Phase 3: Agent 分享
+paasAgentsRoute.post('/:id/share', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const agent = getAgentDefinition(id, user.id);
+  if (!agent) {
+    return c.json({ error: 'Agent definition not found' }, 404);
+  }
+  await c.req.json().catch(() => ({}));
+  const share = createAgentShare(id, user.id, null);
+  const shareUrl = `/share/${share.share_token}`;
+  return c.json({ shareId: share.id, shareToken: share.share_token, shareUrl }, 201);
+});
+
+paasAgentsRoute.get('/:id/shares', (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const agent = getAgentDefinition(id, user.id);
+  if (!agent) {
+    return c.json({ error: 'Agent definition not found' }, 404);
+  }
+  const shares = listAgentShares(id);
+  return c.json({
+    shares: shares.map((s: AgentShareRow) => ({
+      id: s.id,
+      shareToken: s.share_token,
+      shareUrl: `/share/${s.share_token}`,
+      createdAt: s.created_at,
+      expiresAt: s.expires_at,
+      installCount: s.install_count,
+    })),
+  });
+});
+
+paasAgentsRoute.delete('/:id/shares/:shareId', (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const shareId = c.req.param('shareId');
+  const agent = getAgentDefinition(id, user.id);
+  if (!agent) {
+    return c.json({ error: 'Agent definition not found' }, 404);
+  }
+  const ok = deleteAgentShare(shareId);
+  if (!ok) {
+    return c.json({ error: 'Share not found' }, 404);
+  }
+  return c.json({ success: true });
+});
+
+// Phase 3: Agent 协作者
+paasAgentsRoute.get('/:id/collaborators', (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const agent = getAgentDefinition(id, user.id);
+  if (!agent) {
+    // 也允许 collaborator 查看
+    const role = getAgentCollaboratorRole(id, user.id);
+    if (!role) {
+      return c.json({ error: 'Agent definition not found' }, 404);
+    }
+  }
+  const collabs = listAgentCollaborators(id);
+  return c.json({
+    collaborators: collabs.map((r) => ({
+      userId: r.user_id,
+      username: r.username ?? r.user_id.slice(0, 8),
+      role: r.role,
+      addedBy: r.added_by,
+      addedAt: r.added_at,
+    })),
+  });
+});
+
+paasAgentsRoute.post('/:id/collaborators', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const agent = getAgentDefinition(id, user.id);
+  if (!agent) {
+    return c.json({ error: 'Only owner can add collaborators' }, 403);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
+  const role = body.role === 'editor' || body.role === 'viewer' ? body.role : 'viewer';
+  if (!userId) {
+    return c.json({ error: 'userId required' }, 400);
+  }
+  if (userId === user.id) {
+    return c.json({ error: 'Owner is implicit, no need to add as collaborator' }, 400);
+  }
+  const row = addAgentCollaborator(id, userId, role, user.id);
+  return c.json({
+    collaborator: {
+      userId: row.user_id,
+      role: row.role,
+      addedBy: row.added_by,
+      addedAt: row.added_at,
+    },
+  }, 201);
+});
+
+paasAgentsRoute.delete('/:id/collaborators/:userId', (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const targetUserId = c.req.param('userId');
+  const agent = getAgentDefinition(id, user.id);
+  if (!agent) {
+    return c.json({ error: 'Only owner can remove collaborators' }, 403);
+  }
+  const ok = removeAgentCollaborator(id, targetUserId);
+  if (!ok) {
+    return c.json({ error: 'Collaborator not found' }, 404);
+  }
+  return c.json({ success: true });
+});
+
+// Phase 3: 版本 diff
+paasAgentsRoute.get('/:id/versions/:vid/diff', (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const vid = c.req.param('vid');
+  const agent = getAgentDefinition(id, user.id);
+  if (!agent) {
+    const role = getAgentCollaboratorRole(id, user.id);
+    if (!role) {
+      return c.json({ error: 'Agent definition not found' }, 404);
+    }
+  }
+  const snapshot = getAgentVersionSnapshot(vid);
+  if (!snapshot) {
+    return c.json({ error: 'Version not found' }, 404);
+  }
+  const current = getAgentDefinition(id, user.id);
+  if (!current) {
+    return c.json({ error: 'Current agent state not available' }, 404);
+  }
+  const currentMounts = listAgentMounts(id).map((m) => `${m.resource_type}:${m.resource_id}`).sort();
+  const targetMounts = (snapshot.mounts ?? []).map((m) => `${m.resource_type}:${m.resource_id}`).sort();
+  const fields: Array<{ name: string; before: string; after: string; same: boolean }> = [
+    { name: 'name', before: snapshot.name, after: current.name, same: snapshot.name === current.name },
+    { name: 'description', before: snapshot.description ?? '', after: current.description ?? '', same: snapshot.description === current.description },
+    { name: 'model', before: snapshot.model ?? '', after: current.model ?? '', same: snapshot.model === current.model },
+    { name: 'engine', before: snapshot.engine, after: current.engine, same: snapshot.engine === current.engine },
+    { name: 'max_turns', before: String(snapshot.max_turns ?? ''), after: String(current.max_turns ?? ''), same: snapshot.max_turns === current.max_turns },
+    { name: 'temperature', before: String(snapshot.temperature ?? ''), after: String(current.temperature ?? ''), same: snapshot.temperature === current.temperature },
+    { name: 'enabled', before: String(snapshot.enabled), after: String(!!current.enabled), same: snapshot.enabled === !!current.enabled },
+    {
+      name: 'mounts',
+      before: targetMounts.join('\n'),
+      after: currentMounts.join('\n'),
+      same: JSON.stringify(targetMounts) === JSON.stringify(currentMounts),
+    },
+  ];
+  // systemPrompt 按行 diff
+  const beforeLines = (snapshot.system_prompt ?? '').split('\n');
+  const afterLines = (current.system_prompt ?? '').split('\n');
+  const promptDiff: Array<{ op: '+' | '-' | '='; line: string }> = [];
+  const maxLen = Math.max(beforeLines.length, afterLines.length);
+  for (let i = 0; i < maxLen; i++) {
+    const b = beforeLines[i];
+    const a = afterLines[i];
+    if (b === undefined) {
+      promptDiff.push({ op: '+', line: a ?? '' });
+    } else if (a === undefined) {
+      promptDiff.push({ op: '-', line: b });
+    } else if (b === a) {
+      promptDiff.push({ op: '=', line: a });
+    } else {
+      promptDiff.push({ op: '-', line: b });
+      promptDiff.push({ op: '+', line: a });
+    }
+  }
+  return c.json({
+    versionId: vid,
+    fields,
+    promptDiff,
+    promptSame: snapshot.system_prompt === current.system_prompt,
+  });
+});
 
 export default paasAgentsRoute;

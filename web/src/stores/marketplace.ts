@@ -52,6 +52,7 @@ interface MarketplaceState {
   approve: (id: string) => Promise<boolean>;
   reject: (id: string) => Promise<boolean>;
   submitReview: (itemId: string, rating: number, comment: string) => Promise<boolean>;
+  reportReview: (reviewId: string, reason: string) => Promise<boolean>;
 }
 
 export const useMarketplaceStore = create<MarketplaceState>((set, get) => ({
@@ -126,6 +127,14 @@ export const useMarketplaceStore = create<MarketplaceState>((set, get) => ({
     try {
       await api.post(`/api/paas/marketplace/${itemId}/reviews`, { rating, comment });
       await get().loadReviews(itemId);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  reportReview: async (reviewId, reason) => {
+    try {
+      await api.post(`/api/paas/marketplace/reviews/${reviewId}/report`, { reason });
       return true;
     } catch {
       return false;

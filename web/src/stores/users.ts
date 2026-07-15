@@ -64,11 +64,28 @@ export interface AgentQuota {
   used: number;
 }
 
+export interface ReviewReport {
+  id: string;
+  review_id: string;
+  reporter_id: string;
+  reporter_username: string;
+  reason: string;
+  status: 'pending' | 'dismissed' | 'resolved';
+  created_at: string;
+  review: {
+    rating: number;
+    comment: string | null;
+    item_id: string;
+    item_name: string;
+  };
+}
+
 interface UsersState {
   users: UserPublic[];
   invites: InviteCode[];
   auditLogs: AuditLogEntry[];
   quotas: AgentQuota[];
+  reviewReports: ReviewReport[];
   totalUsers: number;
   page: number;
   pageSize: number;
@@ -114,6 +131,8 @@ interface UsersState {
   fetchAuditLogs: (query?: AuditQuery) => Promise<void>;
   fetchQuotas: () => Promise<void>;
   updateQuota: (userId: string, quota: number) => Promise<boolean>;
+  fetchReviewReports: () => Promise<void>;
+  resolveReviewReport: (id: string, action: 'dismiss' | 'delete_review') => Promise<boolean>;
 }
 
 function asMessage(err: unknown, fallback: string): string {
@@ -140,6 +159,7 @@ export const useUsersStore = create<UsersState>((set) => ({
   invites: [],
   auditLogs: [],
   quotas: [],
+  reviewReports: [],
   totalUsers: 0,
   page: 1,
   pageSize: 50,
@@ -263,6 +283,26 @@ export const useUsersStore = create<UsersState>((set) => ({
     try {
       await api.put(`/api/paas/admin/quotas/${userId}`, { quota });
       await useUsersStore.getState().fetchQuotas();
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  fetchReviewReports: async () => {
+    set({ loading: true, error: null });
+    try {
+      const data = await api.get<{ reports: ReviewReport[] }>('/api/paas/admin/review-reports');
+      set({ reviewReports: data.reports ?? [], loading: false });
+    } catch (err) {
+      set({ error: asMessage(err, 'Failed to fetch review reports'), loading: false });
+    }
+  },
+
+  resolveReviewReport: async (id, action) => {
+    try {
+      await api.post(`/api/paas/admin/review-reports/${id}/resolve`, { action });
+      await useUsersStore.getState().fetchReviewReports();
       return true;
     } catch {
       return false;

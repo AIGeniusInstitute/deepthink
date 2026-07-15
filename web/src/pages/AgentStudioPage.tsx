@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useAgentsPaasStore, type AgentDefinition, type ResourceType, type AvailableResource, type AgentVersion } from '../stores/agents-paas';
+import { useAgentsPaasStore, type AgentDefinition, type ResourceType, type AvailableResource, type AgentVersion, type AgentShare, type AgentCollaborator, type AgentVersionDiff } from '../stores/agents-paas';
 import { useGroupsStore } from '../stores/groups';
 import { api } from '../api/client';
 import { PageHeader } from '@/components/common/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Bot, Plus, Trash2, Link as LinkIcon, Folder, History, RotateCcw } from 'lucide-react';
+import { Bot, Plus, Trash2, Link as LinkIcon, Folder, History, RotateCcw, Share2, Users, GitCompare } from 'lucide-react';
 
 const RESOURCE_LABEL: Record<ResourceType, string> = {
   mcp_server: 'MCP Server',
@@ -14,8 +14,19 @@ const RESOURCE_LABEL: Record<ResourceType, string> = {
   knowledge_base: 'Knowledge Base',
 };
 
+const DIFF_FIELD_LABEL: Record<string, string> = {
+  name: '名称',
+  description: '描述',
+  model: '模型',
+  engine: '引擎',
+  max_turns: 'max_turns',
+  temperature: 'temperature',
+  enabled: '启用',
+  mounts: '挂载',
+};
+
 export function AgentStudioPage() {
-  const { list, quota, used, loading, load, loadAvailable, available, create, remove, addMount, removeMount, update, listVersions, restoreVersion, versions } = useAgentsPaasStore();
+  const { list, quota, used, loading, load, loadAvailable, available, create, remove, addMount, removeMount, update, listVersions, restoreVersion, versions, createShare, listShares, deleteShare, shares, listCollaborators, addCollaborator, removeCollaborator, collaborators, diffVersion } = useAgentsPaasStore();
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
@@ -23,6 +34,7 @@ export function AgentStudioPage() {
   const [engine, setEngine] = useState<'claude' | 'atomcode'>('claude');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showVersions, setShowVersions] = useState(false);
+  const [diffVersionId, setDiffVersionId] = useState<string | null>(null);
 
   useEffect(() => { load(); loadAvailable(); }, [load, loadAvailable]);
   const groups = useGroupsStore((s) => s.groups);
@@ -205,6 +217,38 @@ export function AgentStudioPage() {
                   }}
                 />
 
+                <ShareSection
+                  agentId={selected.id}
+                  shares={shares[selected.id] ?? []}
+                  onLoad={() => { void listShares(selected.id); }}
+                  onCreate={async () => {
+                    const s = await createShare(selected.id);
+                    if (s) { toast.success('分享链接已创建'); await listShares(selected.id); }
+                    else toast.error('创建失败');
+                  }}
+                  onRevoke={async (sid) => {
+                    const ok = await deleteShare(selected.id, sid);
+                    if (ok) { toast.success('已撤销'); await listShares(selected.id); }
+                    else toast.error('撤销失败');
+                  }}
+                />
+
+                <CollaboratorsSection
+                  agentId={selected.id}
+                  list={collaborators[selected.id] ?? []}
+                  onLoad={() => { void listCollaborators(selected.id); }}
+                  onAdd={async (userId, role) => {
+                    const ok = await addCollaborator(selected.id, userId, role);
+                    if (ok) { toast.success('已添加协作者'); await listCollaborators(selected.id); }
+                    else toast.error('添加失败');
+                  }}
+                  onRemove={async (userId) => {
+                    const ok = await removeCollaborator(selected.id, userId);
+                    if (ok) { toast.success('已移除'); await listCollaborators(selected.id); }
+                    else toast.error('移除失败');
+                  }}
+                />
+
                 <VersionHistorySection
                   agent={selected}
                   versions={versions[selected.id] ?? []}
@@ -214,6 +258,7 @@ export function AgentStudioPage() {
                     if (ok) toast.success('已回滚到该版本');
                     else toast.error('回滚失败');
                   }}
+                  onDiff={(vid) => setDiffVersionId(vid)}
                   showAll={showVersions}
                   onToggleShow={() => setShowVersions((v) => !v)}
                 />
@@ -266,6 +311,15 @@ export function AgentStudioPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {selected && diffVersionId && (
+        <VersionDiffDialog
+          agentId={selected.id}
+          versionId={diffVersionId}
+          onClose={() => setDiffVersionId(null)}
+          fetch={diffVersion}
+        />
       )}
     </div>
   );
@@ -423,6 +477,7 @@ function VersionHistorySection({
   versions,
   onLoad,
   onRestore,
+  onDiff,
   showAll,
   onToggleShow,
 }: {
@@ -430,6 +485,7 @@ function VersionHistorySection({
   versions: AgentVersion[];
   onLoad: () => void | Promise<void>;
   onRestore: (vid: string) => void | Promise<void>;
+  onDiff: (vid: string) => void;
   showAll: boolean;
   onToggleShow: () => void;
 }) {
@@ -465,21 +521,296 @@ function VersionHistorySection({
                   {new Date(v.created_at).toLocaleString('zh-CN')} · {v.created_by.slice(0, 8)}
                 </span>
               </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  if (confirm(`回滚到 v${v.version}？当前状态会自动保存为新版本作为 undo。`)) {
-                    onRestore(v.id);
-                  }
-                }}
-              >
-                <RotateCcw className="size-4 mr-1" /> 回滚
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onDiff(v.id)}
+                  title="查看与当前版本的差异"
+                >
+                  <GitCompare className="size-4 mr-1" /> Diff
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (confirm(`回滚到 v${v.version}？当前状态会自动保存为新版本作为 undo。`)) {
+                      onRestore(v.id);
+                    }
+                  }}
+                >
+                  <RotateCcw className="size-4 mr-1" /> 回滚
+                </Button>
+              </div>
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function ShareSection({
+  agentId,
+  shares,
+  onLoad,
+  onCreate,
+  onRevoke,
+}: {
+  agentId: string;
+  shares: AgentShare[];
+  onLoad: () => void | Promise<void>;
+  onCreate: () => void | Promise<void>;
+  onRevoke: (sid: string) => void | Promise<void>;
+}) {
+  useEffect(() => { onLoad(); }, [agentId, onLoad]);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium flex items-center gap-2">
+          <Share2 className="size-4" /> 分享链接（{shares.length}）
+        </div>
+        <Button size="sm" variant="outline" onClick={() => void onCreate()}>
+          <Plus className="size-3 mr-1" /> 生成分享链接
+        </Button>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        生成公开链接，任何人通过链接可以查看 Agent 信息（含 200 字 prompt 预览）并安装到自己的账户。
+      </div>
+
+      {shares.length === 0 ? (
+        <div className="text-sm text-muted-foreground">尚未生成分享链接。</div>
+      ) : (
+        <div className="space-y-1">
+          {shares.map((s) => {
+            const url = `${window.location.origin}${s.shareUrl}`;
+            return (
+              <div key={s.id} className="flex items-center justify-between py-1.5 border-b last:border-0 text-sm gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs truncate">{s.shareToken}</span>
+                    <button
+                      className="text-xs text-teal-600 hover:underline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(url).then(() => toast.success('链接已复制'));
+                      }}
+                    >
+                      复制链接
+                    </button>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    安装 {s.installCount} 次 · {new Date(s.createdAt).toLocaleString('zh-CN')}
+                    {s.expiresAt ? ` · 过期 ${new Date(s.expiresAt).toLocaleString('zh-CN')}` : ' · 永不过期'}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (confirm('撤销该分享链接？已安装的副本不受影响。')) void onRevoke(s.id);
+                  }}
+                >
+                  <Trash2 className="size-4 text-red-500" />
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CollaboratorsSection({
+  agentId,
+  list,
+  onLoad,
+  onAdd,
+  onRemove,
+}: {
+  agentId: string;
+  list: AgentCollaborator[];
+  onLoad: () => void | Promise<void>;
+  onAdd: (userId: string, role: 'editor' | 'viewer') => void | Promise<void>;
+  onRemove: (userId: string) => void | Promise<void>;
+}) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [userId, setUserId] = useState('');
+  const [role, setRole] = useState<'editor' | 'viewer'>('viewer');
+
+  useEffect(() => { onLoad(); }, [agentId, onLoad]);
+
+  const handleAdd = async () => {
+    if (!userId.trim()) { toast.error('请填写用户 ID'); return; }
+    await onAdd(userId.trim(), role);
+    setUserId('');
+    setRole('viewer');
+    setShowAdd(false);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium flex items-center gap-2">
+          <Users className="size-4" /> 协作者（{list.length}）
+        </div>
+        <Button size="sm" variant="outline" onClick={() => setShowAdd((v) => !v)}>
+          <Plus className="size-3 mr-1" /> 添加协作者
+        </Button>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        协作者可以查看该 Agent。editor 可修改，viewer 只读。Owner 隐式拥有全部权限。
+      </div>
+
+      {list.length === 0 && !showAdd && (
+        <div className="text-sm text-muted-foreground">尚未添加协作者。</div>
+      )}
+
+      {list.map((c) => (
+        <div key={c.userId} className="flex items-center justify-between py-1.5 border-b last:border-0 text-sm">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted">{c.username}</span>
+            <span className={`text-xs px-1.5 py-0.5 rounded ${c.role === 'editor' ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-600'}`}>
+              {c.role}
+            </span>
+            <span className="text-xs text-muted-foreground truncate">
+              由 {c.addedBy.slice(0, 8)} 添加 · {new Date(c.addedAt).toLocaleString('zh-CN')}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              if (confirm(`移除协作者 ${c.username}？`)) void onRemove(c.userId);
+            }}
+          >
+            <Trash2 className="size-4 text-red-500" />
+          </Button>
+        </div>
+      ))}
+
+      {showAdd && (
+        <div className="border rounded-md p-2 bg-muted/30 space-y-2">
+          <input
+            className="w-full px-3 py-1.5 border rounded-md bg-background text-sm"
+            placeholder="用户 ID（UUID）"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+          />
+          <select
+            className="w-full px-3 py-1.5 border rounded-md bg-background text-sm"
+            value={role}
+            onChange={(e) => setRole(e.target.value as 'editor' | 'viewer')}
+          >
+            <option value="viewer">viewer（只读）</option>
+            <option value="editor">editor（可修改）</option>
+          </select>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setShowAdd(false)}>取消</Button>
+            <Button size="sm" onClick={() => void handleAdd()}>添加</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VersionDiffDialog({
+  agentId,
+  versionId,
+  onClose,
+  fetch,
+}: {
+  agentId: string;
+  versionId: string;
+  onClose: () => void;
+  fetch: (agentId: string, versionId: string) => Promise<AgentVersionDiff | null>;
+}) {
+  const [diff, setDiff] = useState<AgentVersionDiff | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(agentId, versionId).then((d) => {
+      if (!cancelled) { setDiff(d); setLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [agentId, versionId, fetch]);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <Card className="w-full max-w-2xl max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <CardContent className="p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold flex items-center gap-2">
+              <GitCompare className="size-4" /> 版本差异对比
+            </div>
+            <Button variant="outline" size="sm" onClick={onClose}>关闭</Button>
+          </div>
+
+          {loading ? (
+            <div className="text-sm text-muted-foreground py-4 text-center">加载中…</div>
+          ) : !diff ? (
+            <div className="text-sm text-red-600 py-4 text-center">加载差异失败</div>
+          ) : (
+            <>
+              <div className="text-xs text-muted-foreground">
+                左侧为该历史版本（旧），右侧为当前版本（新）。绿色 = 新增，红色 = 删除。
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">字段对比</div>
+                <div className="rounded-md border border-border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 text-xs text-muted-foreground">
+                      <tr>
+                        <th className="text-left px-2 py-1">字段</th>
+                        <th className="text-left px-2 py-1">旧</th>
+                        <th className="text-left px-2 py-1">新</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {diff.fields.map((f) => (
+                        <tr key={f.name} className={f.same ? '' : 'bg-amber-50/30'}>
+                          <td className="px-2 py-1 font-medium">{DIFF_FIELD_LABEL[f.name] ?? f.name}</td>
+                          <td className="px-2 py-1 font-mono text-xs whitespace-pre-wrap break-all">{f.before || '—'}</td>
+                          <td className="px-2 py-1 font-mono text-xs whitespace-pre-wrap break-all">
+                            {f.same ? (
+                              <span className="text-muted-foreground">{f.after || '—'}</span>
+                            ) : (
+                              <span className="text-emerald-700">{f.after || '—'}</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium flex items-center justify-between">
+                  <span>System Prompt 差异</span>
+                  {diff.promptSame && <span className="text-xs text-muted-foreground">（无变化）</span>}
+                </div>
+                <pre className="rounded-md border border-border bg-muted/20 p-3 text-xs font-mono overflow-x-auto max-h-64">
+                  {diff.promptDiff.map((l, i) => {
+                    const color = l.op === '+' ? 'text-emerald-700' : l.op === '-' ? 'text-red-700' : 'text-muted-foreground';
+                    const prefix = l.op === '+' ? '+' : l.op === '-' ? '-' : ' ';
+                    return (
+                      <div key={i} className={color}>
+                        {prefix} {l.line}
+                      </div>
+                    );
+                  })}
+                </pre>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

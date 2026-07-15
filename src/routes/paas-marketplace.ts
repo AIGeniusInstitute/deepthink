@@ -24,6 +24,8 @@ import {
   upsertReview,
   listReviews,
   getReviewStats,
+  createReviewReport,
+  deleteMarketplaceReview,
   type MarketplaceItemRow,
   type MarketplaceReviewRow,
   type MarketplaceStatus,
@@ -301,5 +303,24 @@ async function installTemplate(
   }
   throw new Error(`Unknown template type: ${itemType}`);
 }
+
+// Phase 3: 评论举报
+paasMarketplaceRoute.post('/reviews/:reviewId/report', async (c) => {
+  const user = c.get('user');
+  const reviewId = c.req.param('reviewId');
+  const body = await c.req.json().catch(() => ({}));
+  const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+  if (!reason) {
+    return c.json({ error: 'reason required' }, 400);
+  }
+  if (reason.length > 500) {
+    return c.json({ error: 'reason too long (max 500)' }, 400);
+  }
+  const report = createReviewReport(reviewId, user.id, reason);
+  if (!report) {
+    return c.json({ error: 'Already reported or review not found' }, 409);
+  }
+  return c.json({ reportId: report.id, status: report.status }, 201);
+});
 
 export default paasMarketplaceRoute;

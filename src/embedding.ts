@@ -67,6 +67,34 @@ export function getEmbeddingConfig(): EmbeddingConfig | null {
   }
 }
 
+export function saveEmbeddingConfig(config: EmbeddingConfig): void {
+  const dir = path.dirname(EMBEDDING_CONFIG_PATH);
+  fs.mkdirSync(dir, { recursive: true });
+  const payload = {
+    baseUrl: config.baseUrl.replace(/\/+$/, ''),
+    apiKey: config.apiKey,
+    model: config.model,
+    dimensions: config.dimensions,
+  };
+  const tmp = `${EMBEDDING_CONFIG_PATH}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), { mode: 0o600 });
+  fs.renameSync(tmp, EMBEDDING_CONFIG_PATH);
+  cachedConfig = undefined;
+  configMtime = 0;
+}
+
+export async function testEmbeddingConnection(): Promise<{ success: boolean; dimensions?: number; error?: string }> {
+  try {
+    const emb = await embedText('hello');
+    if (!emb || emb.length === 0) {
+      return { success: false, error: 'API returned empty embedding' };
+    }
+    return { success: true, dimensions: emb.length };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function embedText(text: string): Promise<Float32Array | null> {
   const config = getEmbeddingConfig();
   if (!config) return null;

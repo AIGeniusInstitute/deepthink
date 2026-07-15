@@ -35,6 +35,30 @@ export interface AgentVersion {
   created_by: string;
 }
 
+export interface AgentShare {
+  id: string;
+  shareToken: string;
+  shareUrl: string;
+  createdAt: string;
+  expiresAt: string | null;
+  installCount: number;
+}
+
+export interface AgentCollaborator {
+  userId: string;
+  username: string;
+  role: 'editor' | 'viewer';
+  addedBy: string;
+  addedAt: string;
+}
+
+export interface AgentVersionDiff {
+  versionId: string;
+  fields: Array<{ name: string; before: string; after: string; same: boolean }>;
+  promptDiff: Array<{ op: '+' | '-' | '='; line: string }>;
+  promptSame: boolean;
+}
+
 export interface AvailableResource {
   mcp_servers: Array<{ id: string; name: string; type: string; enabled: boolean }>;
   knowledge_bases: Array<{ id: string; name: string; doc_count: number }>;
@@ -49,6 +73,8 @@ interface AgentsState {
   error: string | null;
   available: AvailableResource | null;
   versions: Record<string, AgentVersion[]>;
+  shares: Record<string, AgentShare[]>;
+  collaborators: Record<string, AgentCollaborator[]>;
   load: () => Promise<void>;
   loadAvailable: () => Promise<void>;
   create: (data: {
@@ -69,6 +95,13 @@ interface AgentsState {
   removeMount: (agentId: string, mountId: string) => Promise<boolean>;
   listVersions: (agentId: string) => Promise<AgentVersion[]>;
   restoreVersion: (agentId: string, versionId: string) => Promise<boolean>;
+  diffVersion: (agentId: string, versionId: string) => Promise<AgentVersionDiff | null>;
+  createShare: (agentId: string) => Promise<AgentShare | null>;
+  listShares: (agentId: string) => Promise<AgentShare[]>;
+  deleteShare: (agentId: string, shareId: string) => Promise<boolean>;
+  listCollaborators: (agentId: string) => Promise<AgentCollaborator[]>;
+  addCollaborator: (agentId: string, userId: string, role: 'editor' | 'viewer') => Promise<boolean>;
+  removeCollaborator: (agentId: string, userId: string) => Promise<boolean>;
 }
 
 export const useAgentsPaasStore = create<AgentsState>((set, get) => ({
@@ -79,6 +112,8 @@ export const useAgentsPaasStore = create<AgentsState>((set, get) => ({
   error: null,
   available: null,
   versions: {},
+  shares: {},
+  collaborators: {},
   load: async () => {
     set({ loading: true, error: null });
     try {
@@ -151,6 +186,70 @@ export const useAgentsPaasStore = create<AgentsState>((set, get) => ({
       await api.post(`/api/paas/agents/${agentId}/versions/${versionId}/restore`);
       await get().load();
       await get().listVersions(agentId);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  diffVersion: async (agentId, versionId) => {
+    try {
+      const res = await api.get<AgentVersionDiff>(`/api/paas/agents/${agentId}/versions/${versionId}/diff`);
+      return res;
+    } catch {
+      return null;
+    }
+  },
+  createShare: async (agentId) => {
+    try {
+      const res = await api.post<AgentShare>(`/api/paas/agents/${agentId}/share`);
+      await get().listShares(agentId);
+      return res;
+    } catch {
+      return null;
+    }
+  },
+  listShares: async (agentId) => {
+    try {
+      const res = await api.get<{ shares: AgentShare[] }>(`/api/paas/agents/${agentId}/shares`);
+      const shares = res.shares ?? [];
+      set({ shares: { ...get().shares, [agentId]: shares } });
+      return shares;
+    } catch {
+      return [];
+    }
+  },
+  deleteShare: async (agentId, shareId) => {
+    try {
+      await api.delete(`/api/paas/agents/${agentId}/shares/${shareId}`);
+      await get().listShares(agentId);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  listCollaborators: async (agentId) => {
+    try {
+      const res = await api.get<{ collaborators: AgentCollaborator[] }>(`/api/paas/agents/${agentId}/collaborators`);
+      const collabs = res.collaborators ?? [];
+      set({ collaborators: { ...get().collaborators, [agentId]: collabs } });
+      return collabs;
+    } catch {
+      return [];
+    }
+  },
+  addCollaborator: async (agentId, userId, role) => {
+    try {
+      await api.post(`/api/paas/agents/${agentId}/collaborators`, { userId, role });
+      await get().listCollaborators(agentId);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  removeCollaborator: async (agentId, userId) => {
+    try {
+      await api.delete(`/api/paas/agents/${agentId}/collaborators/${userId}`);
+      await get().listCollaborators(agentId);
       return true;
     } catch {
       return false;

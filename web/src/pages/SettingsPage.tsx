@@ -25,10 +25,11 @@ import { UsagePage } from './UsagePage';
 import { MonitorPage } from './MonitorPage';
 import { Card, CardContent } from '@/components/ui/card';
 import { AtomcodeEngineSection } from '../components/settings/AtomcodeEngineSection';
+import { EmbeddingSettingsSection } from '../components/settings/EmbeddingSettingsSection';
 import type { SettingsTab } from '../components/settings/types';
 
-const VALID_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'about', 'bindings', 'usage', 'monitor', 'language', 'atomcode'];
-const SYSTEM_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'atomcode'];
+const VALID_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'about', 'bindings', 'usage', 'monitor', 'language', 'atomcode', 'embedding'];
+const SYSTEM_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'atomcode', 'embedding'];
 const FULLPAGE_TABS: SettingsTab[] = ['groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'bindings', 'usage', 'monitor'];
 
 export function SettingsPage() {
@@ -78,6 +79,7 @@ export function SettingsPage() {
       tabs.push({ key: 'appearance', label: '全局外观' });
       tabs.push({ key: 'system', label: '系统' });
       tabs.push({ key: 'atomcode', label: 'AtomCode' });
+      tabs.push({ key: 'embedding', label: 'Embedding' });
     }
     tabs.push({ key: 'groups', label: '会话' });
     tabs.push({ key: 'memory', label: '记忆' });
@@ -128,6 +130,7 @@ export function SettingsPage() {
     monitor: '系统监控',
     language: '语言',
     atomcode: 'AtomCode 引擎',
+    embedding: 'Embedding 配置',
   };
 
   return (
@@ -224,6 +227,7 @@ export function SettingsPage() {
                   {activeTab === 'about' && <AboutSection />}
                   {activeTab === 'language' && <LanguageSection />}
                   {activeTab === 'atomcode' && <AtomcodeEngineSection />}
+                  {activeTab === 'embedding' && <EmbeddingSettingsSection />}
                 </CardContent>
               </Card>
             </div>
