@@ -34,6 +34,10 @@ export interface McpContext {
   // 禁用 DeepThink 的 memory MCP 工具（memory_append/search/get），
   // 让 Agent 完全按用户本机 ~/.claude/ 下的 Playbook 约定管理记忆
   disableMemoryLayer?: boolean;
+  /** IDs of knowledge bases bound to this group's Agent definition.
+   * Empty when no Agent is bound or no KBs are mounted. The kb_search tool
+   * refuses to search when this is empty. */
+  kbIds?: string[];
 }
 
 function writeIpcFile(dir: string, data: object): string {
@@ -1758,6 +1762,95 @@ Use this when the user describes a reusable capability that should be persisted 
       },
     ),
   );
+  }
+
+  // --- kb_search --- (only enabled when the group has bound KB mounts)
+  if (ctx.kbIds && ctx.kbIds.length > 0) {
+    tools.push(
+      tool(
+        'kb_search',
+        `Search the knowledge bases bound to this Agent. Returns matching snippets ranked by relevance (FTS5 bm25). Currently bound KB count: ${ctx.kbIds.length}.`,
+        {
+          query: z
+            .string()
+            .describe('Search query — keywords or phrases. FTS5 syntax (AND/OR/NOT, "phrase", col:value).'),
+          limit: z
+            .number()
+            .optional()
+            .default(5)
+            .describe('Max results (default 5, max 20)'),
+        },
+        async (args) => {
+          if (!args.query.trim()) {
+            return {
+              content: [{ type: 'text' as const, text: 'Query cannot be empty.' }],
+              isError: true,
+            };
+          }
+          const limit = Math.min(Math.max(args.limit ?? 5, 1), 20);
+          const requestId = newRequestId();
+          try {
+            const result = await pollIpcResult(
+              TASKS_DIR,
+              {
+                type: 'kb_search',
+                requestId,
+                groupFolder: ctx.groupFolder,
+                kbIds: ctx.kbIds,
+                query: args.query,
+                limit,
+                timestamp: new Date().toISOString(),
+              },
+              'kb_search_result',
+              10_000,
+            );
+            if (!result.success) {
+              return {
+                content: [
+                  {
+                    type: 'text' as const,
+                    text: `KB search failed: ${result.error || 'Unknown error'}`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+            const hits = (result.results || []) as Array<{
+              kb_id: string;
+              kb_name?: string;
+              doc_id: string;
+              filename: string;
+              snippet: string;
+              rank: number;
+            }>;
+            if (hits.length === 0) {
+              return {
+                content: [{ type: 'text' as const, text: 'No matching documents found in bound KBs.' }],
+              };
+            }
+            const lines = hits.map(
+              (h, i) =>
+                `### ${i + 1}. ${h.filename}${h.kb_name ? ` (KB: ${h.kb_name})` : ''}\n${h.snippet}`,
+            );
+            return {
+              content: [
+                { type: 'text' as const, text: `Found ${hits.length} match(s):\n\n${lines.join('\n\n')}` },
+              ],
+            };
+          } catch (err) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: `KB search IPC error: ${err instanceof Error ? err.message : String(err)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      ),
+    );
   }
 
   return tools;

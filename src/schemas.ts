@@ -242,6 +242,67 @@ export const GroupPatchSchema = z.object({
     .optional(),
   execution_mode: z.enum(['container', 'host']).optional(),
   engine: z.enum(['claude', 'atomcode']).optional(),
+  agent_def_id: z.string().max(200).nullable().optional(),
+});
+
+export const AgentDefinitionCreateSchema = z.object({
+  name: z.string().min(1).max(80),
+  description: z.string().max(500).optional(),
+  system_prompt: z.string().max(20000).optional(),
+  model: z.string().max(100).optional().nullable(),
+  engine: z.enum(['claude', 'atomcode']).optional(),
+  avatar_emoji: z.string().max(20).optional().nullable(),
+  avatar_color: z.string().max(50).optional().nullable(),
+  max_turns: z.number().int().min(1).max(200).optional().nullable(),
+  temperature: z.number().min(0).max(2).optional().nullable(),
+  enabled: z.boolean().optional(),
+});
+
+export const AgentDefinitionPatchSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  description: z.string().max(500).optional(),
+  system_prompt: z.string().max(20000).optional(),
+  model: z.string().max(100).optional().nullable(),
+  engine: z.enum(['claude', 'atomcode']).optional(),
+  avatar_emoji: z.string().max(20).optional().nullable(),
+  avatar_color: z.string().max(50).optional().nullable(),
+  max_turns: z.number().int().min(1).max(200).optional().nullable(),
+  temperature: z.number().min(0).max(2).optional().nullable(),
+  enabled: z.boolean().optional(),
+});
+
+export const AgentMountCreateSchema = z.object({
+  resource_type: z.enum(['mcp_server', 'skill', 'knowledge_base']),
+  resource_id: z.string().min(1).max(200),
+});
+
+export const KnowledgeBaseCreateSchema = z.object({
+  name: z.string().min(1).max(80),
+  description: z.string().max(500).optional(),
+});
+
+export const KnowledgeBasePatchSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  description: z.string().max(500).optional(),
+});
+
+export const KbSearchSchema = z.object({
+  query: z.string().min(1).max(500),
+  limit: z.number().int().min(1).max(20).optional(),
+});
+
+export const MarketplaceItemCreateSchema = z.object({
+  item_type: z.enum([
+    'agent_template',
+    'mcp_template',
+    'skill_template',
+    'kb_template',
+  ]),
+  name: z.string().min(1).max(80),
+  description: z.string().max(500).optional(),
+  author_name: z.string().max(80).optional(),
+  tags: z.array(z.string().max(40)).max(10).optional(),
+  payload: z.unknown(),
 });
 
 export const AtomcodeConfigSchema = z.object({

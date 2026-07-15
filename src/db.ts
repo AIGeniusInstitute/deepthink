@@ -834,6 +834,87 @@ export function initDatabase(): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS agent_definitions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      system_prompt TEXT NOT NULL DEFAULT '',
+      model TEXT,
+      engine TEXT NOT NULL DEFAULT 'claude',
+      avatar_emoji TEXT,
+      avatar_color TEXT,
+      max_turns INTEGER,
+      temperature REAL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_defs_user ON agent_definitions(user_id);
+
+    CREATE TABLE IF NOT EXISTS agent_mounts (
+      id TEXT PRIMARY KEY,
+      agent_def_id TEXT NOT NULL,
+      resource_type TEXT NOT NULL,
+      resource_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE (agent_def_id, resource_type, resource_id),
+      FOREIGN KEY (agent_def_id) REFERENCES agent_definitions(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_mounts_def ON agent_mounts(agent_def_id);
+
+    CREATE TABLE IF NOT EXISTS knowledge_bases (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      doc_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_user ON knowledge_bases(user_id);
+
+    CREATE TABLE IF NOT EXISTS kb_documents (
+      id TEXT PRIMARY KEY,
+      kb_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      content TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_docs_kb ON kb_documents(kb_id);
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS kb_documents_fts USING fts5(
+      filename, content, content='kb_documents', content_rowid='rowid'
+    );
+    CREATE TRIGGER IF NOT EXISTS kb_docs_ai AFTER INSERT ON kb_documents BEGIN
+      INSERT INTO kb_documents_fts(rowid, filename, content) VALUES (new.rowid, new.filename, new.content);
+    END;
+    CREATE TRIGGER IF NOT EXISTS kb_docs_ad AFTER DELETE ON kb_documents BEGIN
+      INSERT INTO kb_documents_fts(kb_documents_fts, rowid, filename, content) VALUES('delete', old.rowid, old.filename, old.content);
+    END;
+    CREATE TRIGGER IF NOT EXISTS kb_docs_au AFTER UPDATE ON kb_documents BEGIN
+      INSERT INTO kb_documents_fts(kb_documents_fts, rowid, filename, content) VALUES('delete', old.rowid, old.filename, old.content);
+      INSERT INTO kb_documents_fts(rowid, filename, content) VALUES (new.rowid, new.filename, new.content);
+    END;
+
+    CREATE TABLE IF NOT EXISTS marketplace_items (
+      id TEXT PRIMARY KEY,
+      item_type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      author_name TEXT NOT NULL DEFAULT '',
+      tags TEXT NOT NULL DEFAULT '[]',
+      payload TEXT NOT NULL,
+      installed_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_market_type ON marketplace_items(item_type);
   `);
 
   // Lightweight migrations for existing DBs
@@ -910,7 +991,9 @@ export function initDatabase(): void {
   ensureColumn('registered_groups', 'feishu_group_message_type', 'TEXT');
   ensureColumn('registered_groups', 'sender_allowlist', 'TEXT');
   ensureColumn('registered_groups', 'engine', "TEXT DEFAULT 'claude'");
+  ensureColumn('registered_groups', 'agent_def_id', 'TEXT');
   ensureColumn('sessions', 'atomcode_session_id', 'TEXT');
+  ensureColumn('users', 'agent_quota', 'INTEGER NOT NULL DEFAULT 10');
   ensureColumn('messages', 'token_usage', 'TEXT');
   ensureColumn('messages', 'turn_id', 'TEXT');
   ensureColumn('messages', 'session_id', 'TEXT');
@@ -1547,7 +1630,7 @@ export function initDatabase(): void {
     db.exec('ALTER TABLE scheduled_tasks ADD COLUMN loop_run_id TEXT');
   }
 
-  const SCHEMA_VERSION = '44';
+  const SCHEMA_VERSION = '48';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -3544,6 +3627,7 @@ type RegisteredGroupRow = {
   feishu_group_message_type: string | null;
   sender_allowlist: string | null;
   engine: string | null;
+  agent_def_id: string | null;
 };
 
 /** Convert a raw DB row into a RegisteredGroup domain object. */
@@ -3619,6 +3703,7 @@ function parseGroupRow(
     feishu_group_message_type: row.feishu_group_message_type ?? undefined,
     sender_allowlist: senderAllowlist,
     engine: row.engine === 'atomcode' ? 'atomcode' : 'claude',
+    agentDefId: row.agent_def_id ?? null,
   };
 }
 
@@ -3650,8 +3735,8 @@ export function getRegisteredGroup(
 
 export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
   db.prepare(
-    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, added_at, container_config, execution_mode, custom_cwd, init_source_path, init_git_url, created_by, is_home, selected_skills, target_agent_id, target_main_jid, reply_policy, require_mention, activation_mode, owner_im_id, mcp_mode, selected_mcps, conversation_source, conversation_nav_mode, binding_mode, feishu_chat_mode, feishu_group_message_type, sender_allowlist, engine)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, added_at, container_config, execution_mode, custom_cwd, init_source_path, init_git_url, created_by, is_home, selected_skills, target_agent_id, target_main_jid, reply_policy, require_mention, activation_mode, owner_im_id, mcp_mode, selected_mcps, conversation_source, conversation_nav_mode, binding_mode, feishu_chat_mode, feishu_group_message_type, sender_allowlist, engine, agent_def_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     jid,
     group.name,
@@ -3680,6 +3765,7 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
     group.feishu_group_message_type ?? null,
     group.sender_allowlist != null ? JSON.stringify(group.sender_allowlist) : null,
     group.engine ?? 'claude',
+    group.agentDefId ?? null,
   );
 }
 
@@ -7019,4 +7105,489 @@ export function closeDatabase(): void {
   if (db) {
     db.close();
   }
+}
+
+// ─── Agent PaaS: Agent Definitions ─────────────────────────
+
+export type AgentDefinitionRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  system_prompt: string;
+  model: string | null;
+  engine: string;
+  avatar_emoji: string | null;
+  avatar_color: string | null;
+  max_turns: number | null;
+  temperature: number | null;
+  enabled: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentMountRow = {
+  id: string;
+  agent_def_id: string;
+  resource_type: string;
+  resource_id: string;
+  created_at: string;
+};
+
+function isoNow(): string {
+  return new Date().toISOString();
+}
+
+export function listAgentDefinitions(userId: string): AgentDefinitionRow[] {
+  return db
+    .prepare('SELECT * FROM agent_definitions WHERE user_id = ? ORDER BY updated_at DESC')
+    .all(userId) as AgentDefinitionRow[];
+}
+
+export function getAgentDefinition(
+  id: string,
+  userId: string,
+): AgentDefinitionRow | null {
+  const row = db
+    .prepare('SELECT * FROM agent_definitions WHERE id = ? AND user_id = ?')
+    .get(id, userId) as AgentDefinitionRow | undefined;
+  return row ?? null;
+}
+
+export function countAgentDefinitions(userId: string): number {
+  const row = db
+    .prepare('SELECT COUNT(*) as n FROM agent_definitions WHERE user_id = ?')
+    .get(userId) as { n: number } | undefined;
+  return row?.n ?? 0;
+}
+
+export function createAgentDefinition(
+  userId: string,
+  input: {
+    name: string;
+    description?: string;
+    system_prompt?: string;
+    model?: string | null;
+    engine?: string;
+    avatar_emoji?: string | null;
+    avatar_color?: string | null;
+    max_turns?: number | null;
+    temperature?: number | null;
+    enabled?: boolean;
+  },
+): AgentDefinitionRow {
+  const id = crypto.randomUUID();
+  const now = isoNow();
+  db.prepare(
+    `INSERT INTO agent_definitions (id, user_id, name, description, system_prompt, model, engine, avatar_emoji, avatar_color, max_turns, temperature, enabled, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    userId,
+    input.name,
+    input.description ?? '',
+    input.system_prompt ?? '',
+    input.model ?? null,
+    input.engine ?? 'claude',
+    input.avatar_emoji ?? null,
+    input.avatar_color ?? null,
+    input.max_turns ?? null,
+    input.temperature ?? null,
+    input.enabled === false ? 0 : 1,
+    now,
+    now,
+  );
+  return getAgentDefinition(id, userId)!;
+}
+
+export function updateAgentDefinition(
+  id: string,
+  userId: string,
+  patch: {
+    name?: string;
+    description?: string;
+    system_prompt?: string;
+    model?: string | null;
+    engine?: string;
+    avatar_emoji?: string | null;
+    avatar_color?: string | null;
+    max_turns?: number | null;
+    temperature?: number | null;
+    enabled?: boolean;
+  },
+): AgentDefinitionRow | null {
+  const existing = getAgentDefinition(id, userId);
+  if (!existing) return null;
+  const next: AgentDefinitionRow = {
+    ...existing,
+    name: patch.name ?? existing.name,
+    description: patch.description ?? existing.description,
+    system_prompt: patch.system_prompt ?? existing.system_prompt,
+    model: patch.model !== undefined ? patch.model : existing.model,
+    engine: patch.engine ?? existing.engine,
+    avatar_emoji: patch.avatar_emoji !== undefined ? patch.avatar_emoji : existing.avatar_emoji,
+    avatar_color: patch.avatar_color !== undefined ? patch.avatar_color : existing.avatar_color,
+    max_turns: patch.max_turns !== undefined ? patch.max_turns : existing.max_turns,
+    temperature: patch.temperature !== undefined ? patch.temperature : existing.temperature,
+    enabled: patch.enabled !== undefined ? (patch.enabled ? 1 : 0) : existing.enabled,
+    updated_at: isoNow(),
+  };
+  db.prepare(
+    `UPDATE agent_definitions SET name=?, description=?, system_prompt=?, model=?, engine=?, avatar_emoji=?, avatar_color=?, max_turns=?, temperature=?, enabled=?, updated_at=? WHERE id=? AND user_id=?`,
+  ).run(
+    next.name,
+    next.description,
+    next.system_prompt,
+    next.model,
+    next.engine,
+    next.avatar_emoji,
+    next.avatar_color,
+    next.max_turns,
+    next.temperature,
+    next.enabled,
+    next.updated_at,
+    id,
+    userId,
+  );
+  return next;
+}
+
+export function deleteAgentDefinition(id: string, userId: string): boolean {
+  const result = db
+    .prepare('DELETE FROM agent_definitions WHERE id = ? AND user_id = ?')
+    .run(id, userId);
+  return result.changes > 0;
+}
+
+// ─── Agent PaaS: Agent Mounts ───────────────────────────────
+
+export function listAgentMounts(agentDefId: string): AgentMountRow[] {
+  return db
+    .prepare('SELECT * FROM agent_mounts WHERE agent_def_id = ? ORDER BY created_at')
+    .all(agentDefId) as AgentMountRow[];
+}
+
+export function addAgentMount(
+  agentDefId: string,
+  resourceType: string,
+  resourceId: string,
+): AgentMountRow {
+  // Check uniqueness; if exists, return existing
+  const existing = db
+    .prepare(
+      'SELECT * FROM agent_mounts WHERE agent_def_id = ? AND resource_type = ? AND resource_id = ?',
+    )
+    .get(agentDefId, resourceType, resourceId) as AgentMountRow | undefined;
+  if (existing) return existing;
+  const id = crypto.randomUUID();
+  const now = isoNow();
+  db.prepare(
+    'INSERT INTO agent_mounts (id, agent_def_id, resource_type, resource_id, created_at) VALUES (?, ?, ?, ?, ?)',
+  ).run(id, agentDefId, resourceType, resourceId, now);
+  return {
+    id,
+    agent_def_id: agentDefId,
+    resource_type: resourceType,
+    resource_id: resourceId,
+    created_at: now,
+  };
+}
+
+export function deleteAgentMount(
+  id: string,
+  agentDefId: string,
+): boolean {
+  const result = db
+    .prepare('DELETE FROM agent_mounts WHERE id = ? AND agent_def_id = ?')
+    .run(id, agentDefId);
+  return result.changes > 0;
+}
+
+// ─── Agent PaaS: Knowledge Bases ──────────────────────────
+
+export type KnowledgeBaseRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  doc_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KbDocumentRow = {
+  id: string;
+  kb_id: string;
+  user_id: string;
+  filename: string;
+  content: string;
+  content_hash: string;
+  size_bytes: number;
+  created_at: string;
+};
+
+export function listKnowledgeBases(userId: string): KnowledgeBaseRow[] {
+  return db
+    .prepare('SELECT * FROM knowledge_bases WHERE user_id = ? ORDER BY updated_at DESC')
+    .all(userId) as KnowledgeBaseRow[];
+}
+
+export function getKnowledgeBase(
+  id: string,
+  userId: string,
+): KnowledgeBaseRow | null {
+  const row = db
+    .prepare('SELECT * FROM knowledge_bases WHERE id = ? AND user_id = ?')
+    .get(id, userId) as KnowledgeBaseRow | undefined;
+  return row ?? null;
+}
+
+export function createKnowledgeBase(
+  userId: string,
+  name: string,
+  description?: string,
+): KnowledgeBaseRow {
+  const id = crypto.randomUUID();
+  const now = isoNow();
+  db.prepare(
+    `INSERT INTO knowledge_bases (id, user_id, name, description, doc_count, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 0, ?, ?)`,
+  ).run(id, userId, name, description ?? '', now, now);
+  return getKnowledgeBase(id, userId)!;
+}
+
+export function updateKnowledgeBase(
+  id: string,
+  userId: string,
+  patch: { name?: string; description?: string },
+): KnowledgeBaseRow | null {
+  const existing = getKnowledgeBase(id, userId);
+  if (!existing) return null;
+  const next = {
+    ...existing,
+    name: patch.name ?? existing.name,
+    description: patch.description ?? existing.description,
+    updated_at: isoNow(),
+  };
+  db.prepare(
+    'UPDATE knowledge_bases SET name=?, description=?, updated_at=? WHERE id=? AND user_id=?',
+  ).run(next.name, next.description, next.updated_at, id, userId);
+  return next;
+}
+
+export function deleteKnowledgeBase(id: string, userId: string): boolean {
+  // FTS trigger handles cascade delete of docs
+  // But FTS5 content table is `kb_documents` — deletion via FK cascade works only if docs deleted via SQL.
+  // Explicit delete to ensure FTS triggers fire:
+  db.prepare('DELETE FROM kb_documents WHERE kb_id = ?').all(id);
+  const result = db
+    .prepare('DELETE FROM knowledge_bases WHERE id = ? AND user_id = ?')
+    .run(id, userId);
+  return result.changes > 0;
+}
+
+export function listKbDocuments(
+  kbId: string,
+  userId: string,
+): KbDocumentRow[] {
+  return db
+    .prepare('SELECT * FROM kb_documents WHERE kb_id = ? AND user_id = ? ORDER BY created_at DESC')
+    .all(kbId, userId) as KbDocumentRow[];
+}
+
+export function addKbDocument(
+  kbId: string,
+  userId: string,
+  filename: string,
+  content: string,
+): { row: KbDocumentRow; duplicate: boolean } {
+  const hash = crypto
+    .createHash('sha256')
+    .update(content)
+    .digest('hex');
+  // Duplicate check within same KB
+  const existing = db
+    .prepare('SELECT * FROM kb_documents WHERE kb_id = ? AND content_hash = ?')
+    .get(kbId, hash) as KbDocumentRow | undefined;
+  if (existing) {
+    return { row: existing, duplicate: true };
+  }
+  const id = crypto.randomUUID();
+  const now = isoNow();
+  const sizeBytes = Buffer.byteLength(content, 'utf8');
+  db.prepare(
+    `INSERT INTO kb_documents (id, kb_id, user_id, filename, content, content_hash, size_bytes, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, kbId, userId, filename, content, hash, sizeBytes, now);
+  // Update doc_count
+  db.prepare(
+    'UPDATE knowledge_bases SET doc_count = (SELECT COUNT(*) FROM kb_documents WHERE kb_id = ?), updated_at = ? WHERE id = ?',
+  ).run(kbId, now, kbId);
+  return {
+    row: {
+      id,
+      kb_id: kbId,
+      user_id: userId,
+      filename,
+      content,
+      content_hash: hash,
+      size_bytes: sizeBytes,
+      created_at: now,
+    },
+    duplicate: false,
+  };
+}
+
+export function deleteKbDocument(
+  docId: string,
+  userId: string,
+): boolean {
+  const doc = db
+    .prepare('SELECT kb_id FROM kb_documents WHERE id = ? AND user_id = ?')
+    .get(docId, userId) as { kb_id: string } | undefined;
+  if (!doc) return false;
+  const result = db
+    .prepare('DELETE FROM kb_documents WHERE id = ? AND user_id = ?')
+    .run(docId, userId);
+  if (result.changes > 0) {
+    const now = isoNow();
+    db.prepare(
+      'UPDATE knowledge_bases SET doc_count = (SELECT COUNT(*) FROM kb_documents WHERE kb_id = ?), updated_at = ? WHERE id = ?',
+    ).run(doc.kb_id, now, doc.kb_id);
+  }
+  return result.changes > 0;
+}
+
+export function searchKbDocuments(
+  kbIds: string[],
+  query: string,
+  limit: number = 5,
+): Array<{
+  doc_id: string;
+  kb_id: string;
+  filename: string;
+  snippet: string;
+  rank: number;
+}> {
+  if (kbIds.length === 0 || !query.trim()) return [];
+  // Sanitize: wrap as quoted phrase to avoid FTS5 syntax injection
+  const sanitized = query.replace(/["'\n\r]/g, ' ').trim();
+  if (!sanitized) return [];
+  const ftsQuery = `"${sanitized}"`;
+  const placeholders = kbIds.map(() => '?').join(',');
+  const rows = db
+    .prepare(
+      `SELECT
+         kb_documents.id as doc_id,
+         kb_documents.kb_id as kb_id,
+         kb_documents.filename as filename,
+         snippet(kb_documents_fts, 1, '[', ']', '…', 8) as snippet,
+         bm25(kb_documents_fts) as rank
+       FROM kb_documents_fts
+       JOIN kb_documents ON kb_documents.id = kb_documents_fts.rowid
+       WHERE kb_documents_fts MATCH ?
+         AND kb_documents.kb_id IN (${placeholders})
+       ORDER BY rank
+       LIMIT ?`,
+    )
+    .all(ftsQuery, ...kbIds, limit);
+  return rows as Array<{
+    doc_id: string;
+    kb_id: string;
+    filename: string;
+    snippet: string;
+    rank: number;
+  }>;
+}
+
+// ─── Agent PaaS: Marketplace ───────────────────────────────
+
+export type MarketplaceItemRow = {
+  id: string;
+  item_type: string;
+  name: string;
+  description: string;
+  author_name: string;
+  tags: string;
+  payload: string;
+  installed_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export function listMarketplaceItems(itemType?: string): MarketplaceItemRow[] {
+  if (itemType) {
+    return db
+      .prepare('SELECT * FROM marketplace_items WHERE item_type = ? ORDER BY installed_count DESC, updated_at DESC')
+      .all(itemType) as MarketplaceItemRow[];
+  }
+  return db
+    .prepare('SELECT * FROM marketplace_items ORDER BY installed_count DESC, updated_at DESC')
+    .all() as MarketplaceItemRow[];
+}
+
+export function getMarketplaceItem(id: string): MarketplaceItemRow | null {
+  const row = db
+    .prepare('SELECT * FROM marketplace_items WHERE id = ?')
+    .get(id) as MarketplaceItemRow | undefined;
+  return row ?? null;
+}
+
+export function createMarketplaceItem(
+  input: {
+    item_type: string;
+    name: string;
+    description?: string;
+    author_name?: string;
+    tags?: string[];
+    payload: unknown;
+  },
+): MarketplaceItemRow {
+  const id = crypto.randomUUID();
+  const now = isoNow();
+  db.prepare(
+    `INSERT INTO marketplace_items (id, item_type, name, description, author_name, tags, payload, installed_count, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+  ).run(
+    id,
+    input.item_type,
+    input.name,
+    input.description ?? '',
+    input.author_name ?? '',
+    JSON.stringify(input.tags ?? []),
+    JSON.stringify(input.payload),
+    now,
+    now,
+  );
+  return getMarketplaceItem(id)!;
+}
+
+export function incrementInstallCount(id: string): void {
+  db.prepare(
+    'UPDATE marketplace_items SET installed_count = installed_count + 1, updated_at = ? WHERE id = ?',
+  ).run(isoNow(), id);
+}
+
+export function countMarketplaceItems(): number {
+  const row = db
+    .prepare('SELECT COUNT(*) as n FROM marketplace_items')
+    .get() as { n: number } | undefined;
+  return row?.n ?? 0;
+}
+
+export function setGroupAgentDefId(
+  jid: string,
+  agentDefId: string | null,
+): void {
+  db.prepare('UPDATE registered_groups SET agent_def_id = ? WHERE jid = ?').run(
+    agentDefId,
+    jid,
+  );
+}
+
+export function getUserAgentQuota(userId: string): number {
+  const row = db
+    .prepare('SELECT agent_quota FROM users WHERE id = ?')
+    .get(userId) as { agent_quota: number } | undefined;
+  return row?.agent_quota ?? 10;
 }

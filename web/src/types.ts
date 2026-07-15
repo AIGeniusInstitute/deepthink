@@ -22,6 +22,7 @@ export interface GroupInfo {
   conversation_source?: 'manual' | 'feishu_thread';
   conversation_nav_mode?: 'horizontal' | 'vertical_threads';
   engine?: 'claude' | 'atomcode';
+  agent_def_id?: string | null;
 }
 
 export interface AgentInfo {

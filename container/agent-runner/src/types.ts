@@ -53,6 +53,30 @@ export interface ContainerInput {
    * HTTP/SSE /chat endpoint instead.
    */
   engine?: 'claude' | 'atomcode';
+  /** Agent PaaS: when group is bound to a user-defined Agent, this carries
+   * the definition + mounts. agent-runner main() uses it to override system
+   * prompt, model, and filter MCP/Skill to only those listed in mounts. */
+  agentDefinition?: {
+    id: string;
+    systemPrompt?: string;
+    model?: string | null;
+    maxTurns?: number | null;
+    temperature?: number | null;
+    mounts: Array<{
+      resourceType: 'mcp_server' | 'skill' | 'knowledge_base';
+      resourceId: string;
+      resourceName?: string;
+      mcpConfig?: {
+        type: string;
+        command?: string;
+        args?: string[];
+        env?: Record<string, string>;
+        url?: string;
+      };
+      kbId?: string;
+      kbName?: string;
+    }>;
+  };
 }
 
 export interface ContainerOutput {

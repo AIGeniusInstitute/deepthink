@@ -73,6 +73,85 @@ export interface RegisteredGroup {
   feishu_chat_mode?: string; // 飞书群模式：group/topic/p2p 等
   feishu_group_message_type?: string; // 飞书群消息形式：chat/thread
   engine?: 'claude' | 'atomcode'; // Agent 执行引擎（默认 'claude'）
+  agentDefId?: string | null; // 群组绑定的 Agent 定义 ID
+}
+
+// ─── Agent PaaS Types ────────────────────────────────────
+
+export type AgentEngine = 'claude' | 'atomcode';
+export type ResourceType = 'mcp_server' | 'skill' | 'knowledge_base';
+export type MarketplaceItemType =
+  | 'agent_template'
+  | 'mcp_template'
+  | 'skill_template'
+  | 'kb_template';
+
+export interface AgentDefinition {
+  id: string;
+  userId: string;
+  name: string;
+  description: string;
+  systemPrompt: string;
+  model: string | null;
+  engine: AgentEngine;
+  avatarEmoji: string | null;
+  avatarColor: string | null;
+  maxTurns: number | null;
+  temperature: number | null;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentMount {
+  id: string;
+  agentDefId: string;
+  resourceType: ResourceType;
+  resourceId: string;
+  resourceName?: string;
+  createdAt: string;
+}
+
+export interface KnowledgeBase {
+  id: string;
+  userId: string;
+  name: string;
+  description: string;
+  docCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KbDocument {
+  id: string;
+  kbId: string;
+  userId: string;
+  filename: string;
+  content: string;
+  contentHash: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+export interface KbSearchResult {
+  docId: string;
+  kbId: string;
+  filename: string;
+  snippet: string;
+  rank: number;
+}
+
+export interface MarketplaceItem {
+  id: string;
+  itemType: MarketplaceItemType;
+  name: string;
+  description: string;
+  authorName: string;
+  tags: string[];
+  payload: unknown;
+  installedCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface GroupMember {
