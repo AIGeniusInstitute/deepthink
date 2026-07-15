@@ -17,8 +17,16 @@ import {
   listMarketplaceItems,
   getMarketplaceItem,
   createMarketplaceItem,
+  createMarketplaceItemWithStatus,
   incrementInstallCount,
+  setMarketplaceItemStatus,
+  listMarketplaceItemsByUser,
+  upsertReview,
+  listReviews,
+  getReviewStats,
   type MarketplaceItemRow,
+  type MarketplaceReviewRow,
+  type MarketplaceStatus,
 } from '../db.js';
 import { MarketplaceItemCreateSchema } from '../schemas.js';
 import type { MarketplaceItem, MarketplaceItemType } from '../types.js';
@@ -44,6 +52,7 @@ function serializeItem(row: MarketplaceItemRow): MarketplaceItem {
   } catch {
     tags = [];
   }
+  const stats = getReviewStats(row.id);
   return {
     id: row.id,
     itemType: row.item_type as MarketplaceItemType,
@@ -55,12 +64,27 @@ function serializeItem(row: MarketplaceItemRow): MarketplaceItem {
     installedCount: row.installed_count,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    status: row.status,
+    submittedBy: row.submitted_by,
+    ratingAverage: stats.avg,
+    ratingCount: stats.count,
   };
 }
 
 paasMarketplaceRoute.get('/', (c) => {
+  const user = c.get('user');
   const itemType = c.req.query('item_type');
-  const rows = listMarketplaceItems(itemType ?? undefined);
+  const statusParam = c.req.query('status') as MarketplaceStatus | undefined;
+  // Non-admin users can only see approved items; admin can pass ?status=pending
+  const status: MarketplaceStatus | undefined =
+    user.role === 'admin' && statusParam ? statusParam : 'approved';
+  const rows = listMarketplaceItems(status, itemType ?? undefined);
+  return c.json({ items: rows.map(serializeItem) });
+});
+
+paasMarketplaceRoute.get('/mine', (c) => {
+  const user = c.get('user');
+  const rows = listMarketplaceItemsByUser(user.id);
   return c.json({ items: rows.map(serializeItem) });
 });
 
@@ -90,6 +114,76 @@ paasMarketplaceRoute.post('/', adminRoleMiddleware, async (c) => {
   });
   return c.json({ item: serializeItem(row) }, 201);
 });
+
+// Phase 2: 用户提交模板（status=pending，需 admin 审核）
+paasMarketplaceRoute.post('/submit', async (c) => {
+  const user = c.get('user');
+  const body = await c.req.json().catch(() => ({}));
+  const validation = MarketplaceItemCreateSchema.safeParse(body);
+  if (!validation.success) {
+    return c.json({ error: 'Invalid input', issues: validation.error.issues }, 400);
+  }
+  const row = createMarketplaceItemWithStatus({
+    item_type: validation.data.item_type,
+    name: validation.data.name,
+    description: validation.data.description,
+    author_name: validation.data.author_name ?? user.username,
+    tags: validation.data.tags,
+    payload: validation.data.payload,
+    status: 'pending',
+    submitted_by: user.id,
+  });
+  return c.json({ item: serializeItem(row) }, 201);
+});
+
+// Phase 2: admin 审核
+paasMarketplaceRoute.post('/:id/approve', adminRoleMiddleware, (c) => {
+  const id = c.req.param('id');
+  if (!getMarketplaceItem(id)) return c.json({ error: 'Item not found' }, 404);
+  setMarketplaceItemStatus(id, 'approved');
+  return c.json({ success: true });
+});
+
+paasMarketplaceRoute.post('/:id/reject', adminRoleMiddleware, (c) => {
+  const id = c.req.param('id');
+  if (!getMarketplaceItem(id)) return c.json({ error: 'Item not found' }, 404);
+  setMarketplaceItemStatus(id, 'rejected');
+  return c.json({ success: true });
+});
+
+// Phase 2: 评分评论
+paasMarketplaceRoute.post('/:id/reviews', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  if (!getMarketplaceItem(id)) return c.json({ error: 'Item not found' }, 404);
+  const body = await c.req.json().catch(() => ({}));
+  const rating = Number(body.rating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return c.json({ error: 'rating must be an integer 1-5' }, 400);
+  }
+  const comment = typeof body.comment === 'string' ? body.comment.slice(0, 2000) : null;
+  const row = upsertReview(id, user.id, rating, comment);
+  return c.json({ review: serializeReview(row) }, 201);
+});
+
+paasMarketplaceRoute.get('/:id/reviews', (c) => {
+  const id = c.req.param('id');
+  if (!getMarketplaceItem(id)) return c.json({ error: 'Item not found' }, 404);
+  const rows = listReviews(id);
+  return c.json({ reviews: rows.map(serializeReview) });
+});
+
+function serializeReview(row: MarketplaceReviewRow) {
+  return {
+    id: row.id,
+    itemId: row.item_id,
+    userId: row.user_id,
+    rating: row.rating,
+    comment: row.comment,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
 
 // 安装模板到用户资源
 paasMarketplaceRoute.post('/:id/install', async (c) => {

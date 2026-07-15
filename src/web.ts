@@ -68,6 +68,7 @@ import agentDefinitionsRoutes from './routes/agent-definitions.js';
 import paasAgentsRoutes from './routes/paas-agents.js';
 import paasKbRoutes from './routes/paas-knowledge-bases.js';
 import paasMarketplaceRoutes from './routes/paas-marketplace.js';
+import paasAdminRoutes from './routes/paas-admin.js';
 import chatTraceRoutes from './routes/chat-trace.js';
 import harnessRoutes from './routes/harness.js';
 import { usage as usageRoutes } from './routes/usage.js';
@@ -271,6 +272,7 @@ app.route('/api/agent-definitions', agentDefinitionsRoutes);
 app.route('/api/paas/agents', paasAgentsRoutes);
 app.route('/api/paas/knowledge-bases', paasKbRoutes);
 app.route('/api/paas/marketplace', paasMarketplaceRoutes);
+app.route('/api/paas/admin', paasAdminRoutes);
 app.route('/api/harness', harnessRoutes);
 app.route('/api/groups', agentRoutes); // Agent routes under /api/groups/:jid/agents
 app.route('/api/groups', workspaceConfigRoutes); // Workspace config under /api/groups/:jid/workspace-config

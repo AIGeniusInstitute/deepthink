@@ -1802,7 +1802,7 @@ Use this when the user describes a reusable capability that should be persisted 
                 timestamp: new Date().toISOString(),
               },
               'kb_search_result',
-              10_000,
+              15_000,
             );
             if (!result.success) {
               return {
