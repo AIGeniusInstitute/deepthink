@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useAgentsPaasStore, type AgentDefinition, type ResourceType, type AvailableResource } from '../stores/agents-paas';
+import { useAgentsPaasStore, type AgentDefinition, type ResourceType, type AvailableResource, type AgentVersion } from '../stores/agents-paas';
 import { useGroupsStore } from '../stores/groups';
 import { api } from '../api/client';
 import { PageHeader } from '@/components/common/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Bot, Plus, Trash2, Link as LinkIcon, Folder } from 'lucide-react';
+import { Bot, Plus, Trash2, Link as LinkIcon, Folder, History, RotateCcw } from 'lucide-react';
 
 const RESOURCE_LABEL: Record<ResourceType, string> = {
   mcp_server: 'MCP Server',
@@ -15,13 +15,14 @@ const RESOURCE_LABEL: Record<ResourceType, string> = {
 };
 
 export function AgentStudioPage() {
-  const { list, quota, used, loading, load, loadAvailable, available, create, remove, addMount, removeMount, update } = useAgentsPaasStore();
+  const { list, quota, used, loading, load, loadAvailable, available, create, remove, addMount, removeMount, update, listVersions, restoreVersion, versions } = useAgentsPaasStore();
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [model, setModel] = useState('');
   const [engine, setEngine] = useState<'claude' | 'atomcode'>('claude');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showVersions, setShowVersions] = useState(false);
 
   useEffect(() => { load(); loadAvailable(); }, [load, loadAvailable]);
   const groups = useGroupsStore((s) => s.groups);
@@ -202,6 +203,19 @@ export function AgentStudioPage() {
                       toast.error('Unbind failed');
                     }
                   }}
+                />
+
+                <VersionHistorySection
+                  agent={selected}
+                  versions={versions[selected.id] ?? []}
+                  onLoad={() => { void listVersions(selected.id); }}
+                  onRestore={async (vid) => {
+                    const ok = await restoreVersion(selected.id, vid);
+                    if (ok) toast.success('已回滚到该版本');
+                    else toast.error('回滚失败');
+                  }}
+                  showAll={showVersions}
+                  onToggleShow={() => setShowVersions((v) => !v)}
                 />
               </CardContent>
             </Card>
@@ -398,6 +412,72 @@ function BoundGroupsSection({
           <div className="flex justify-end mt-2">
             <Button size="sm" variant="ghost" onClick={() => setShowPicker(false)}>取消</Button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VersionHistorySection({
+  agent,
+  versions,
+  onLoad,
+  onRestore,
+  showAll,
+  onToggleShow,
+}: {
+  agent: AgentDefinition;
+  versions: AgentVersion[];
+  onLoad: () => void | Promise<void>;
+  onRestore: (vid: string) => void | Promise<void>;
+  showAll: boolean;
+  onToggleShow: () => void;
+}) {
+  useEffect(() => { onLoad(); }, [agent.id, onLoad]);
+
+  const list = showAll ? versions : versions.slice(0, 3);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium flex items-center gap-2">
+          <History className="size-4" /> 版本历史（{versions.length}）
+        </div>
+        {versions.length > 3 && (
+          <Button size="sm" variant="ghost" onClick={onToggleShow}>
+            {showAll ? '收起' : `展开全部 (${versions.length})`}
+          </Button>
+        )}
+      </div>
+      <div className="text-xs text-muted-foreground">
+        每次修改 Agent 会自动生成版本快照（最多保留 20 个）。回滚前会再生成一个当前状态快照作为 undo。
+      </div>
+
+      {versions.length === 0 ? (
+        <div className="text-sm text-muted-foreground">尚无版本历史。修改 Agent 后会自动创建快照。</div>
+      ) : (
+        <div className="space-y-1">
+          {list.map((v) => (
+            <div key={v.id} className="flex items-center justify-between py-1.5 border-b last:border-0 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-mono text-xs">v{v.version}</span>
+                <span className="text-xs text-muted-foreground">
+                  {new Date(v.created_at).toLocaleString('zh-CN')} · {v.created_by.slice(0, 8)}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  if (confirm(`回滚到 v${v.version}？当前状态会自动保存为新版本作为 undo。`)) {
+                    onRestore(v.id);
+                  }
+                }}
+              >
+                <RotateCcw className="size-4 mr-1" /> 回滚
+              </Button>
+            </div>
+          ))}
         </div>
       )}
     </div>

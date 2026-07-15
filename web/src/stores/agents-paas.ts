@@ -28,6 +28,13 @@ export interface AgentDefinition {
   mounts?: AgentMount[];
 }
 
+export interface AgentVersion {
+  id: string;
+  version: number;
+  created_at: string;
+  created_by: string;
+}
+
 export interface AvailableResource {
   mcp_servers: Array<{ id: string; name: string; type: string; enabled: boolean }>;
   knowledge_bases: Array<{ id: string; name: string; doc_count: number }>;
@@ -41,6 +48,7 @@ interface AgentsState {
   loading: boolean;
   error: string | null;
   available: AvailableResource | null;
+  versions: Record<string, AgentVersion[]>;
   load: () => Promise<void>;
   loadAvailable: () => Promise<void>;
   create: (data: {
@@ -59,6 +67,8 @@ interface AgentsState {
   remove: (id: string) => Promise<boolean>;
   addMount: (agentId: string, resourceType: ResourceType, resourceId: string) => Promise<boolean>;
   removeMount: (agentId: string, mountId: string) => Promise<boolean>;
+  listVersions: (agentId: string) => Promise<AgentVersion[]>;
+  restoreVersion: (agentId: string, versionId: string) => Promise<boolean>;
 }
 
 export const useAgentsPaasStore = create<AgentsState>((set, get) => ({
@@ -68,6 +78,7 @@ export const useAgentsPaasStore = create<AgentsState>((set, get) => ({
   loading: false,
   error: null,
   available: null,
+  versions: {},
   load: async () => {
     set({ loading: true, error: null });
     try {
@@ -121,6 +132,25 @@ export const useAgentsPaasStore = create<AgentsState>((set, get) => ({
     try {
       await api.delete(`/api/paas/agents/${agentId}/mounts/${mountId}`);
       await get().load();
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  listVersions: async (agentId) => {
+    try {
+      const res = await api.get<{ versions: AgentVersion[] }>(`/api/paas/agents/${agentId}/versions`);
+      set({ versions: { ...get().versions, [agentId]: res.versions ?? [] } });
+      return res.versions ?? [];
+    } catch {
+      return [];
+    }
+  },
+  restoreVersion: async (agentId, versionId) => {
+    try {
+      await api.post(`/api/paas/agents/${agentId}/versions/${versionId}/restore`);
+      await get().load();
+      await get().listVersions(agentId);
       return true;
     } catch {
       return false;

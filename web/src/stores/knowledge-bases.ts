@@ -8,6 +8,9 @@ export interface KbDocumentMeta {
   content_hash: string;
   size_bytes: number;
   created_at: string;
+  parser_type?: string | null;
+  embedding_model?: string | null;
+  embedded: boolean;
 }
 
 export interface KnowledgeBase {
@@ -38,8 +41,11 @@ interface KbState {
   remove: (id: string) => Promise<boolean>;
   listDocuments: (kbId: string) => Promise<KbDocumentMeta[]>;
   uploadDocument: (kbId: string, file: File) => Promise<boolean>;
+  uploadFromUrl: (kbId: string, url: string) => Promise<boolean>;
   removeDocument: (kbId: string, docId: string) => Promise<boolean>;
   search: (kbId: string, query: string, limit?: number) => Promise<KbSearchHit[]>;
+  embedAll: (kbId: string) => Promise<{ embedded: number; failed: number } | null>;
+  embedDocument: (kbId: string, docId: string) => Promise<boolean>;
 }
 
 export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
@@ -87,6 +93,14 @@ export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
       return false;
     }
   },
+  uploadFromUrl: async (kbId, url) => {
+    try {
+      await api.post(`/api/paas/knowledge-bases/${kbId}/documents/url`, { url }, 30_000);
+      return true;
+    } catch {
+      return false;
+    }
+  },
   removeDocument: async (kbId, docId) => {
     try {
       await api.delete(`/api/paas/knowledge-bases/${kbId}/documents/${docId}`);
@@ -98,5 +112,21 @@ export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
   search: async (kbId, query, limit = 5) => {
     const res = await api.post<{ results: KbSearchHit[] }>(`/api/paas/knowledge-bases/${kbId}/search`, { query, limit });
     return res.results ?? [];
+  },
+  embedAll: async (kbId) => {
+    try {
+      const res = await api.post<{ embedded?: number; failed?: number }>(`/api/paas/knowledge-bases/${kbId}/embed-all`, {}, 120_000);
+      return { embedded: res.embedded ?? 0, failed: res.failed ?? 0 };
+    } catch {
+      return null;
+    }
+  },
+  embedDocument: async (kbId, docId) => {
+    try {
+      await api.post(`/api/paas/knowledge-bases/${kbId}/documents/${docId}/embed`, {}, 30_000);
+      return true;
+    } catch {
+      return false;
+    }
   },
 }));
