@@ -1484,6 +1484,9 @@ async function runQuery(
     { name: 'interaction.md', text: `<behavior>\n${INTERACTION_GUIDELINES}\n</behavior>` },
     { name: 'skill-routing.md', text: `<skill-routing>\n${SKILL_ROUTING_GUIDELINES}\n</skill-routing>` },
     { name: 'security-rules.md', text: `<security>\n${buildSecurityRulesPrompt(disableMemoryLayer)}\n</security>` },
+    ...(containerInput.agentDefinition?.systemPrompt
+      ? [{ name: 'agent-definition.md', text: `<agent-definition>\n${containerInput.agentDefinition.systemPrompt}\n</agent-definition>` }]
+      : []),
     ...(memoryRecall && memoryPromptName
       ? [{ name: memoryPromptName, text: `<memory-system>\n${memoryRecall}\n</memory-system>` }]
       : []),
@@ -1590,12 +1593,41 @@ async function runQuery(
   }
 
   try {
+    // Agent definition overrides: per-agent model + filtered MCP mounts.
+    const agentDef = containerInput.agentDefinition;
+    const agentModel =
+      agentDef?.model && agentDef.model.trim().length > 0
+        ? agentDef.model.trim()
+        : CLAUDE_MODEL;
+    const agentMaxTurns = agentDef?.maxTurns ?? undefined;
+    const agentTemperature = agentDef?.temperature ?? undefined;
+    const mountedMcpIds = new Set(
+      (agentDef?.mounts ?? [])
+        .filter((m) => m.resourceType === 'mcp_server')
+        .map((m) => m.resourceId),
+    );
+    const userMcpAll = loadUserMcpServers();
+    const userMcpFiltered = agentDef
+      ? Object.fromEntries(
+          Object.entries(userMcpAll).filter(([key]) => mountedMcpIds.has(key)),
+        )
+      : userMcpAll;
+    const kbIds = (agentDef?.mounts ?? [])
+      .filter((m) => m.resourceType === 'knowledge_base' && m.kbId)
+      .map((m) => m.kbId as string);
+    if (agentDef) {
+      log(
+        `Agent definition applied: model=${agentModel}, mounts=${agentDef.mounts.length} (mcp=${mountedMcpIds.size}, kb=${kbIds.length})`,
+      );
+    }
     const q = query({
       prompt: stream,
       options: {
         ...(pathToClaudeCodeExecutable && { pathToClaudeCodeExecutable }),
-        model: CLAUDE_MODEL,
+        model: agentModel,
         ...(CLAUDE_EFFORT ? { effort: CLAUDE_EFFORT } : {}),
+        ...(agentMaxTurns !== undefined ? { maxTurns: agentMaxTurns } : {}),
+        ...(agentTemperature !== undefined ? { temperature: agentTemperature } : {}),
         cwd: WORKSPACE_GROUP,
         additionalDirectories: extraDirs,
         resume: sessionId,
@@ -1622,7 +1654,7 @@ async function runQuery(
         ...(Object.keys(flagSettings).length > 0 ? { settings: flagSettings as any } : {}),
         ...(userPlugins && { plugins: userPlugins }),
         mcpServers: {
-          ...loadUserMcpServers(),     // 用户配置的 MCP（stdio/http/sse），SDK 原生支持
+          ...userMcpFiltered,     // 用户配置的 MCP（stdio/http/sse），SDK 原生支持
           deepthink: mcpServerConfig,  // 内置 SDK MCP 放最后，确保不被同名覆盖
         },
         hooks: {
@@ -2245,6 +2277,9 @@ async function main(): Promise<void> {
     workspaceGlobal: WORKSPACE_GLOBAL,
     workspaceMemory: WORKSPACE_MEMORY,
     disableMemoryLayer,
+    kbIds: (containerInput.agentDefinition?.mounts ?? [])
+      .filter((m) => m.resourceType === 'knowledge_base' && m.kbId)
+      .map((m) => m.kbId as string),
   };
   const buildMcpServerConfig = () => createSdkMcpServer({
     name: 'deepthink',

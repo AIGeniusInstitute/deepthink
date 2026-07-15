@@ -95,6 +95,8 @@ import {
   touchImContextBindingActivity,
   updateAgentContextInfo,
   backfillEmptyAllowlistsForUser,
+  searchKbDocuments,
+  getKnowledgeBase,
 } from './db.js';
 // feishu.js deprecated exports are no longer needed; imManager handles all connections
 import { imManager } from './im-manager.js';
@@ -164,6 +166,7 @@ import type {
 } from './im-manager.js';
 import { GroupQueue } from './group-queue.js';
 import { startSchedulerLoop, triggerTaskNow, computeNextRunForSchedule } from './task-scheduler.js';
+import { seedMarketplaceIfEmpty } from './marketplace-seed.js';
 import {
   checkBillingAccessFresh,
   formatBillingAccessDeniedMessage,
@@ -5986,6 +5989,9 @@ async function processTaskIpc(
     // For discord_get_history
     limit?: number;
     before?: string;
+    // For kb_search
+    kbIds?: string[];
+    query?: string;
   },
   sourceGroup: string, // Verified identity from IPC directory
   isAdminHome: boolean, // Whether source is admin home container
@@ -6884,6 +6890,73 @@ async function processTaskIpc(
           { data },
           'Invalid send_file request - missing required fields',
         );
+      }
+      break;
+
+    case 'kb_search':
+      if (data.requestId) {
+        const requestId = data.requestId;
+        if (!SAFE_REQUEST_ID_RE.test(requestId)) {
+          logger.warn({ sourceGroup, requestId }, 'Rejected kb_search request with invalid requestId');
+          break;
+        }
+        const kbTasksDir = path.resolve(tasksDir);
+        const kbResultFilePath = path.resolve(tasksDir, `kb_search_result_${requestId}.json`);
+        if (!kbResultFilePath.startsWith(`${kbTasksDir}${path.sep}`)) {
+          logger.warn({ sourceGroup, requestId, kbResultFilePath }, 'Rejected kb_search unsafe result path');
+          break;
+        }
+        fs.mkdirSync(path.dirname(kbResultFilePath), { recursive: true });
+        const writeKbResult = (payload: object) => {
+          const tmpPath = `${kbResultFilePath}.tmp`;
+          fs.writeFileSync(tmpPath, JSON.stringify(payload));
+          fs.renameSync(tmpPath, kbResultFilePath);
+        };
+        try {
+          const requestedKbIds = Array.isArray(data.kbIds) ? (data.kbIds as string[]) : [];
+          if (requestedKbIds.length === 0) {
+            writeKbResult({ success: true, results: [] });
+            break;
+          }
+          const ownerId = sourceGroupEntry?.created_by;
+          if (!ownerId) {
+            writeKbResult({ success: false, error: 'Group has no owner — KB access denied' });
+            break;
+          }
+          // Verify ownership: every requested KB must belong to this user.
+          const verified: string[] = [];
+          const kbNames: Record<string, string> = {};
+          for (const kbId of requestedKbIds) {
+            const kb = getKnowledgeBase(kbId, ownerId);
+            if (kb) {
+              verified.push(kbId);
+              kbNames[kbId] = kb.name;
+            }
+          }
+          if (verified.length === 0) {
+            writeKbResult({ success: false, error: 'No accessible knowledge bases for this group' });
+            break;
+          }
+          const query = typeof data.query === 'string' ? data.query : '';
+          if (!query.trim()) {
+            writeKbResult({ success: false, error: 'Empty query' });
+            break;
+          }
+          const limit = Math.min(Math.max(Number(data.limit ?? 5) || 5, 1), 20);
+          const rows = searchKbDocuments(verified, query, limit);
+          const results = rows.map((r) => ({
+            kb_id: r.kb_id,
+            kb_name: kbNames[r.kb_id] ?? null,
+            doc_id: r.doc_id,
+            filename: r.filename,
+            snippet: r.snippet,
+            rank: r.rank,
+          }));
+          writeKbResult({ success: true, results });
+        } catch (err) {
+          logger.error({ err, sourceGroup }, 'kb_search IPC failed');
+          writeKbResult({ success: false, error: err instanceof Error ? err.message : String(err) });
+        }
       }
       break;
 
@@ -11281,6 +11354,11 @@ async function main(): Promise<void> {
   setInterval(() => {
     void checkImBindingsHealth();
   }, IM_BINDING_HEALTH_CHECK_INTERVAL);
+
+  // Seed marketplace default templates (idempotent — no-op if items already exist)
+  seedMarketplaceIfEmpty().catch((err) =>
+    logger.error({ err }, 'Marketplace seed failed'),
+  );
 }
 
 async function checkImBindingsHealth(): Promise<void> {

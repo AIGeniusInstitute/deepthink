@@ -43,6 +43,9 @@ import {
   getAtomcodeSessionId,
   setAtomcodeSessionId,
   clearAtomcodeSessionId,
+  getAgentDefinition,
+  listAgentMounts,
+  getKnowledgeBase,
 } from './db.js';
 import { DEFAULT_LANGUAGE } from './i18n-languages.js';
 import { isApiError } from './agent-output-parser.js';
@@ -249,6 +252,28 @@ export interface ContainerInput {
    * calling SDK query().
    */
   engine?: 'claude' | 'atomcode';
+  /** Agent PaaS: 用户自定义 Agent 定义 + 挂载资源（已展平）。 */
+  agentDefinition?: {
+    id: string;
+    systemPrompt?: string;
+    model?: string | null;
+    maxTurns?: number | null;
+    temperature?: number | null;
+    mounts: Array<{
+      resourceType: 'mcp_server' | 'skill' | 'knowledge_base';
+      resourceId: string;
+      resourceName?: string;
+      mcpConfig?: {
+        type: string;
+        command?: string;
+        args?: string[];
+        env?: Record<string, string>;
+        url?: string;
+      };
+      kbId?: string;
+      kbName?: string;
+    }>;
+  };
 }
 
 export interface ContainerOutput {
@@ -940,6 +965,80 @@ function buildContainerArgs(
   return args;
 }
 
+/**
+ * Agent PaaS: Load a group's bound Agent definition with mounts flattened.
+ * Returns null when the group has no agent_def_id or the definition is missing.
+ * Reads MCP servers from user's servers.json and flattens matching configs.
+ */
+function loadGroupAgentDefinition(
+  agentDefId: string | null | undefined,
+  ownerUserId: string | undefined,
+): ContainerInput['agentDefinition'] {
+  if (!agentDefId || !ownerUserId) return undefined;
+  const def = getAgentDefinition(agentDefId, ownerUserId);
+  if (!def) {
+    logger.warn(
+      { agentDefId, ownerUserId },
+      'Agent definition not found for group; falling back to default behavior',
+    );
+    return undefined;
+  }
+  const mounts = listAgentMounts(agentDefId);
+  const userMcpServers = loadUserMcpServers(ownerUserId);
+  const flattened: NonNullable<NonNullable<ContainerInput['agentDefinition']>['mounts'][number]>[] = [];
+  for (const m of mounts) {
+    const resourceType = m.resource_type as 'mcp_server' | 'skill' | 'knowledge_base';
+    const base: {
+      resourceType: 'mcp_server' | 'skill' | 'knowledge_base';
+      resourceId: string;
+      resourceName?: string;
+      mcpConfig?: {
+        type: string;
+        command?: string;
+        args?: string[];
+        env?: Record<string, string>;
+        url?: string;
+      };
+      kbId?: string;
+      kbName?: string;
+    } = { resourceType, resourceId: m.resource_id };
+    if (resourceType === 'mcp_server') {
+      // loadUserMcpServers returns Record<serverId, config>. The key IS the id.
+      const config = userMcpServers[m.resource_id];
+      if (config) {
+        base.resourceName = m.resource_id;
+        base.mcpConfig = {
+          type: typeof config.type === 'string' ? config.type : 'stdio',
+          command: typeof config.command === 'string' ? config.command : undefined,
+          args: Array.isArray(config.args) ? (config.args as string[]) : undefined,
+          env: config.env && typeof config.env === 'object'
+            ? (config.env as Record<string, string>)
+            : undefined,
+          url: typeof config.url === 'string' ? config.url : undefined,
+        };
+      } else {
+        base.resourceName = '(MCP not found)';
+      }
+    } else if (resourceType === 'skill') {
+      base.resourceName = m.resource_id;
+    } else if (resourceType === 'knowledge_base') {
+      const kb = getKnowledgeBase(m.resource_id, ownerUserId);
+      base.resourceName = kb?.name ?? '(KB not found)';
+      base.kbId = m.resource_id;
+      base.kbName = kb?.name;
+    }
+    flattened.push(base);
+  }
+  return {
+    id: def.id,
+    systemPrompt: def.system_prompt || undefined,
+    model: def.model,
+    maxTurns: def.max_turns,
+    temperature: def.temperature,
+    mounts: flattened,
+  };
+}
+
 export async function runContainerAgent(
   group: RegisteredGroup,
   input: ContainerInput,
@@ -1056,6 +1155,10 @@ export async function runContainerAgent(
         plugins: group.created_by
           ? loadUserPlugins(group.created_by, { runtime: 'docker' })
           : [],
+        agentDefinition: loadGroupAgentDefinition(
+          group.agentDefId,
+          group.created_by,
+        ),
         contextAudit: buildClaudeContextPlan({
           executionMode: 'container',
           group,
@@ -1877,6 +1980,10 @@ export async function runHostAgent(
         engine: groupEngine,
         userLanguage: input.userLanguage ?? ownerLanguage,
         plugins: prepareHostPlugins(group.created_by),
+        agentDefinition: loadGroupAgentDefinition(
+          group.agentDefId,
+          group.created_by,
+        ),
         contextAudit: hostClaudeContextPlan.audit,
       };
       proc.stdin.write(JSON.stringify(hostInput));

@@ -10,6 +10,9 @@ import { SkillsPage } from './pages/SkillsPage';
 import { McpServersPage } from './pages/McpServersPage';
 import { PluginsPage } from './pages/PluginsPage';
 import { AgentDefinitionsPage } from './pages/AgentDefinitionsPage';
+import { KnowledgeBasesPage } from './pages/KnowledgeBasesPage';
+import { AgentStudioPage } from './pages/AgentStudioPage';
+import { MarketplacePage } from './pages/MarketplacePage';
 import { UsersPage } from './pages/UsersPage';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { AppLayout } from './components/layout/AppLayout';
@@ -72,6 +75,9 @@ export function App() {
           <Route path="/mcp-servers" element={<McpServersPage />} />
           <Route path="/plugins" element={<PluginsPage />} />
           <Route path="/agent-definitions" element={<AgentDefinitionsPage />} />
+          <Route path="/agents" element={<AgentStudioPage />} />
+          <Route path="/knowledge-bases" element={<KnowledgeBasesPage />} />
+          <Route path="/marketplace" element={<MarketplacePage />} />
           <Route path="/settings" element={<Suspense fallback={null}><SettingsPage /></Suspense>} />
           <Route
             path="/users"
