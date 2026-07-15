@@ -6,8 +6,9 @@ import { useAuthStore } from '../stores/auth';
 import { UserListTab } from '../components/users/UserListTab';
 import { InviteCodesTab } from '../components/users/InviteCodesTab';
 import { AuditLogTab } from '../components/users/AuditLogTab';
+import { AgentQuotaTab } from '../components/users/AgentQuotaTab';
 
-type Tab = 'users' | 'invites' | 'audit';
+type Tab = 'users' | 'invites' | 'audit' | 'quotas';
 
 export function UsersPage() {
   const [tab, setTab] = useState<Tab>('users');
@@ -21,15 +22,17 @@ export function UsersPage() {
     currentUser?.role === 'admin' || !!currentUser?.permissions.includes('manage_invites');
   const canViewAudit =
     currentUser?.role === 'admin' || !!currentUser?.permissions.includes('view_audit_log');
+  const isAdmin = currentUser?.role === 'admin';
 
   const tabs = useMemo(() => {
     const list: Array<{ key: Tab; label: string; visible: boolean }> = [
       { key: 'users', label: '用户列表', visible: canManageUsers },
+      { key: 'quotas', label: 'Agent 配额', visible: isAdmin },
       { key: 'invites', label: '邀请码', visible: canManageInvites },
       { key: 'audit', label: '审计日志', visible: canViewAudit },
     ];
     return list.filter((item) => item.visible);
-  }, [canManageInvites, canManageUsers, canViewAudit]);
+  }, [canManageInvites, canManageUsers, canViewAudit, isAdmin]);
 
   useEffect(() => {
     if (tabs.length === 0) return;
@@ -79,6 +82,9 @@ export function UsersPage() {
 
         {tab === 'users' && canManageUsers && (
           <UserListTab currentUser={currentUser} setNotice={setNotice} setError={setError} />
+        )}
+        {tab === 'quotas' && isAdmin && (
+          <AgentQuotaTab setNotice={setNotice} setError={setError} />
         )}
         {tab === 'invites' && canManageInvites && (
           <InviteCodesTab currentUser={currentUser} setNotice={setNotice} setError={setError} />

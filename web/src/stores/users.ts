@@ -57,10 +57,18 @@ export interface AuditQuery {
   offset?: number;
 }
 
+export interface AgentQuota {
+  user_id: string;
+  username: string;
+  quota: number;
+  used: number;
+}
+
 interface UsersState {
   users: UserPublic[];
   invites: InviteCode[];
   auditLogs: AuditLogEntry[];
+  quotas: AgentQuota[];
   totalUsers: number;
   page: number;
   pageSize: number;
@@ -104,6 +112,8 @@ interface UsersState {
   }) => Promise<string>;
   deleteInvite: (code: string) => Promise<void>;
   fetchAuditLogs: (query?: AuditQuery) => Promise<void>;
+  fetchQuotas: () => Promise<void>;
+  updateQuota: (userId: string, quota: number) => Promise<boolean>;
 }
 
 function asMessage(err: unknown, fallback: string): string {
@@ -129,6 +139,7 @@ export const useUsersStore = create<UsersState>((set) => ({
   users: [],
   invites: [],
   auditLogs: [],
+  quotas: [],
   totalUsers: 0,
   page: 1,
   pageSize: 50,
@@ -235,6 +246,26 @@ export const useUsersStore = create<UsersState>((set) => ({
       set({ auditLogs: data.logs, loading: false });
     } catch (err) {
       set({ error: asMessage(err, 'Failed to fetch audit logs'), loading: false });
+    }
+  },
+
+  fetchQuotas: async () => {
+    set({ loading: true, error: null });
+    try {
+      const data = await api.get<{ quotas: AgentQuota[] }>('/api/paas/admin/quotas');
+      set({ quotas: data.quotas ?? [], loading: false });
+    } catch (err) {
+      set({ error: asMessage(err, 'Failed to fetch quotas'), loading: false });
+    }
+  },
+
+  updateQuota: async (userId, quota) => {
+    try {
+      await api.put(`/api/paas/admin/quotas/${userId}`, { quota });
+      await useUsersStore.getState().fetchQuotas();
+      return true;
+    } catch {
+      return false;
     }
   },
 }));
