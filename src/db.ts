@@ -51,6 +51,14 @@ import { getDefaultPermissions, normalizePermissions } from './permissions.js';
 let db: InstanceType<typeof Database>;
 let vecExtensionLoaded = false;
 
+/** Access the initialized database instance. */
+export function getDb(): InstanceType<typeof Database> {
+  if (!db) {
+    throw new Error('Database not initialized. Call initDatabase() first.');
+  }
+  return db;
+}
+
 export function isVecExtensionLoaded(): boolean {
   return vecExtensionLoaded;
 }
@@ -1016,6 +1024,38 @@ export function initDatabase(): void {
       FOREIGN KEY (review_id) REFERENCES marketplace_reviews(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_review_reports_status ON marketplace_review_reports(status);
+
+    CREATE TABLE IF NOT EXISTS sandbox_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      container_name TEXT NOT NULL,
+      language TEXT NOT NULL DEFAULT 'python',
+      browser_enabled INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'created',
+      created_at INTEGER NOT NULL,
+      last_active_at INTEGER NOT NULL,
+      stopped_at INTEGER,
+      stopped_reason TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_sandbox_sessions_user ON sandbox_sessions(user_id, status);
+
+    CREATE TABLE IF NOT EXISTS sandbox_executions (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      language TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      status TEXT NOT NULL,
+      exit_code INTEGER,
+      stdout_bytes INTEGER NOT NULL DEFAULT 0,
+      stderr_bytes INTEGER NOT NULL DEFAULT 0,
+      truncated INTEGER NOT NULL DEFAULT 0,
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      peak_memory_mb INTEGER,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sandbox_sessions(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_sandbox_executions_session ON sandbox_executions(session_id, created_at);
   `);
 
   // Phase 2 columns
@@ -1100,6 +1140,7 @@ export function initDatabase(): void {
   ensureColumn('registered_groups', 'engine', "TEXT DEFAULT 'claude'");
   ensureColumn('registered_groups', 'agent_def_id', 'TEXT');
   ensureColumn('sessions', 'atomcode_session_id', 'TEXT');
+  ensureColumn('sessions', 'sandbox_session_id', 'TEXT');
   ensureColumn('users', 'agent_quota', 'INTEGER NOT NULL DEFAULT 10');
   ensureColumn('messages', 'token_usage', 'TEXT');
   ensureColumn('messages', 'turn_id', 'TEXT');
@@ -1737,7 +1778,7 @@ export function initDatabase(): void {
     db.exec('ALTER TABLE scheduled_tasks ADD COLUMN loop_run_id TEXT');
   }
 
-  const SCHEMA_VERSION = '50';
+  const SCHEMA_VERSION = '51';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -3551,6 +3592,49 @@ export function deleteSession(
   const effectiveAgentId = agentId || '';
   db.prepare(
     'DELETE FROM sessions WHERE group_folder = ? AND agent_id = ?',
+  ).run(groupFolder, effectiveAgentId);
+}
+
+/**
+ * Get the sandbox_session_id bound to an agent session (group_folder + agent_id).
+ * Returns null if none.
+ */
+export function getSandboxSessionId(
+  groupFolder: string,
+  agentId?: string | null,
+): string | null {
+  const effectiveAgentId = agentId || '';
+  const row = db
+    .prepare(
+      'SELECT sandbox_session_id FROM sessions WHERE group_folder = ? AND agent_id = ?',
+    )
+    .get(groupFolder, effectiveAgentId) as
+    | { sandbox_session_id: string | null }
+    | undefined;
+  return row?.sandbox_session_id ?? null;
+}
+
+/** Set the sandbox_session_id for an agent session. Creates the row if missing. */
+export function setSandboxSessionId(
+  groupFolder: string,
+  sandboxSessionId: string,
+  agentId?: string | null,
+): void {
+  const effectiveAgentId = agentId || '';
+  db.prepare(
+    `INSERT INTO sessions (group_folder, session_id, agent_id, sandbox_session_id) VALUES (?, '', ?, ?)
+     ON CONFLICT(group_folder, agent_id) DO UPDATE SET sandbox_session_id = excluded.sandbox_session_id`,
+  ).run(groupFolder, effectiveAgentId, sandboxSessionId);
+}
+
+/** Clear the sandbox_session_id for an agent session. */
+export function clearSandboxSessionId(
+  groupFolder: string,
+  agentId?: string | null,
+): void {
+  const effectiveAgentId = agentId || '';
+  db.prepare(
+    'UPDATE sessions SET sandbox_session_id = NULL WHERE group_folder = ? AND agent_id = ?',
   ).run(groupFolder, effectiveAgentId);
 }
 

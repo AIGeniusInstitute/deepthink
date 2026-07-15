@@ -1853,5 +1853,288 @@ Use this when the user describes a reusable capability that should be persisted 
     );
   }
 
+  // --- sandbox_* tools ---
+  // Agents run untrusted code in an isolated Docker sandbox (deepthink-sandbox:latest).
+  // The host process handles the actual docker run/exec; agent-runner just forwards
+  // requests via IPC files in tasks/ dir and polls for results.
+  tools.push(
+    tool(
+      'sandbox_run_code',
+      'Execute code in an isolated Docker sandbox (Python/Node/Shell). Returns stdout/stderr/exit_code/duration. The sandbox is reused across calls within the same agent session. P0 hardening: non-root user, read-only rootfs, tmpfs /workspace, seccomp default-deny, cap-drop ALL, memory/cpu/pids limits, network disabled (for non-browser sandboxes).',
+      {
+        language: z.enum(['python', 'node', 'sh']).describe('Code language'),
+        code: z.string().describe('Code to execute'),
+        stdin: z.string().optional().describe('Optional stdin input'),
+        timeout_ms: z.number().optional().describe('Wall-clock timeout in ms (default 30000, max 300000)'),
+      },
+      async (args) => {
+        const requestId = newRequestId();
+        try {
+          const result = await pollIpcResult(
+            TASKS_DIR,
+            {
+              type: 'sandbox_run_code',
+              requestId,
+              groupFolder: ctx.groupFolder,
+              language: args.language,
+              code: args.code,
+              stdin: args.stdin ?? '',
+              timeoutMs: args.timeout_ms ?? 30_000,
+              timestamp: new Date().toISOString(),
+            },
+            'sandbox_run_code_result',
+            Math.min((args.timeout_ms ?? 30_000) + 15_000, 120_000),
+          );
+          if (!result.success) {
+            return {
+              content: [{ type: 'text' as const, text: `Sandbox exec failed: ${result.error || 'Unknown'}` }],
+              isError: true,
+            };
+          }
+          const r = result.result as {
+            status: string;
+            exit_code: number | null;
+            stdout: string;
+            stderr: string;
+            truncated: boolean;
+            duration_ms: number;
+            session_id: string;
+          };
+          const lines: string[] = [];
+          lines.push(`status=${r.status} exit_code=${r.exit_code} duration_ms=${r.duration_ms} session=${r.session_id?.slice(0, 14) ?? 'n/a'}`);
+          if (r.truncated) lines.push('WARNING: stdout/stderr truncated');
+          if (r.stdout) lines.push('--- stdout ---\n' + r.stdout);
+          if (r.stderr) lines.push('--- stderr ---\n' + r.stderr);
+          return {
+            content: [{ type: 'text' as const, text: lines.join('\n') }],
+          };
+        } catch (err) {
+          return {
+            content: [
+              { type: 'text' as const, text: `Sandbox IPC error: ${err instanceof Error ? err.message : String(err)}` },
+            ],
+            isError: true,
+          };
+        }
+      },
+    ),
+    tool(
+      'sandbox_browser_navigate',
+      'Navigate the sandbox browser to a URL. Requires the sandbox to be created with browserEnabled=true (the host will auto-create a browser-enabled sandbox if none exists).',
+      { url: z.string().describe('URL to navigate to') },
+      async (args) => {
+        const requestId = newRequestId();
+        try {
+          const result = await pollIpcResult(
+            TASKS_DIR,
+            {
+              type: 'sandbox_browser_navigate',
+              requestId,
+              groupFolder: ctx.groupFolder,
+              url: args.url,
+              timestamp: new Date().toISOString(),
+            },
+            'sandbox_browser_navigate_result',
+            30_000,
+          );
+          if (!result.success) {
+            return {
+              content: [{ type: 'text' as const, text: `Browser navigate failed: ${result.error || 'Unknown'}` }],
+              isError: true,
+            };
+          }
+          return {
+            content: [{ type: 'text' as const, text: `Navigated to ${args.url}` }],
+          };
+        } catch (err) {
+          return {
+            content: [
+              { type: 'text' as const, text: `Browser IPC error: ${err instanceof Error ? err.message : String(err)}` },
+            ],
+            isError: true,
+          };
+        }
+      },
+    ),
+    tool(
+      'sandbox_browser_click',
+      'Click an element matched by a CSS selector in the sandbox browser.',
+      { selector: z.string().describe('CSS selector') },
+      async (args) => {
+        const requestId = newRequestId();
+        try {
+          const result = await pollIpcResult(
+            TASKS_DIR,
+            {
+              type: 'sandbox_browser_click',
+              requestId,
+              groupFolder: ctx.groupFolder,
+              selector: args.selector,
+              timestamp: new Date().toISOString(),
+            },
+            'sandbox_browser_click_result',
+            15_000,
+          );
+          if (!result.success) {
+            return {
+              content: [{ type: 'text' as const, text: `Browser click failed: ${result.error || 'Unknown'}` }],
+              isError: true,
+            };
+          }
+          return { content: [{ type: 'text' as const, text: 'Clicked.' }] };
+        } catch (err) {
+          return {
+            content: [{ type: 'text' as const, text: `Browser IPC error: ${err instanceof Error ? err.message : String(err)}` }],
+            isError: true,
+          };
+        }
+      },
+    ),
+    tool(
+      'sandbox_browser_type',
+      'Type text into an element matched by a CSS selector in the sandbox browser.',
+      {
+        selector: z.string().describe('CSS selector'),
+        text: z.string().describe('Text to type'),
+      },
+      async (args) => {
+        const requestId = newRequestId();
+        try {
+          const result = await pollIpcResult(
+            TASKS_DIR,
+            {
+              type: 'sandbox_browser_type',
+              requestId,
+              groupFolder: ctx.groupFolder,
+              selector: args.selector,
+              text: args.text,
+              timestamp: new Date().toISOString(),
+            },
+            'sandbox_browser_type_result',
+            15_000,
+          );
+          if (!result.success) {
+            return {
+              content: [{ type: 'text' as const, text: `Browser type failed: ${result.error || 'Unknown'}` }],
+              isError: true,
+            };
+          }
+          return { content: [{ type: 'text' as const, text: 'Typed.' }] };
+        } catch (err) {
+          return {
+            content: [{ type: 'text' as const, text: `Browser IPC error: ${err instanceof Error ? err.message : String(err)}` }],
+            isError: true,
+          };
+        }
+      },
+    ),
+    tool(
+      'sandbox_browser_screenshot',
+      'Take a screenshot of the sandbox browser. Screenshot is saved to the workspace downloads dir and the path is returned.',
+      {},
+      async () => {
+        const requestId = newRequestId();
+        try {
+          const result = await pollIpcResult(
+            TASKS_DIR,
+            {
+              type: 'sandbox_browser_screenshot',
+              requestId,
+              groupFolder: ctx.groupFolder,
+              timestamp: new Date().toISOString(),
+            },
+            'sandbox_browser_screenshot_result',
+            15_000,
+          );
+          if (!result.success) {
+            return {
+              content: [{ type: 'text' as const, text: `Screenshot failed: ${result.error || 'Unknown'}` }],
+              isError: true,
+            };
+          }
+          const r = result.result as { url: string | null; title: string | null; saved_to: string | null };
+          const lines: string[] = [];
+          if (r.url) lines.push(`current URL: ${r.url}`);
+          if (r.title) lines.push(`page title: ${r.title}`);
+          if (r.saved_to) lines.push(`screenshot saved to: ${r.saved_to}`);
+          return { content: [{ type: 'text' as const, text: lines.join('\n') || 'Screenshot taken.' }] };
+        } catch (err) {
+          return {
+            content: [{ type: 'text' as const, text: `Browser IPC error: ${err instanceof Error ? err.message : String(err)}` }],
+            isError: true,
+          };
+        }
+      },
+    ),
+    tool(
+      'sandbox_browser_evaluate',
+      'Evaluate a JavaScript expression in the sandbox browser page and return the result.',
+      { script: z.string().describe('JavaScript expression to evaluate') },
+      async (args) => {
+        const requestId = newRequestId();
+        try {
+          const result = await pollIpcResult(
+            TASKS_DIR,
+            {
+              type: 'sandbox_browser_evaluate',
+              requestId,
+              groupFolder: ctx.groupFolder,
+              script: args.script,
+              timestamp: new Date().toISOString(),
+            },
+            'sandbox_browser_evaluate_result',
+            15_000,
+          );
+          if (!result.success) {
+            return {
+              content: [{ type: 'text' as const, text: `Evaluate failed: ${result.error || 'Unknown'}` }],
+              isError: true,
+            };
+          }
+          const r = result.result as { value: unknown };
+          return { content: [{ type: 'text' as const, text: `Value: ${JSON.stringify(r.value)}` }] };
+        } catch (err) {
+          return {
+            content: [{ type: 'text' as const, text: `Browser IPC error: ${err instanceof Error ? err.message : String(err)}` }],
+            isError: true,
+          };
+        }
+      },
+    ),
+    tool(
+      'sandbox_close',
+      'Destroy the sandbox associated with the current agent session. Call this when sandbox work is done to free resources.',
+      {},
+      async () => {
+        const requestId = newRequestId();
+        try {
+          const result = await pollIpcResult(
+            TASKS_DIR,
+            {
+              type: 'sandbox_close',
+              requestId,
+              groupFolder: ctx.groupFolder,
+              timestamp: new Date().toISOString(),
+            },
+            'sandbox_close_result',
+            10_000,
+          );
+          if (!result.success) {
+            return {
+              content: [{ type: 'text' as const, text: `Sandbox close failed: ${result.error || 'Unknown'}` }],
+              isError: true,
+            };
+          }
+          return { content: [{ type: 'text' as const, text: 'Sandbox closed.' }] };
+        } catch (err) {
+          return {
+            content: [{ type: 'text' as const, text: `Sandbox IPC error: ${err instanceof Error ? err.message : String(err)}` }],
+            isError: true,
+          };
+        }
+      },
+    ),
+  );
+
   return tools;
 }

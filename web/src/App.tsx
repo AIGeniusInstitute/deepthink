@@ -25,6 +25,7 @@ const TasksPage = lazy(() => import('./pages/TasksPage').then(m => ({ default: m
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
 const LoopsPage = lazy(() => import('./pages/LoopsPage').then(m => ({ default: m.LoopsPage })));
 const HarnessPage = lazy(() => import('./pages/HarnessPage').then(m => ({ default: m.HarnessPage })));
+const SandboxPage = lazy(() => import('./pages/SandboxPage').then(m => ({ default: m.SandboxPage })));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
 
 export function App() {
@@ -80,6 +81,7 @@ export function App() {
           <Route path="/agents" element={<AgentStudioPage />} />
           <Route path="/knowledge-bases" element={<KnowledgeBasesPage />} />
           <Route path="/marketplace" element={<MarketplacePage />} />
+          <Route path="/sandbox" element={<Suspense fallback={null}><SandboxPage /></Suspense>} />
           <Route path="/settings" element={<Suspense fallback={null}><SettingsPage /></Suspense>} />
           <Route
             path="/users"

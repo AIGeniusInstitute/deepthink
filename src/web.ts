@@ -76,6 +76,8 @@ import harnessRoutes from './routes/harness.js';
 import { usage as usageRoutes } from './routes/usage.js';
 import billingRoutes from './routes/billing.js';
 import bugReportRoutes from './routes/bug-report.js';
+import sandboxRoutes from './routes/sandbox.js';
+import { getSandboxManager } from './sandbox/index.js';
 import {
   checkBillingAccess,
   formatBillingAccessDeniedMessage,
@@ -285,6 +287,7 @@ app.route('/api', monitorRoutes);
 app.route('/api/usage', usageRoutes);
 app.route('/api/billing', billingRoutes);
 app.route('/api/bug-report', bugReportRoutes);
+app.route('/api/sandbox', sandboxRoutes);
 
 // --- POST /api/messages ---
 
@@ -1760,6 +1763,94 @@ function setupWebSocket(server: any): WebSocketServer {
               reason: '用户关闭终端',
             }),
           );
+        } else if (msg.type === 'sandbox_terminal_start') {
+          const sessionId = String(msg.sessionId || '');
+          const cols = Math.min(Math.max(Number(msg.cols) || 80, 20), 300);
+          const rows = Math.min(Math.max(Number(msg.rows) || 24, 8), 120);
+          if (!sessionId) {
+            ws.send(JSON.stringify({ type: 'sandbox_error', error: '缺少 sessionId' }));
+            return;
+          }
+          const session = getSandboxManager().get(sessionId);
+          if (!session) {
+            ws.send(JSON.stringify({ type: 'sandbox_error', sessionId, error: '沙箱不存在' }));
+            return;
+          }
+          const clientInfo = wsClients.get(ws);
+          const clientSession = clientInfo?.sessionId
+            ? getCachedSessionWithUser(clientInfo.sessionId)
+            : null;
+          if (!clientSession || clientSession.user_id !== session.userId) {
+            ws.send(JSON.stringify({ type: 'sandbox_error', sessionId, error: 'Forbidden' }));
+            return;
+          }
+          try {
+            getSandboxManager().startTerminal(
+              sessionId,
+              (data) => {
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: 'sandbox_terminal_output', sessionId, data }));
+                }
+              },
+              (code) => {
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: 'sandbox_terminal_exit', sessionId, exitCode: code }));
+                }
+              },
+            );
+            ws.send(JSON.stringify({ type: 'sandbox_terminal_started', sessionId, cols, rows }));
+          } catch (e: any) {
+            ws.send(JSON.stringify({ type: 'sandbox_error', sessionId, error: e.message }));
+          }
+        } else if (msg.type === 'sandbox_terminal_input') {
+          const sessionId = String(msg.sessionId || '');
+          const data = String(msg.data || '');
+          if (!sessionId || !data) return;
+          getSandboxManager().sendTerminalInput(sessionId, data);
+        } else if (msg.type === 'sandbox_terminal_stop') {
+          const sessionId = String(msg.sessionId || '');
+          if (!sessionId) return;
+          getSandboxManager().stopTerminal(sessionId);
+          ws.send(JSON.stringify({ type: 'sandbox_terminal_stopped', sessionId }));
+        } else if (msg.type === 'sandbox_browser_subscribe') {
+          const sessionId = String(msg.sessionId || '');
+          const initialUrl = msg.url ? String(msg.url) : undefined;
+          if (!sessionId) return;
+          const session = getSandboxManager().get(sessionId);
+          if (!session) {
+            ws.send(JSON.stringify({ type: 'sandbox_error', sessionId, error: '沙箱不存在' }));
+            return;
+          }
+          const clientInfo = wsClients.get(ws);
+          const clientSession = clientInfo?.sessionId
+            ? getCachedSessionWithUser(clientInfo.sessionId)
+            : null;
+          if (!clientSession || clientSession.user_id !== session.userId) {
+            ws.send(JSON.stringify({ type: 'sandbox_error', sessionId, error: 'Forbidden' }));
+            return;
+          }
+          try {
+            // Wire onFrame to push to this ws
+            void getSandboxManager().startBrowser(sessionId, (dataUrl) => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'sandbox_browser_frame', sessionId, dataUrl }));
+              }
+            }).then(async () => {
+              if (initialUrl) {
+                const browser = await getSandboxManager().getBrowser(sessionId);
+                if (browser) await browser.navigate(initialUrl).catch(() => {});
+              }
+              ws.send(JSON.stringify({ type: 'sandbox_browser_started', sessionId }));
+            });
+          } catch (e: any) {
+            ws.send(JSON.stringify({ type: 'sandbox_error', sessionId, error: e.message }));
+          }
+        } else if (msg.type === 'sandbox_browser_unsubscribe') {
+          const sessionId = String(msg.sessionId || '');
+          if (!sessionId) return;
+          // Just stop the browser (P0: single subscriber per session)
+          await getSandboxManager().stopBrowser(sessionId).catch(() => {});
+          ws.send(JSON.stringify({ type: 'sandbox_browser_stopped', sessionId }));
         }
       } catch (err) {
         logger.error({ err }, 'Error handling WebSocket message');
