@@ -20,6 +20,11 @@ import {
   countAgentDefinitions,
   getUserAgentQuota,
   listKnowledgeBases,
+  saveAgentVersionSnapshot,
+  listAgentVersions,
+  getAgentVersionSnapshot,
+  restoreAgentVersion,
+  listAgentMounts as _listAgentMountsForSnapshot,
   type AgentDefinitionRow,
   type AgentMountRow,
   type KnowledgeBaseRow,
@@ -198,6 +203,48 @@ paasAgentsRoute.delete('/:id/mounts/:mountId', (c) => {
     return c.json({ error: 'Mount not found' }, 404);
   }
   return c.json({ success: true });
+});
+
+// Phase 2: 版本历史
+paasAgentsRoute.get('/:id/versions', (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const agent = getAgentDefinition(id, user.id);
+  if (!agent) {
+    return c.json({ error: 'Agent definition not found' }, 404);
+  }
+  const rows = listAgentVersions(id);
+  return c.json({
+    versions: rows.map((r) => ({
+      id: r.id,
+      version: r.version,
+      created_at: r.created_at,
+      created_by: r.created_by,
+    })),
+  });
+});
+
+// Phase 2: 回滚到指定版本
+paasAgentsRoute.post('/:id/versions/:vid/restore', (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const vid = c.req.param('vid');
+  const agent = getAgentDefinition(id, user.id);
+  if (!agent) {
+    return c.json({ error: 'Agent definition not found' }, 404);
+  }
+  const snapshot = getAgentVersionSnapshot(vid);
+  if (!snapshot) {
+    return c.json({ error: 'Version not found' }, 404);
+  }
+  const restored = restoreAgentVersion(id, vid, user.id);
+  if (!restored) {
+    return c.json({ error: 'Restore failed' }, 500);
+  }
+  return c.json({
+    agent: serializeAgentDef(restored),
+    mounts: listAgentMounts(id).map(serializeMount),
+  });
 });
 
 // 便捷端点: 列出当前用户可挂载的所有资源（供前端挂载面板选择器）

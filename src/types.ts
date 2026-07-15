@@ -131,6 +131,9 @@ export interface KbDocument {
   contentHash: string;
   sizeBytes: number;
   createdAt: string;
+  parserType?: string | null;
+  embeddingModel?: string | null;
+  embedded: boolean;
 }
 
 export interface KbSearchResult {
@@ -150,6 +153,20 @@ export interface MarketplaceItem {
   tags: string[];
   payload: unknown;
   installedCount: number;
+  createdAt: string;
+  updatedAt: string;
+  status?: 'pending' | 'approved' | 'rejected';
+  submittedBy?: string | null;
+  ratingAverage?: number;
+  ratingCount?: number;
+}
+
+export interface MarketplaceReview {
+  id: string;
+  itemId: string;
+  userId: string;
+  rating: number;
+  comment: string | null;
   createdAt: string;
   updatedAt: string;
 }

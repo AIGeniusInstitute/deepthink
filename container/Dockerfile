@@ -106,6 +106,13 @@ ENV PATH="/home/node/.local/bin:${PATH}"
 # Create app directory
 WORKDIR /app
 
+# Container build does NOT read host ~/.npmrc, so a host-side npm mirror config
+# has no effect inside `docker build`. China networks default to npmjs.org and
+# time out on `npm install`. Default to npmmirror; override with
+# `--build-arg NPM_REGISTRY=https://registry.npmjs.org` for upstream/CI.
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+RUN npm config set registry "${NPM_REGISTRY}"
+
 # Copy package.json only — no lock file so "*" always resolves to latest SDK
 COPY agent-runner/package.json ./
 
@@ -128,7 +135,12 @@ RUN npm install
 # Pin 到 ~=0.27.0 (>=0.27.0,<0.28.0): headroom-ai 仍是 PyPI Beta, 且 extras 解析
 # 曾因 [memory]→torch 把镜像撑爆; `headroom --version` 自检只挡『装不上』挡不住
 # 体积/行为漂移, 故锁定已验证的 ~550MB footprint, 仅允许 0.27.x 补丁更新.
-RUN pip install "headroom-ai[code,mcp]~=0.27.0" \
+#
+# PIP_INDEX_URL default to Tsinghua mirror: same root cause as NPM_REGISTRY —
+# container build can't read host pip config, China networks time out on pypi.org.
+# Override with `--build-arg PIP_INDEX_URL=https://pypi.org/simple`.
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install --index-url "${PIP_INDEX_URL}" "headroom-ai[code,mcp]~=0.27.0" \
     && headroom --version
 
 # Install feishu-cli (binary + builtin skills), 始终跟踪 latest release。

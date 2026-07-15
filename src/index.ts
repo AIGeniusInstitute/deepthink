@@ -95,7 +95,7 @@ import {
   touchImContextBindingActivity,
   updateAgentContextInfo,
   backfillEmptyAllowlistsForUser,
-  searchKbDocuments,
+  hybridSearchKbDocuments,
   getKnowledgeBase,
 } from './db.js';
 // feishu.js deprecated exports are no longer needed; imManager handles all connections
@@ -6943,7 +6943,14 @@ async function processTaskIpc(
             break;
           }
           const limit = Math.min(Math.max(Number(data.limit ?? 5) || 5, 1), 20);
-          const rows = searchKbDocuments(verified, query, limit);
+          let queryEmbedding: Float32Array | null = null;
+          try {
+            const { embedText } = await import('./embedding.js');
+            queryEmbedding = await embedText(query);
+          } catch (err) {
+            logger.warn({ err, sourceGroup }, 'kb_search embedding failed — falling back to FTS5-only');
+          }
+          const rows = hybridSearchKbDocuments(verified, query, limit, queryEmbedding);
           const results = rows.map((r) => ({
             kb_id: r.kb_id,
             kb_name: kbNames[r.kb_id] ?? null,

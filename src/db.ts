@@ -912,10 +912,43 @@ export function initDatabase(): void {
       payload TEXT NOT NULL,
       installed_count INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'approved',
+      submitted_by TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_market_type ON marketplace_items(item_type);
+    CREATE INDEX IF NOT EXISTS idx_market_status ON marketplace_items(status);
+
+    CREATE TABLE IF NOT EXISTS marketplace_reviews (
+      id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      rating INTEGER NOT NULL,
+      comment TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(item_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_reviews_item ON marketplace_reviews(item_id);
+
+    CREATE TABLE IF NOT EXISTS agent_definition_versions (
+      id TEXT PRIMARY KEY,
+      agent_def_id TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      snapshot_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      created_by TEXT,
+      UNIQUE(agent_def_id, version),
+      FOREIGN KEY (agent_def_id) REFERENCES agent_definitions(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_versions_def ON agent_definition_versions(agent_def_id);
   `);
+
+  // Phase 2 columns
+  ensureColumn('kb_documents', 'embedding', 'BLOB');
+  ensureColumn('kb_documents', 'embedding_model', 'TEXT');
+  ensureColumn('marketplace_items', 'status', "TEXT NOT NULL DEFAULT 'approved'");
+  ensureColumn('marketplace_items', 'submitted_by', 'TEXT');
 
   // Lightweight migrations for existing DBs
   ensureColumn('users', 'permissions', "TEXT NOT NULL DEFAULT '[]'");
@@ -1630,7 +1663,7 @@ export function initDatabase(): void {
     db.exec('ALTER TABLE scheduled_tasks ADD COLUMN loop_run_id TEXT');
   }
 
-  const SCHEMA_VERSION = '48';
+  const SCHEMA_VERSION = '49';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -7218,6 +7251,10 @@ export function updateAgentDefinition(
 ): AgentDefinitionRow | null {
   const existing = getAgentDefinition(id, userId);
   if (!existing) return null;
+  // Phase 2: snapshot current state before mutating. Even if patch doesn't
+  // change any field (caller bug), the snapshot is harmless.
+  const existingMounts = listAgentMounts(id);
+  saveAgentVersionSnapshot(id, existing, existingMounts, userId);
   const next: AgentDefinitionRow = {
     ...existing,
     name: patch.name ?? existing.name,
@@ -7324,6 +7361,9 @@ export type KbDocumentRow = {
   content_hash: string;
   size_bytes: number;
   created_at: string;
+  parser_type?: string | null;
+  embedding?: Buffer | null;
+  embedding_model?: string | null;
 };
 
 export function listKnowledgeBases(userId: string): KnowledgeBaseRow[] {
@@ -7513,17 +7553,22 @@ export type MarketplaceItemRow = {
   installed_count: number;
   created_at: string;
   updated_at: string;
+  status: MarketplaceStatus;
+  submitted_by: string | null;
 };
 
-export function listMarketplaceItems(itemType?: string): MarketplaceItemRow[] {
-  if (itemType) {
-    return db
-      .prepare('SELECT * FROM marketplace_items WHERE item_type = ? ORDER BY installed_count DESC, updated_at DESC')
-      .all(itemType) as MarketplaceItemRow[];
-  }
-  return db
-    .prepare('SELECT * FROM marketplace_items ORDER BY installed_count DESC, updated_at DESC')
-    .all() as MarketplaceItemRow[];
+export function listMarketplaceItems(
+  status?: MarketplaceStatus,
+  itemType?: string,
+): MarketplaceItemRow[] {
+  let sql = 'SELECT * FROM marketplace_items';
+  const clauses: string[] = [];
+  const params: (string | number)[] = [];
+  if (status) { clauses.push('status = ?'); params.push(status); }
+  if (itemType) { clauses.push('item_type = ?'); params.push(itemType); }
+  if (clauses.length > 0) sql += ' WHERE ' + clauses.join(' AND ');
+  sql += ' ORDER BY installed_count DESC, created_at DESC';
+  return db.prepare(sql).all(...params) as MarketplaceItemRow[];
 }
 
 export function getMarketplaceItem(id: string): MarketplaceItemRow | null {
@@ -7590,4 +7635,470 @@ export function getUserAgentQuota(userId: string): number {
     .prepare('SELECT agent_quota FROM users WHERE id = ?')
     .get(userId) as { agent_quota: number } | undefined;
   return row?.agent_quota ?? 10;
+}
+
+// ─── Agent PaaS Phase 2: Embedding / Review / Version / Quota ───
+
+export function updateDocEmbedding(
+  docId: string,
+  embedding: Float32Array | Buffer,
+  model: string,
+): void {
+  const buf = embedding instanceof Buffer ? embedding : Buffer.from(embedding.buffer, embedding.byteOffset, embedding.byteLength);
+  db.prepare(
+    'UPDATE kb_documents SET embedding = ?, embedding_model = ? WHERE id = ?',
+  ).run(buf, model, docId);
+}
+
+export function getKbDocumentContent(docId: string): string | null {
+  const row = db
+    .prepare('SELECT content FROM kb_documents WHERE id = ?')
+    .get(docId) as { content: string } | undefined;
+  return row?.content ?? null;
+}
+
+export function listUnembeddedDocsInKb(kbId: string): Array<{ id: string; content: string }> {
+  return db
+    .prepare(
+      'SELECT id, content FROM kb_documents WHERE kb_id = ? AND embedding IS NULL',
+    )
+    .all(kbId) as Array<{ id: string; content: string }>;
+}
+
+export function getDocEmbedding(docId: string): Buffer | null {
+  const row = db
+    .prepare('SELECT embedding FROM kb_documents WHERE id = ?')
+    .get(docId) as { embedding: Buffer | null } | undefined;
+  return row?.embedding ?? null;
+}
+
+export function listAllKbDocIds(kbId: string): Array<{ id: string; filename: string; embedding: Buffer | null }> {
+  return db
+    .prepare(
+      'SELECT id, filename, embedding FROM kb_documents WHERE kb_id = ?',
+    )
+    .all(kbId) as Array<{ id: string; filename: string; embedding: Buffer | null }>;
+}
+
+export interface HybridSearchRow {
+  doc_id: string;
+  kb_id: string;
+  filename: string;
+  snippet: string;
+  rank: number;
+  source: 'fts' | 'vector' | 'hybrid';
+}
+
+/**
+ * Vector search: linear scan over all embedded docs in the given KBs.
+ * Returns top-K by cosine similarity to the query embedding.
+ */
+export function vectorSearchKbDocuments(
+  kbIds: string[],
+  queryEmbedding: Float32Array,
+  limit: number,
+): Array<{ doc_id: string; kb_id: string; filename: string; score: number; snippet: string }> {
+  if (kbIds.length === 0) return [];
+  const placeholders = kbIds.map(() => '?').join(',');
+  const rows = db
+    .prepare(
+      `SELECT id as doc_id, kb_id, filename, content, embedding
+       FROM kb_documents
+       WHERE kb_id IN (${placeholders}) AND embedding IS NOT NULL`,
+    )
+    .all(...kbIds) as Array<{ doc_id: string; kb_id: string; filename: string; content: string; embedding: Buffer }>;
+  const scored: Array<{ doc_id: string; kb_id: string; filename: string; score: number; snippet: string }> = [];
+  for (const r of rows) {
+    const emb = bufferToFloat32InDb(r.embedding);
+    if (!emb || emb.length === 0) continue;
+    const score = cosineSimInDb(queryEmbedding, emb);
+    const snippet = r.content.slice(0, 200).replace(/\s+/g, ' ').trim();
+    scored.push({ doc_id: r.doc_id, kb_id: r.kb_id, filename: r.filename, score, snippet });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit);
+}
+
+function bufferToFloat32InDb(buf: Buffer): Float32Array {
+  const out = new Float32Array(buf.length / 4);
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  for (let i = 0; i < out.length; i++) out[i] = view.getFloat32(i * 4, true);
+  return out;
+}
+
+function cosineSimInDb(a: Float32Array, b: Float32Array): number {
+  const len = Math.min(a.length, b.length);
+  let dot = 0;
+  let nA = 0;
+  let nB = 0;
+  for (let i = 0; i < len; i++) {
+    const av = a[i];
+    const bv = b[i];
+    dot += av * bv;
+    nA += av * av;
+    nB += bv * bv;
+  }
+  if (nA === 0 || nB === 0) return 0;
+  return dot / (Math.sqrt(nA) * Math.sqrt(nB));
+}
+
+/**
+ * Hybrid search: FTS5 bm25 + cosine similarity, normalized and weighted 0.5/0.5.
+ * Falls back to FTS5-only when queryEmbedding is null.
+ */
+export function hybridSearchKbDocuments(
+  kbIds: string[],
+  query: string,
+  limit: number,
+  queryEmbedding: Float32Array | null,
+): HybridSearchRow[] {
+  // FTS5 top-N (limit * 2)
+  const ftsLimit = Math.max(limit * 2, 10);
+  const ftsRows = searchKbDocuments(kbIds, query, ftsLimit);
+
+  if (!queryEmbedding) {
+    return ftsRows.map((r) => ({
+      doc_id: r.doc_id,
+      kb_id: r.kb_id,
+      filename: r.filename,
+      snippet: r.snippet,
+      rank: r.rank,
+      source: 'fts' as const,
+    }));
+  }
+
+  // Vector top-N (limit * 2)
+  const vecRows = vectorSearchKbDocuments(kbIds, queryEmbedding, ftsLimit);
+
+  // Normalize FTS scores (bm25 is negative, lower is better — invert)
+  const ftsScores = ftsRows.map((r) => -r.rank);
+  const ftsMin = Math.min(...ftsScores, 0);
+  const ftsMax = Math.max(...ftsScores, 1);
+  const ftsRange = ftsMax - ftsMin || 1;
+
+  // Normalize vector scores (cosine, 0-1, higher is better)
+  const vecScores = vecRows.map((r) => r.score);
+  const vecMin = Math.min(...vecScores, 0);
+  const vecMax = Math.max(...vecScores, 1);
+  const vecRange = vecMax - vecMin || 1;
+
+  const map = new Map<string, HybridSearchRow>();
+  for (const r of ftsRows) {
+    const norm = (ftsScores[ftsRows.indexOf(r)] - ftsMin) / ftsRange;
+    map.set(r.doc_id, {
+      doc_id: r.doc_id,
+      kb_id: r.kb_id,
+      filename: r.filename,
+      snippet: r.snippet,
+      rank: norm * 0.5,
+      source: 'hybrid',
+    });
+  }
+  for (const r of vecRows) {
+    const norm = (r.score - vecMin) / vecRange;
+    const existing = map.get(r.doc_id);
+    if (existing) {
+      existing.rank += norm * 0.5;
+    } else {
+      map.set(r.doc_id, {
+        doc_id: r.doc_id,
+        kb_id: r.kb_id,
+        filename: r.filename,
+        snippet: r.snippet,
+        rank: norm * 0.5,
+        source: 'hybrid',
+      });
+    }
+  }
+  const merged = Array.from(map.values());
+  merged.sort((a, b) => b.rank - a.rank);
+  return merged.slice(0, limit);
+}
+
+// ─── Marketplace: review + status ───
+
+export type MarketplaceStatus = 'pending' | 'approved' | 'rejected';
+
+export function setMarketplaceItemStatus(id: string, status: MarketplaceStatus): void {
+  db.prepare('UPDATE marketplace_items SET status = ?, updated_at = ? WHERE id = ?').run(
+    status,
+    isoNow(),
+    id,
+  );
+}
+
+export function listMarketplaceItemsByUser(userId: string): MarketplaceItemRow[] {
+  return db
+    .prepare(
+      'SELECT * FROM marketplace_items WHERE submitted_by = ? ORDER BY created_at DESC',
+    )
+    .all(userId) as MarketplaceItemRow[];
+}
+
+export interface MarketplaceReviewRow {
+  id: string;
+  item_id: string;
+  user_id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function upsertReview(
+  itemId: string,
+  userId: string,
+  rating: number,
+  comment: string | null,
+): MarketplaceReviewRow {
+  const existing = db
+    .prepare('SELECT * FROM marketplace_reviews WHERE item_id = ? AND user_id = ?')
+    .get(itemId, userId) as MarketplaceReviewRow | undefined;
+  const now = isoNow();
+  if (existing) {
+    db.prepare(
+      'UPDATE marketplace_reviews SET rating = ?, comment = ?, updated_at = ? WHERE id = ?',
+    ).run(rating, comment, now, existing.id);
+    return { ...existing, rating, comment, updated_at: now };
+  }
+  const id = crypto.randomUUID();
+  db.prepare(
+    `INSERT INTO marketplace_reviews (id, item_id, user_id, rating, comment, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, itemId, userId, rating, comment, now, now);
+  return {
+    id,
+    item_id: itemId,
+    user_id: userId,
+    rating,
+    comment,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+export function listReviews(itemId: string): MarketplaceReviewRow[] {
+  return db
+    .prepare(
+      'SELECT * FROM marketplace_reviews WHERE item_id = ? ORDER BY updated_at DESC',
+    )
+    .all(itemId) as MarketplaceReviewRow[];
+}
+
+export function getReviewStats(itemId: string): { avg: number; count: number } {
+  const row = db
+    .prepare(
+      'SELECT AVG(rating) as avg, COUNT(*) as count FROM marketplace_reviews WHERE item_id = ?',
+    )
+    .get(itemId) as { avg: number | null; count: number } | undefined;
+  return {
+    avg: row?.avg ?? 0,
+    count: row?.count ?? 0,
+  };
+}
+
+// ─── Marketplace admin: item create with status + submitted_by ───
+
+export function createMarketplaceItemWithStatus(input: {
+  item_type: string;
+  name: string;
+  description?: string;
+  author_name?: string;
+  tags?: string[];
+  payload: unknown;
+  status: MarketplaceStatus;
+  submitted_by: string | null;
+}): MarketplaceItemRow {
+  const id = crypto.randomUUID();
+  const now = isoNow();
+  db.prepare(
+    `INSERT INTO marketplace_items
+     (id, item_type, name, description, author_name, tags, payload, installed_count, created_at, updated_at, status, submitted_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    input.item_type,
+    input.name,
+    input.description ?? '',
+    input.author_name ?? '',
+    JSON.stringify(input.tags ?? []),
+    JSON.stringify(input.payload),
+    now,
+    now,
+    input.status,
+    input.submitted_by,
+  );
+  return getMarketplaceItem(id)!;
+}
+
+// ─── Agent quota admin ───
+
+export function listUserAgentQuotas(): Array<{
+  user_id: string;
+  username: string;
+  agent_quota: number;
+  used: number;
+}> {
+  return db
+    .prepare(
+      `SELECT u.id as user_id, u.username, u.agent_quota,
+              (SELECT COUNT(*) FROM agent_definitions WHERE user_id = u.id) as used
+       FROM users u
+       WHERE u.deleted_at IS NULL
+       ORDER BY u.username ASC`,
+    )
+    .all() as Array<{ user_id: string; username: string; agent_quota: number; used: number }>;
+}
+
+export function updateUserAgentQuota(userId: string, quota: number): void {
+  db.prepare('UPDATE users SET agent_quota = ? WHERE id = ?').run(quota, userId);
+}
+
+// ─── Agent version snapshots ───
+
+export interface AgentVersionRow {
+  id: string;
+  agent_def_id: string;
+  version: number;
+  snapshot_json: string;
+  created_at: string;
+  created_by: string | null;
+}
+
+export interface AgentSnapshot {
+  name: string;
+  description: string;
+  system_prompt: string;
+  model: string | null;
+  engine: 'claude' | 'atomcode';
+  avatar_emoji: string | null;
+  avatar_color: string | null;
+  max_turns: number | null;
+  temperature: number | null;
+  enabled: boolean;
+  mounts: Array<{ resource_type: string; resource_id: string }>;
+}
+
+const MAX_VERSIONS_PER_AGENT = 20;
+
+export function saveAgentVersionSnapshot(
+  agentDefId: string,
+  existing: AgentDefinitionRow,
+  mounts: AgentMountRow[],
+  createdBy: string | null,
+): void {
+  const snapshot: AgentSnapshot = {
+    name: existing.name,
+    description: existing.description,
+    system_prompt: existing.system_prompt,
+    model: existing.model,
+    engine: (existing.engine === 'atomcode' ? 'atomcode' : 'claude') as 'claude' | 'atomcode',
+    avatar_emoji: existing.avatar_emoji,
+    avatar_color: existing.avatar_color,
+    max_turns: existing.max_turns,
+    temperature: existing.temperature,
+    enabled: existing.enabled === 1,
+    mounts: mounts.map((m) => ({ resource_type: m.resource_type, resource_id: m.resource_id })),
+  };
+  const versionRow = db
+    .prepare('SELECT COALESCE(MAX(version), 0) + 1 as next FROM agent_definition_versions WHERE agent_def_id = ?')
+    .get(agentDefId) as { next: number };
+  const id = crypto.randomUUID();
+  db.prepare(
+    `INSERT INTO agent_definition_versions (id, agent_def_id, version, snapshot_json, created_at, created_by)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(id, agentDefId, versionRow.next, JSON.stringify(snapshot), isoNow(), createdBy);
+  // Prune oldest beyond MAX
+  const all = db
+    .prepare('SELECT id, version FROM agent_definition_versions WHERE agent_def_id = ? ORDER BY version DESC')
+    .all(agentDefId) as Array<{ id: string; version: number }>;
+  if (all.length > MAX_VERSIONS_PER_AGENT) {
+    const stale = all.slice(MAX_VERSIONS_PER_AGENT);
+    const del = db.prepare('DELETE FROM agent_definition_versions WHERE id = ?');
+    for (const r of stale) del.run(r.id);
+  }
+}
+
+export function listAgentVersions(agentDefId: string): Array<{
+  id: string;
+  version: number;
+  created_at: string;
+  created_by: string | null;
+}> {
+  return db
+    .prepare(
+      'SELECT id, version, created_at, created_by FROM agent_definition_versions WHERE agent_def_id = ? ORDER BY version DESC',
+    )
+    .all(agentDefId) as Array<{
+    id: string;
+    version: number;
+    created_at: string;
+    created_by: string | null;
+  }>;
+}
+
+export function getAgentVersionSnapshot(versionId: string): AgentSnapshot | null {
+  const row = db
+    .prepare('SELECT snapshot_json FROM agent_definition_versions WHERE id = ?')
+    .get(versionId) as { snapshot_json: string } | undefined;
+  if (!row) return null;
+  try {
+    return JSON.parse(row.snapshot_json) as AgentSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Agent version restore ───
+
+export function restoreAgentVersion(
+  agentDefId: string,
+  versionId: string,
+  userId: string,
+): AgentDefinitionRow | null {
+  const existing = getAgentDefinition(agentDefId, userId);
+  if (!existing) return null;
+  const snapshot = getAgentVersionSnapshot(versionId);
+  if (!snapshot) return null;
+  // Snapshot the *current* state before restoring (gives a way to undo a restore)
+  const existingMounts = listAgentMounts(agentDefId);
+  saveAgentVersionSnapshot(agentDefId, existing, existingMounts, userId);
+  // Rewrite the definition fields from snapshot
+  const next: AgentDefinitionRow = {
+    ...existing,
+    name: snapshot.name,
+    description: snapshot.description,
+    system_prompt: snapshot.system_prompt,
+    model: snapshot.model,
+    engine: snapshot.engine,
+    avatar_emoji: snapshot.avatar_emoji,
+    avatar_color: snapshot.avatar_color,
+    max_turns: snapshot.max_turns,
+    temperature: snapshot.temperature,
+    enabled: snapshot.enabled ? 1 : 0,
+    updated_at: isoNow(),
+  };
+  db.prepare(
+    `UPDATE agent_definitions SET name=?, description=?, system_prompt=?, model=?, engine=?, avatar_emoji=?, avatar_color=?, max_turns=?, temperature=?, enabled=?, updated_at=? WHERE id=? AND user_id=?`,
+  ).run(
+    next.name,
+    next.description,
+    next.system_prompt,
+    next.model,
+    next.engine,
+    next.avatar_emoji,
+    next.avatar_color,
+    next.max_turns,
+    next.temperature,
+    next.enabled,
+    next.updated_at,
+    agentDefId,
+    userId,
+  );
+  // Also restore mounts: clear current, insert from snapshot
+  db.prepare('DELETE FROM agent_mounts WHERE agent_def_id = ?').run(agentDefId);
+  for (const m of snapshot.mounts) {
+    addAgentMount(agentDefId, m.resource_type, m.resource_id);
+  }
+  return next;
 }
