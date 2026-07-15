@@ -40,7 +40,7 @@ function Stars({ avg, count, size = 'sm' }: { avg: number; count: number; size?:
 }
 
 export function MarketplacePage() {
-  const { list, load, install } = useMarketplaceStore();
+  const { list, load, install, loading } = useMarketplaceStore();
   const currentUser = useAuthStore((s) => s.user);
   const isAdmin = currentUser?.role === 'admin';
   const [filter, setFilter] = useState<MarketplaceItemType | 'all'>('all');
@@ -102,9 +102,9 @@ export function MarketplacePage() {
         )}
       </div>
 
-      {useMarketplaceStore((s) => s.loading) && <div className="text-sm text-muted-foreground mt-4">加载中…</div>}
+      {loading && <div className="text-sm text-muted-foreground mt-4">加载中…</div>}
 
-      {filtered.length === 0 && !useMarketplaceStore((s) => s.loading) && (
+      {filtered.length === 0 && !loading && (
         <div className="mt-10 text-center text-sm text-muted-foreground">
           <ShoppingBag className="size-10 mx-auto mb-2 opacity-50" />
           市场暂无内容。
