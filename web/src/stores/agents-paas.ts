@@ -102,6 +102,7 @@ interface AgentsState {
   listCollaborators: (agentId: string) => Promise<AgentCollaborator[]>;
   addCollaborator: (agentId: string, userId: string, role: 'editor' | 'viewer') => Promise<boolean>;
   removeCollaborator: (agentId: string, userId: string) => Promise<boolean>;
+  testChat: (agentId: string) => Promise<{ jid: string; folder: string; name: string } | null>;
 }
 
 export const useAgentsPaasStore = create<AgentsState>((set, get) => ({
@@ -253,6 +254,16 @@ export const useAgentsPaasStore = create<AgentsState>((set, get) => ({
       return true;
     } catch {
       return false;
+    }
+  },
+  testChat: async (agentId) => {
+    try {
+      const res = await api.post<{ jid: string; folder: string; name: string }>(
+        `/api/paas/agents/${agentId}/test-chat`,
+      );
+      return res;
+    } catch {
+      return null;
     }
   },
 }));

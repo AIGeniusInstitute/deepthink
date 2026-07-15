@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAgentsPaasStore, type AgentDefinition, type ResourceType, type AvailableResource, type AgentVersion, type AgentShare, type AgentCollaborator, type AgentVersionDiff } from '../stores/agents-paas';
 import { useGroupsStore } from '../stores/groups';
 import { api } from '../api/client';
@@ -6,7 +7,7 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Bot, Plus, Trash2, Link as LinkIcon, Folder, History, RotateCcw, Share2, Users, GitCompare } from 'lucide-react';
+import { Bot, Plus, Trash2, Link as LinkIcon, Folder, History, RotateCcw, Share2, Users, GitCompare, MessageSquare } from 'lucide-react';
 
 const RESOURCE_LABEL: Record<ResourceType, string> = {
   mcp_server: 'MCP Server',
@@ -26,7 +27,8 @@ const DIFF_FIELD_LABEL: Record<string, string> = {
 };
 
 export function AgentStudioPage() {
-  const { list, quota, used, loading, load, loadAvailable, available, create, remove, addMount, removeMount, update, listVersions, restoreVersion, versions, createShare, listShares, deleteShare, shares, listCollaborators, addCollaborator, removeCollaborator, collaborators, diffVersion } = useAgentsPaasStore();
+  const { list, quota, used, loading, load, loadAvailable, available, create, remove, addMount, removeMount, update, restoreVersion, versions, createShare, listShares, deleteShare, shares, listCollaborators, addCollaborator, removeCollaborator, collaborators, diffVersion, testChat } = useAgentsPaasStore();
+  const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
@@ -127,20 +129,36 @@ export function AgentStudioPage() {
             <Card>
               <CardContent className="p-4 space-y-4">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-lg font-semibold">{selected.name}</div>
+                  <div className="min-w-0">
+                    <div className="text-lg font-semibold truncate">{selected.name}</div>
                     <div className="text-sm text-muted-foreground">{selected.description || '无描述'}</div>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      const v = !selected.enabled;
-                      update(selected.id, { enabled: v }).then((ok) => ok ? toast.success(v ? 'Enabled' : 'Disabled') : toast.error('Update failed'));
-                    }}
-                  >
-                    {selected.enabled ? '已启用' : '已禁用'} · 点击切换
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        const res = await testChat(selected.id);
+                        if (res) {
+                          navigate(`/chat/${res.folder}`);
+                        } else {
+                          toast.error('启动对话失败');
+                        }
+                      }}
+                      title="为该 Agent 创建/复用一个测试对话工作区并跳转"
+                    >
+                      <MessageSquare className="size-4 mr-1" /> 测试对话
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const v = !selected.enabled;
+                        update(selected.id, { enabled: v }).then((ok) => ok ? toast.success(v ? 'Enabled' : 'Disabled') : toast.error('Update failed'));
+                      }}
+                    >
+                      {selected.enabled ? '已启用' : '已禁用'} · 点击切换
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="text-sm">
@@ -220,7 +238,6 @@ export function AgentStudioPage() {
                 <ShareSection
                   agentId={selected.id}
                   shares={shares[selected.id] ?? []}
-                  onLoad={() => { void listShares(selected.id); }}
                   onCreate={async () => {
                     const s = await createShare(selected.id);
                     if (s) { toast.success('分享链接已创建'); await listShares(selected.id); }
@@ -236,7 +253,6 @@ export function AgentStudioPage() {
                 <CollaboratorsSection
                   agentId={selected.id}
                   list={collaborators[selected.id] ?? []}
-                  onLoad={() => { void listCollaborators(selected.id); }}
                   onAdd={async (userId, role) => {
                     const ok = await addCollaborator(selected.id, userId, role);
                     if (ok) { toast.success('已添加协作者'); await listCollaborators(selected.id); }
@@ -252,7 +268,6 @@ export function AgentStudioPage() {
                 <VersionHistorySection
                   agent={selected}
                   versions={versions[selected.id] ?? []}
-                  onLoad={() => { void listVersions(selected.id); }}
                   onRestore={async (vid) => {
                     const ok = await restoreVersion(selected.id, vid);
                     if (ok) toast.success('已回滚到该版本');
@@ -475,7 +490,6 @@ function BoundGroupsSection({
 function VersionHistorySection({
   agent,
   versions,
-  onLoad,
   onRestore,
   onDiff,
   showAll,
@@ -483,13 +497,13 @@ function VersionHistorySection({
 }: {
   agent: AgentDefinition;
   versions: AgentVersion[];
-  onLoad: () => void | Promise<void>;
   onRestore: (vid: string) => void | Promise<void>;
   onDiff: (vid: string) => void;
   showAll: boolean;
   onToggleShow: () => void;
 }) {
-  useEffect(() => { onLoad(); }, [agent.id, onLoad]);
+  const listVersions = useAgentsPaasStore((s) => s.listVersions);
+  useEffect(() => { void listVersions(agent.id); }, [agent.id, listVersions]);
 
   const list = showAll ? versions : versions.slice(0, 3);
 
@@ -553,17 +567,16 @@ function VersionHistorySection({
 function ShareSection({
   agentId,
   shares,
-  onLoad,
   onCreate,
   onRevoke,
 }: {
   agentId: string;
   shares: AgentShare[];
-  onLoad: () => void | Promise<void>;
   onCreate: () => void | Promise<void>;
   onRevoke: (sid: string) => void | Promise<void>;
 }) {
-  useEffect(() => { onLoad(); }, [agentId, onLoad]);
+  const listShares = useAgentsPaasStore((s) => s.listShares);
+  useEffect(() => { void listShares(agentId); }, [agentId, listShares]);
 
   return (
     <div className="space-y-2">
@@ -625,21 +638,20 @@ function ShareSection({
 function CollaboratorsSection({
   agentId,
   list,
-  onLoad,
   onAdd,
   onRemove,
 }: {
   agentId: string;
   list: AgentCollaborator[];
-  onLoad: () => void | Promise<void>;
   onAdd: (userId: string, role: 'editor' | 'viewer') => void | Promise<void>;
   onRemove: (userId: string) => void | Promise<void>;
 }) {
+  const listCollaborators = useAgentsPaasStore((s) => s.listCollaborators);
   const [showAdd, setShowAdd] = useState(false);
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState<'editor' | 'viewer'>('viewer');
 
-  useEffect(() => { onLoad(); }, [agentId, onLoad]);
+  useEffect(() => { void listCollaborators(agentId); }, [agentId, listCollaborators]);
 
   const handleAdd = async () => {
     if (!userId.trim()) { toast.error('请填写用户 ID'); return; }
