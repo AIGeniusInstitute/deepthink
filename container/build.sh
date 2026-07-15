@@ -17,14 +17,33 @@ echo "Image: ${IMAGE_NAME}:${TAG}"
 # (8.8.8.8), which is unreliable inside VPN/tunnel environments and breaks the
 # GitHub fetch in the feishu-cli step. Host networking reuses the host's working
 # DNS resolver. Override with BUILD_NETWORK=default if your environment differs.
+#
+# NPM_REGISTRY / PIP_INDEX_URL: container build does NOT read host ~/.npmrc or
+# pip.conf, so a host-side mirror config has no effect inside `docker build`.
+# Defaults point to China mirrors (npmmirror / Tsinghua) to avoid npm/pip
+# timeouts on CN networks. Overseas/CI users override with:
+#   NPM_REGISTRY=https://registry.npmjs.org PIP_INDEX_URL=https://pypi.org/simple ./container/build.sh
 BUILD_NETWORK="${BUILD_NETWORK:-host}"
-if ! docker build --network="${BUILD_NETWORK}" --build-arg CACHEBUST="$(date +%s)" -t "${IMAGE_NAME}:${TAG}" .; then
+NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
+PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+
+build_with_args() {
+  docker build \
+    --network="${BUILD_NETWORK}" \
+    --build-arg CACHEBUST="$(date +%s)" \
+    --build-arg NPM_REGISTRY="${NPM_REGISTRY}" \
+    --build-arg PIP_INDEX_URL="${PIP_INDEX_URL}" \
+    -t "${IMAGE_NAME}:${TAG}" .
+}
+
+if ! build_with_args; then
   # Restricted/rootless BuildKit builders reject host networking (it's a gated
   # entitlement) instead of falling back. Retry once on the default bridge so
   # those environments still build — bridge DNS may need a working resolver.
   if [ "${BUILD_NETWORK}" = "host" ]; then
     echo "host-network build failed (restricted builder?); retrying with default bridge network..." >&2
-    docker build --build-arg CACHEBUST="$(date +%s)" -t "${IMAGE_NAME}:${TAG}" .
+    BUILD_NETWORK="default"
+    build_with_args
   else
     exit 1
   fi
