@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-liberation \
     fonts-noto-color-emoji \
+    fonts-wqy-zenhei \
     libgbm1 \
     libnss3 \
     libatk-bridge2.0-0 \

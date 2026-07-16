@@ -5,11 +5,13 @@
  */
 
 import { Hono } from 'hono';
+import path from 'node:path';
 import type { Variables } from '../web-context.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { getSandboxManager } from '../sandbox/index.js';
 import type { SandboxLanguage } from '../sandbox/config.js';
 import { logger } from '../logger.js';
+import { getSandboxSessionId } from '../db.js';
 
 const router = new Hono<{ Variables: Variables }>();
 
@@ -257,6 +259,53 @@ router.post('/sessions/:id/browser/restart', authMiddleware, async (c) => {
     return c.json({ ok: true });
   } catch (e: any) {
     return c.json({ error: e.message ?? '重启失败' }, 400);
+  }
+});
+
+// GET /api/sandbox/by-group/:groupFolder — resolve the sandbox session bound to a chat group
+router.get('/by-group/:groupFolder', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: '未登录' }, 401);
+  const groupFolder = c.req.param('groupFolder');
+  const sid = getSandboxSessionId(groupFolder);
+  if (!sid) return c.json({ sessionId: null });
+  const session = getSandboxManager().get(sid);
+  if (!session || session.userId !== user.id) {
+    return c.json({ sessionId: null });
+  }
+  return c.json({ sessionId: sid, status: session.status, browserEnabled: session.browserEnabled });
+});
+
+// GET /api/sandbox/sessions/:id/files?path= — list files under /workspace
+router.get('/sessions/:id/files', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: '未登录' }, 401);
+  const id = c.req.param('id');
+  const rawPath = c.req.query('path') || '/workspace';
+
+  // Path traversal protection: normalize then verify it's within /workspace.
+  // Plain string startsWith() is insufficient — "/workspace/../../etc" would
+  // pass it but resolve to /etc.
+  const norm = path.posix.normalize(rawPath).replace(/\/+$/, '');
+  if (norm !== '/workspace' && !norm.startsWith('/workspace/')) {
+    return c.json({ error: '路径必须在 /workspace 下' }, 400);
+  }
+  // Reject any remaining ".." segments (defense in depth — normalize() should
+  // already have resolved them, but if the normalized path escapes /workspace
+  // we catch it here).
+  if (norm.includes('/../') || norm === '..') {
+    return c.json({ error: '路径必须在 /workspace 下' }, 400);
+  }
+
+  const session = getSandboxManager().get(id);
+  if (!session) return c.json({ error: '沙箱不存在' }, 404);
+  if (session.userId !== user.id) return c.json({ error: 'Forbidden' }, 403);
+
+  try {
+    const entries = await getSandboxManager().listFiles(id, norm);
+    return c.json({ path: norm, entries });
+  } catch (e: any) {
+    return c.json({ error: e.message ?? '列目录失败' }, 400);
   }
 });
 

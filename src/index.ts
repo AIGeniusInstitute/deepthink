@@ -6974,7 +6974,7 @@ async function processTaskIpc(
     case 'sandbox_browser_screenshot':
     case 'sandbox_browser_evaluate':
     case 'sandbox_close':
-      await handleSandboxIpc(data, sourceGroup, sourceGroupEntry, tasksDir);
+      await handleSandboxIpc(data, sourceGroup, sourceGroupEntry, tasksDir, ipcAgentId);
       break;
 
     default:
@@ -7008,6 +7008,7 @@ async function handleSandboxIpc(
   sourceGroup: string,
   sourceGroupEntry: RegisteredGroup | undefined,
   tasksDir: string,
+  ipcAgentId: string | null = null,
 ): Promise<void> {
   const requestId = data.requestId;
   if (!requestId || !SAFE_REQUEST_ID_RE.test(requestId)) {
@@ -7027,6 +7028,32 @@ async function handleSandboxIpc(
     const tmp = `${resultFilePath}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(payload));
     fs.renameSync(tmp, resultFilePath);
+  };
+
+  // Construct chatJid for stream_event broadcast:
+  // - agent session: web:{folder}#agent:{agentId}
+  // - main session:  web:{folder}
+  const chatJid = ipcAgentId
+    ? `web:${sourceGroup}#agent:${ipcAgentId}`
+    : `web:${sourceGroup}`;
+
+  // Notify frontend that a sandbox tool is being executed, so the chat
+  // sidebar sandbox panel can auto-focus the relevant session and subtab.
+  const broadcastSandboxProgress = (
+    toolName: string,
+    sandboxSessionId: string,
+    extra: Record<string, unknown> = {},
+  ): void => {
+    try {
+      broadcastStreamEvent(chatJid, {
+        eventType: 'tool_progress',
+        toolName,
+        toolUseId: `${toolName}-${requestId}`,
+        toolInput: { sandboxSessionId, ...extra },
+      } as any);
+    } catch (err) {
+      logger.warn({ err, chatJid, toolName }, 'broadcastSandboxProgress failed');
+    }
   };
 
   try {
@@ -7085,6 +7112,10 @@ async function handleSandboxIpc(
             session_id: result.sessionId,
           },
         });
+        broadcastSandboxProgress('sandbox_run_code', sid, {
+          action: 'run_code',
+          language,
+        });
         return;
       }
       case 'sandbox_browser_navigate': {
@@ -7121,6 +7152,10 @@ async function handleSandboxIpc(
         }
         await browser.navigate(url);
         writeResult({ success: true });
+        broadcastSandboxProgress('sandbox_browser_navigate', sid, {
+          action: 'navigate',
+          url,
+        });
         return;
       }
       case 'sandbox_browser_click':
@@ -7141,9 +7176,18 @@ async function handleSandboxIpc(
         if (data.type === 'sandbox_browser_click') {
           await browser.click(data.selector ?? '');
           writeResult({ success: true });
+          broadcastSandboxProgress('sandbox_browser_click', sid, {
+            action: 'click',
+            selector: data.selector ?? '',
+          });
         } else if (data.type === 'sandbox_browser_type') {
           await browser.type(data.selector ?? '', data.text ?? '');
           writeResult({ success: true });
+          broadcastSandboxProgress('sandbox_browser_type', sid, {
+            action: 'type',
+            selector: data.selector ?? '',
+            text: data.text ?? '',
+          });
         } else if (data.type === 'sandbox_browser_screenshot') {
           const dataUrl = await browser.screenshot();
           // Persist PNG to workspace downloads dir so user can retrieve later
@@ -7164,9 +7208,18 @@ async function handleSandboxIpc(
               title,
             },
           });
+          broadcastSandboxProgress('sandbox_browser_screenshot', sid, {
+            action: 'screenshot',
+            saved_to: savedTo,
+            url,
+            title,
+          });
         } else if (data.type === 'sandbox_browser_evaluate') {
           const value = await browser.evaluate(data.script ?? '');
           writeResult({ success: true, result: { value } });
+          broadcastSandboxProgress('sandbox_browser_evaluate', sid, {
+            action: 'evaluate',
+          });
         }
         return;
       }

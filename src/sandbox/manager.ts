@@ -486,6 +486,35 @@ export class SandboxManager {
     state.terminalProcess = null;
   }
 
+  /**
+   * List files in a sandbox container directory.
+   * Restricted to /workspace subtree (validated at route layer too).
+   * Returns {name, type, size, mtime}[].
+   */
+  async listFiles(
+    sessionId: string,
+    path: string,
+  ): Promise<{ name: string; type: 'file' | 'dir' | 'link'; size: number; mtime: string }[]> {
+    const state = this.state.get(sessionId);
+    const containerName = state?.session.containerName ?? this._getContainerNameFromDb(sessionId);
+    if (!containerName) throw new Error('沙箱不存在或已销毁');
+
+    const r = await this.spawnDocker([
+      'exec', '-u', '1000:1000', containerName,
+      'ls', '-la', '--time-style=long-iso', path,
+    ]);
+    if (!r.ok) throw new Error(r.stderr || r.stdout || '列目录失败');
+
+    return parseLsOutput(r.stdout);
+  }
+
+  private _getContainerNameFromDb(sessionId: string): string | null {
+    const row = this.db()
+      .prepare('SELECT container_name FROM sandbox_sessions WHERE id = ?')
+      .get(sessionId) as any;
+    return row?.container_name ?? null;
+  }
+
   onStatusChange(sessionId: string, cb: (status: SandboxStatus) => void): void {
     const state = this.state.get(sessionId);
     if (state) state.onStatusChange = cb;
@@ -550,4 +579,44 @@ let singleton: SandboxManager | null = null;
 export function getSandboxManager(): SandboxManager {
   if (!singleton) singleton = new SandboxManager();
   return singleton;
+}
+
+/**
+ * Parse `ls -la --time-style=long-iso` output into structured entries.
+ * Skips header lines (total), `.` and `..`.
+ * Example input line:
+ *   drwxr-xr-x 2 node node 4096 2026-07-16 14:23 subdir
+ *   -rw-r--r-- 1 node node   42 2026-07-16 14:23 hello.py
+ */
+export function parseLsOutput(
+  output: string,
+): { name: string; type: 'file' | 'dir' | 'link'; size: number; mtime: string }[] {
+  const entries: { name: string; type: 'file' | 'dir' | 'link'; size: number; mtime: string }[] = [];
+  for (const raw of output.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith('total ')) continue;
+    // Permission column (10 chars: type + 9 perms)
+    if (line.length < 10) continue;
+    const perm = line.slice(0, 10);
+    const rest = line.slice(10).trim();
+    // rest looks like: "1 node node 4096 2026-07-16 14:23 subdir"
+    // split by whitespace, name is everything after the 5th token (date+time)
+    const m = rest.match(/^(\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+(.*)$/);
+    if (!m) continue;
+    const [, /* nlink */, /* owner */, /* group */, sizeStr, date, time, name] = m;
+    if (name === '.' || name === '..') continue;
+    const typeChar = perm[0];
+    const type: 'file' | 'dir' | 'link' =
+      typeChar === 'd' ? 'dir' : typeChar === 'l' ? 'link' : 'file';
+    // For symlinks, ls prints "name -> target"; keep only the name part.
+    const displayName = typeChar === 'l' ? name.split(' -> ')[0] : name;
+    entries.push({
+      name: displayName,
+      type,
+      size: parseInt(sizeStr, 10) || 0,
+      mtime: `${date} ${time}`,
+    });
+  }
+  return entries;
 }

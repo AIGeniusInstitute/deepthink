@@ -6,6 +6,11 @@ interface SandboxStore {
   sessions: SandboxSession[];
   activeSessionId: string | null;
   browserFrame: string | null;
+  // Per-session frame index — supports multiple sessions (chat + sandbox page
+  // simultaneously) without overwriting each other's frame.
+  browserFrames: Record<string, string>;
+  // Track which sessions we've already subscribed to avoid double-subscribe.
+  subscribedSessions: Set<string>;
   loading: boolean;
   error: string | null;
 
@@ -19,6 +24,12 @@ interface SandboxStore {
   subscribeBrowser: (sessionId: string, url?: string) => void;
   unsubscribeBrowser: (sessionId: string) => void;
   setBrowserFrame: (dataUrl: string | null) => void;
+  // New: per-session frame setter, used by chat inline panel
+  setBrowserFrameForSession: (sessionId: string, dataUrl: string) => void;
+  getBrowserFrame: (sessionId: string) => string | null;
+  isSubscribed: (sessionId: string) => boolean;
+  // New: focus a session (switch active + wire frame from index)
+  focusSession: (sessionId: string) => void;
   wireWsHandlers: () => (() => void) | void;
 }
 
@@ -26,6 +37,8 @@ export const useSandboxStore = create<SandboxStore>((set, get) => ({
   sessions: [],
   activeSessionId: null,
   browserFrame: null,
+  browserFrames: {},
+  subscribedSessions: new Set<string>(),
   loading: false,
   error: null,
 
@@ -56,14 +69,27 @@ export const useSandboxStore = create<SandboxStore>((set, get) => ({
       set((st) => {
         const sessions = st.sessions.filter((s) => s.id !== id);
         const activeSessionId = st.activeSessionId === id ? null : st.activeSessionId;
-        return { sessions, activeSessionId, browserFrame: activeSessionId === st.activeSessionId ? st.browserFrame : null };
+        const browserFrames = { ...st.browserFrames };
+        delete browserFrames[id];
+        const subscribedSessions = new Set(st.subscribedSessions);
+        subscribedSessions.delete(id);
+        return {
+          sessions,
+          activeSessionId,
+          browserFrames,
+          subscribedSessions,
+          browserFrame: activeSessionId === st.activeSessionId ? st.browserFrame : null,
+        };
       });
     } catch (e: any) {
       set({ error: e?.message ?? '销毁失败' });
     }
   },
 
-  setActive: (id) => set({ activeSessionId: id, browserFrame: null }),
+  setActive: (id) => set((st) => ({
+    activeSessionId: id,
+    browserFrame: id ? (st.browserFrames[id] ?? null) : null,
+  })),
 
   sendTerminalInput: (sessionId, data) => {
     wsManager.send({ type: 'sandbox_terminal_input', sessionId, data });
@@ -78,21 +104,51 @@ export const useSandboxStore = create<SandboxStore>((set, get) => ({
   },
 
   subscribeBrowser: (sessionId, url) => {
-    set({ browserFrame: null });
+    set((st) => {
+      const subscribedSessions = new Set(st.subscribedSessions);
+      subscribedSessions.add(sessionId);
+      return { subscribedSessions, browserFrame: null };
+    });
     wsManager.send({ type: 'sandbox_browser_subscribe', sessionId, ...(url ? { url } : {}) });
   },
 
   unsubscribeBrowser: (sessionId) => {
+    set((st) => {
+      const subscribedSessions = new Set(st.subscribedSessions);
+      subscribedSessions.delete(sessionId);
+      const browserFrames = { ...st.browserFrames };
+      delete browserFrames[sessionId];
+      return { subscribedSessions, browserFrames, browserFrame: null };
+    });
     wsManager.send({ type: 'sandbox_browser_unsubscribe', sessionId });
-    set({ browserFrame: null });
   },
 
   setBrowserFrame: (dataUrl) => set({ browserFrame: dataUrl }),
 
+  setBrowserFrameForSession: (sessionId, dataUrl) => set((st) => ({
+    browserFrames: { ...st.browserFrames, [sessionId]: dataUrl },
+    // Mirror to single browserFrame when this is the active session (for SandboxPage compatibility)
+    browserFrame: st.activeSessionId === sessionId ? dataUrl : st.browserFrame,
+  })),
+
+  getBrowserFrame: (sessionId) => get().browserFrames[sessionId] ?? null,
+
+  isSubscribed: (sessionId) => get().subscribedSessions.has(sessionId),
+
+  focusSession: (sessionId) => set((st) => ({
+    activeSessionId: sessionId,
+    browserFrame: st.browserFrames[sessionId] ?? null,
+  })),
+
   wireWsHandlers: () => {
     const offs: Array<(() => void) | undefined> = [];
     offs.push(wsManager.on('sandbox_browser_frame', (data) => {
-      if (data?.sessionId === get().activeSessionId) {
+      const sid = data?.sessionId;
+      if (!sid) return;
+      // Always store in the per-session index
+      get().setBrowserFrameForSession(sid, data.dataUrl);
+      // Backward-compat: if this is the active session, mirror to browserFrame
+      if (sid === get().activeSessionId) {
         get().setBrowserFrame(data.dataUrl);
       }
     }));
