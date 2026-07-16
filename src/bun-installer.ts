@@ -33,7 +33,11 @@ function getPlatformAsset(): { asset: string; subdir: string } {
   const platform = process.platform;
   const arch = process.arch;
   const osMap: Record<string, string> = { darwin: 'darwin', linux: 'linux' };
-  const archMap: Record<string, string> = { arm64: 'arm64', x64: 'x64' };
+  // GitHub Releases uses `aarch64` for arm64 on macOS, `arm64` on Linux
+  const archMap: Record<string, string> = {
+    arm64: platform === 'darwin' ? 'aarch64' : 'arm64',
+    x64: 'x64',
+  };
   const osStr = osMap[platform];
   const archStr = archMap[arch];
   if (!osStr || !archStr) {
