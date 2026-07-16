@@ -34,14 +34,15 @@ export const HARD_TIMEOUT_MS = parseInt(
 export const OUTPUT_LIMIT_BYTES = 1024 * 1024; // 1 MB per stream
 
 export const DEFAULT_WALL_TIMEOUT_MS = 30_000;
-export const DEFAULT_MEMORY_MB = 1024;
+export const DEFAULT_MEMORY_MB = 2048;
 export const DEFAULT_CPUS = 2.0;
 export const DEFAULT_PIDS = 256;
 export const DEFAULT_DISK_MB = 256;
 
 /**
- * CDP screenshot frame interval. 500ms → 2 fps. */
-export const BROWSER_FRAME_INTERVAL_MS = 500;
+ * CDP screenshot frame interval. 250ms → 4 fps. Lower than 250ms overloads
+ * chromium's screenshot pipeline and causes frame drops on heavy pages. */
+export const BROWSER_FRAME_INTERVAL_MS = 250;
 /**
  * Forwarder port inside the container (mapped to a random host port when
  * browserEnabled). Chromium 150 ignores `--remote-debugging-address` and

@@ -351,7 +351,13 @@ export class SandboxManager {
     if (!state.session.browserEnabled || !state.session.cdpPort) {
       throw new Error('沙箱未启用浏览器能力（创建时需 browserEnabled=true）');
     }
-    if (state.browser) return; // already started
+    if (state.browser) {
+      // Already started — just refresh the frame callback so a new
+      // WebSocket subscriber can receive frames even if a prior REST
+      // /browser/start launched with a no-op onFrame.
+      state.browser.setOnFrame(onFrame);
+      return;
+    }
     state.browser = new BrowserController(
       state.session.cdpPort,
       state.session.containerName,

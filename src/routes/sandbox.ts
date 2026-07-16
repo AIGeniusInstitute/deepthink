@@ -242,6 +242,24 @@ router.post('/sessions/:id/browser/stop', authMiddleware, async (c) => {
   return c.json({ ok: true });
 });
 
+// POST /api/sandbox/sessions/:id/browser/restart
+router.post('/sessions/:id/browser/restart', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: '未登录' }, 401);
+  const id = c.req.param('id');
+  const session = getSandboxManager().get(id);
+  if (!session) return c.json({ error: '沙箱不存在' }, 404);
+  if (session.userId !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  const browser = await getSandboxManager().getBrowser(id);
+  if (!browser) return c.json({ error: '浏览器未启动' }, 400);
+  try {
+    await browser.restart();
+    return c.json({ ok: true });
+  } catch (e: any) {
+    return c.json({ error: e.message ?? '重启失败' }, 400);
+  }
+});
+
 // GET /api/sandbox/sessions/:id/executions — recent executions
 router.get('/sessions/:id/executions', authMiddleware, async (c) => {
   const user = c.get('user');
