@@ -22,7 +22,6 @@ export function buildDockerRunArgs(
   image: string,
 ): string[] {
   const args: string[] = [
-    'docker',
     'run',
     '-d', // detached — session mode
     '--rm',

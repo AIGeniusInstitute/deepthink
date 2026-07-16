@@ -39,8 +39,7 @@ async function main() {
   console.log('[smoke] args:', args.join(' '));
 
   console.log('[smoke] starting container...');
-  // buildDockerRunArgs returns ['docker', 'run', ...]; spawn wants args without the cmd.
-  const r = await sh('docker', args.slice(1));
+  const r = await sh('docker', args);
   console.log('[smoke] docker run code:', r.code, 'stdout:', r.stdout.slice(0, 64), 'stderr:', r.stderr.slice(0, 200));
   if (r.code !== 0) {
     console.error('[smoke] docker run failed:', r.stderr);
