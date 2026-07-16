@@ -67,6 +67,8 @@ export const sandboxApi = {
     api.get<{ sessionId: string | null; status?: string; browserEnabled?: boolean }>(`/api/sandbox/by-group/${groupFolder}`),
   listFiles: (id: string, path: string) =>
     api.get<{ path: string; entries: SandboxFileEntry[] }>(`/api/sandbox/sessions/${id}/files?path=${encodeURIComponent(path)}`),
+  readFile: (id: string, path: string) =>
+    api.get<{ content: string; truncated: boolean; size: number }>(`/api/sandbox/sessions/${id}/files/read?path=${encodeURIComponent(path)}`),
 };
 
 export interface SandboxFileEntry {

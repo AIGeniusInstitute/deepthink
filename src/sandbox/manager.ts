@@ -60,7 +60,7 @@ interface InMemoryState {
   terminalProcess: import('child_process').ChildProcess | null;
   onTerminalData?: (data: string) => void;
   onTerminalExit?: (code: number) => void;
-  onStatusChange?: (status: SandboxStatus) => void;
+  statusListeners: Set<(status: SandboxStatus) => void>;
   onBrowserFrame?: (dataUrl: string) => void;
 }
 
@@ -165,20 +165,31 @@ export class SandboxManager {
         now,
       );
 
-    // Set up timers
+    // Set up timers — use custom ttlMinutes if provided
+    const idleMs = opts.ttlMinutes
+      ? Math.min(opts.ttlMinutes * 60 * 1000, IDLE_TIMEOUT_MS)
+      : IDLE_TIMEOUT_MS;
+    const hardMs = opts.ttlMinutes
+      ? opts.ttlMinutes * 60 * 1000
+      : HARD_TIMEOUT_MS;
+
     const state: InMemoryState = {
       session,
       execLock: null,
-      idleTimer: setTimeout(() => this.destroy(id, 'idle_timeout'), IDLE_TIMEOUT_MS),
-      hardTimer: setTimeout(() => this.destroy(id, 'hard_timeout'), HARD_TIMEOUT_MS),
+      idleTimer: setTimeout(() => this.markIdle(id), idleMs),
+      hardTimer: setTimeout(() => this.destroy(id, 'hard_timeout'), hardMs),
       browser: null,
       terminalProcess: null,
+      statusListeners: new Set(),
     };
     this.state.set(id, state);
     if (!this.userIndex.has(userId)) this.userIndex.set(userId, new Set());
     this.userIndex.get(userId)!.add(id);
 
-    logger.info({ sessionId: id, containerName, browserEnabled, cdpPort }, 'Sandbox created');
+    // Notify listeners
+    state.statusListeners.forEach((cb) => cb('running'));
+
+    logger.info({ sessionId: id, containerName, browserEnabled, cdpPort, idleMs, hardMs }, 'Sandbox created');
     return session;
   }
 
@@ -280,13 +291,25 @@ export class SandboxManager {
     // Touch idle timer
     this.touch(state);
 
+    // Collect peak memory (cgroup v2, fallback to v1)
+    let peakMemoryMb: number | null = null;
+    try {
+      const memR = await this.spawnDocker([
+        'exec', session.containerName,
+        'sh', '-c',
+        'cat /sys/fs/cgroup/memory.peak 2>/dev/null || cat /sys/fs/cgroup/memory/memory.usage_in_bytes 2>/dev/null || echo 0',
+      ]);
+      const bytes = parseInt(memR.stdout.trim(), 10);
+      if (bytes > 0) peakMemoryMb = Math.round(bytes / (1024 * 1024));
+    } catch { /* ignore */ }
+
     // Persist execution row
     this.db()
       .prepare(
         `INSERT INTO sandbox_executions
           (id, session_id, user_id, language, code_hash, status, exit_code,
-           stdout_bytes, stderr_bytes, truncated, duration_ms, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           stdout_bytes, stderr_bytes, truncated, duration_ms, peak_memory_mb, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         execId,
@@ -300,6 +323,7 @@ export class SandboxManager {
         Buffer.byteLength(errT.text),
         truncated ? 1 : 0,
         durationMs,
+        peakMemoryMb,
         Date.now(),
       );
 
@@ -335,7 +359,36 @@ export class SandboxManager {
     const row = this.db()
       .prepare('SELECT * FROM sandbox_sessions WHERE id = ?')
       .get(sessionId) as any;
-    return row ? rowToSession(row) : null;
+    if (!row) return null;
+    const session = rowToSession(row);
+    // Recover cdpPort if browser-enabled session survived a server restart
+    if (session.browserEnabled && !session.cdpPort && session.status !== 'stopped') {
+      this.queryHostPort(session.containerName, CDP_IN_CONTAINER_PORT).then((port) => {
+        if (port) {
+          session.cdpPort = port;
+          // Rebuild in-memory state so browser features work again
+          if (!this.state.has(sessionId)) {
+            this.state.set(sessionId, {
+              session,
+              execLock: null,
+              idleTimer: null,
+              hardTimer: null,
+              browser: null,
+              terminalProcess: null,
+              statusListeners: new Set(),
+            });
+            if (!this.userIndex.has(session.userId)) this.userIndex.set(session.userId, new Set());
+            this.userIndex.get(session.userId)!.add(sessionId);
+          }
+        }
+      }).catch(() => {
+        // Container likely gone — mark as stopped
+        this.db()
+          .prepare(`UPDATE sandbox_sessions SET status='stopped', stopped_at=?, stopped_reason=? WHERE id=?`)
+          .run(Date.now(), 'container_lost', sessionId);
+      });
+    }
+    return session;
   }
 
   getState(sessionId: string): InMemoryState | undefined {
@@ -427,18 +480,38 @@ export class SandboxManager {
       if (userSet.size === 0) this.userIndex.delete(session.userId);
     }
 
-    state.onStatusChange?.('stopped');
+    state.statusListeners.forEach((cb) => cb('stopped'));
     logger.info({ sessionId, reason }, 'Sandbox destroyed');
   }
 
   /** Touch idle timer (called on exec or terminal I/O). */
   touch(state: InMemoryState) {
     if (state.idleTimer) clearTimeout(state.idleTimer);
+    // If currently idle, transition back to running
+    if (state.session.status === 'idle') {
+      state.session.status = 'running';
+      state.statusListeners.forEach((cb) => cb('running'));
+    }
     state.idleTimer = setTimeout(
-      () => this.destroy(state.session.id, 'idle_timeout'),
+      () => this.markIdle(state.session.id),
       IDLE_TIMEOUT_MS,
     );
     state.session.lastActiveAt = Date.now();
+  }
+
+  /** Transition session to idle status (idle timeout reached, but not yet destroyed). */
+  markIdle(sessionId: string) {
+    const state = this.state.get(sessionId);
+    if (!state || state.session.status === 'stopped') return;
+    state.session.status = 'idle';
+    this.db()
+      .prepare('UPDATE sandbox_sessions SET status = ? WHERE id = ?')
+      .run('idle', sessionId);
+    state.statusListeners.forEach((cb) => cb('idle'));
+    // Set a grace timer before actual destruction
+    if (state.idleTimer) clearTimeout(state.idleTimer);
+    state.idleTimer = setTimeout(() => this.destroy(sessionId, 'idle_timeout'), 5 * 60 * 1000);
+    logger.info({ sessionId }, 'Sandbox marked idle');
   }
 
   /** Start a streaming terminal session. */
@@ -515,9 +588,51 @@ export class SandboxManager {
     return row?.container_name ?? null;
   }
 
-  onStatusChange(sessionId: string, cb: (status: SandboxStatus) => void): void {
+  addStatusListener(sessionId: string, cb: (status: SandboxStatus) => void): void {
     const state = this.state.get(sessionId);
-    if (state) state.onStatusChange = cb;
+    if (state) state.statusListeners.add(cb);
+  }
+
+  removeStatusListener(sessionId: string, cb: (status: SandboxStatus) => void): void {
+    const state = this.state.get(sessionId);
+    if (state) state.statusListeners.delete(cb);
+  }
+
+  /** Resize the interactive terminal pty. */
+  resizeTerminal(sessionId: string, cols: number, rows: number): void {
+    const state = this.state.get(sessionId);
+    if (!state?.terminalProcess?.stdin) return;
+    try {
+      state.terminalProcess.stdin.write(`\x1b[8;${rows};${cols}t`);
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * Read a text file from the sandbox container.
+   * Restricted to /workspace subtree (validated at route layer).
+   * Returns file content up to 100KB.
+   */
+  async readFile(
+    sessionId: string,
+    filePath: string,
+  ): Promise<{ content: string; truncated: boolean; size: number }> {
+    const state = this.state.get(sessionId);
+    const containerName = state?.session.containerName ?? this._getContainerNameFromDb(sessionId);
+    if (!containerName) throw new Error('沙箱不存在或已销毁');
+
+    const r = await this.spawnDocker([
+      'exec', '-u', '1000:1000', containerName,
+      'cat', filePath,
+    ]);
+    if (!r.ok) throw new Error(r.stderr || r.stdout || '读取文件失败');
+
+    const content = r.stdout;
+    const maxBytes = 100 * 1024;
+    const buf = Buffer.from(content, 'utf-8');
+    if (buf.length <= maxBytes) {
+      return { content, truncated: false, size: buf.length };
+    }
+    return { content: buf.slice(0, maxBytes).toString('utf-8'), truncated: true, size: buf.length };
   }
 
   private async spawnDocker(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {

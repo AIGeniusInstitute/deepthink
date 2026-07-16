@@ -620,6 +620,7 @@ export type WsMessageIn =
     }
   | { type: 'sandbox_terminal_input'; sessionId: string; data: string }
   | { type: 'sandbox_terminal_stop'; sessionId: string }
+  | { type: 'sandbox_terminal_resize'; sessionId: string; cols: number; rows: number }
   | { type: 'sandbox_browser_subscribe'; sessionId: string; url?: string }
   | { type: 'sandbox_browser_unsubscribe'; sessionId: string };
 

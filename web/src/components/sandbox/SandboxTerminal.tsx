@@ -24,6 +24,7 @@ export function SandboxTerminal({ sessionId }: SandboxTerminalProps) {
   const sendTerminalInput = useSandboxStore((s) => s.sendTerminalInput);
   const startTerminal = useSandboxStore((s) => s.startTerminal);
   const stopTerminal = useSandboxStore((s) => s.stopTerminal);
+  const resizeTerminal = useSandboxStore((s) => s.resizeTerminal);
 
   useEffect(() => {
     if (!termRef.current) return;
@@ -129,6 +130,9 @@ export function SandboxTerminal({ sessionId }: SandboxTerminalProps) {
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         fitAddonRef.current?.fit();
+        if (connStateRef.current === 'connected') {
+          resizeTerminal(sessionId, terminal.cols, terminal.rows);
+        }
       }, 150);
     });
     ro.observe(termRef.current);

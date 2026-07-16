@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSandboxStore } from '../../stores/sandbox';
 import { sandboxApi } from '../../api/sandbox';
+import { SandboxExecutionList } from './SandboxExecutionList';
 
 interface SandboxToolbarProps {
   sessionId: string | null;
@@ -13,6 +14,7 @@ export function SandboxToolbar({ sessionId }: SandboxToolbarProps) {
   const [result, setResult] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [browserUrl, setBrowserUrl] = useState('https://example.com');
+  const [showExecHistory, setShowExecHistory] = useState(false);
   const create = useSandboxStore((s) => s.create);
   const destroy = useSandboxStore((s) => s.destroy);
 
@@ -108,6 +110,15 @@ export function SandboxToolbar({ sessionId }: SandboxToolbarProps) {
         >
           销毁沙箱
         </button>
+        <button
+          onClick={() => setShowExecHistory(!showExecHistory)}
+          disabled={!sessionId}
+          className={`px-3 py-1 rounded text-xs disabled:opacity-40 ${
+            showExecHistory ? 'bg-white/20 text-white' : 'bg-white/10 text-neutral-300 hover:bg-white/15'
+          }`}
+        >
+          执行历史
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -155,6 +166,12 @@ export function SandboxToolbar({ sessionId }: SandboxToolbarProps) {
         <pre className="bg-[#0f0f14] text-neutral-100 p-2 rounded text-xs overflow-auto max-h-48 border border-white/10">
           {result}
         </pre>
+      )}
+
+      {showExecHistory && sessionId && (
+        <div className="h-64 border border-white/10 rounded overflow-hidden">
+          <SandboxExecutionList sessionId={sessionId} />
+        </div>
       )}
     </div>
   );

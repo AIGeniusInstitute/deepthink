@@ -1798,6 +1798,14 @@ function setupWebSocket(server: any): WebSocketServer {
                 }
               },
             );
+            // Register status listener for this WS connection
+            const statusCb = (status: string) => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'sandbox_status', sessionId, status }));
+              }
+            };
+            getSandboxManager().addStatusListener(sessionId, statusCb);
+            ws.on('close', () => getSandboxManager().removeStatusListener(sessionId, statusCb));
             ws.send(JSON.stringify({ type: 'sandbox_terminal_started', sessionId, cols, rows }));
           } catch (e: any) {
             ws.send(JSON.stringify({ type: 'sandbox_error', sessionId, error: e.message }));
@@ -1812,6 +1820,12 @@ function setupWebSocket(server: any): WebSocketServer {
           if (!sessionId) return;
           getSandboxManager().stopTerminal(sessionId);
           ws.send(JSON.stringify({ type: 'sandbox_terminal_stopped', sessionId }));
+        } else if (msg.type === 'sandbox_terminal_resize') {
+          const sessionId = String(msg.sessionId || '');
+          const cols = Math.min(Math.max(Number(msg.cols) || 80, 20), 300);
+          const rows = Math.min(Math.max(Number(msg.rows) || 24, 8), 120);
+          if (!sessionId) return;
+          getSandboxManager().resizeTerminal(sessionId, cols, rows);
         } else if (msg.type === 'sandbox_browser_subscribe') {
           const sessionId = String(msg.sessionId || '');
           const initialUrl = msg.url ? String(msg.url) : undefined;
@@ -1842,6 +1856,14 @@ function setupWebSocket(server: any): WebSocketServer {
               }
               ws.send(JSON.stringify({ type: 'sandbox_browser_started', sessionId }));
             });
+            // Register status listener
+            const statusCb = (status: string) => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'sandbox_status', sessionId, status }));
+              }
+            };
+            getSandboxManager().addStatusListener(sessionId, statusCb);
+            ws.on('close', () => getSandboxManager().removeStatusListener(sessionId, statusCb));
           } catch (e: any) {
             ws.send(JSON.stringify({ type: 'sandbox_error', sessionId, error: e.message }));
           }

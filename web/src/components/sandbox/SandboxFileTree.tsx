@@ -19,6 +19,9 @@ export function SandboxFileTree({ sessionId }: SandboxFileTreeProps) {
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set(['/workspace']));
   const [error, setError] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileContent, setFileContent] = useState<{ content: string; truncated: boolean; size: number } | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
 
   const loadPath = useCallback(async (path: string): Promise<TreeNode[]> => {
     const r = await sandboxApi.listFiles(sessionId, path);
@@ -79,6 +82,21 @@ export function SandboxFileTree({ sessionId }: SandboxFileTreeProps) {
     setExpanded(next);
   };
 
+  const handleFileClick = async (node: TreeNode) => {
+    if (node.type !== 'file') return;
+    setSelectedFile(node.path);
+    setFileLoading(true);
+    setFileContent(null);
+    try {
+      const r = await sandboxApi.readFile(sessionId, node.path);
+      setFileContent(r);
+    } catch (e: any) {
+      setFileContent({ content: `读取失败: ${e?.message ?? e}`, truncated: false, size: 0 });
+    } finally {
+      setFileLoading(false);
+    }
+  };
+
   const renderNode = (node: TreeNode, depth: number): React.ReactNode => {
     const indent = { paddingLeft: `${depth * 12 + 8}px` };
     if (node.type === 'dir') {
@@ -107,7 +125,10 @@ export function SandboxFileTree({ sessionId }: SandboxFileTreeProps) {
     return (
       <div
         key={node.path}
-        className="px-2 py-0.5 hover:bg-white/5 flex items-center gap-1 text-xs"
+        onClick={() => handleFileClick(node)}
+        className={`px-2 py-0.5 hover:bg-white/5 flex items-center gap-1 text-xs cursor-pointer ${
+          selectedFile === node.path ? 'bg-white/10' : ''
+        }`}
         style={indent}
       >
         <span className="w-3" />
@@ -134,6 +155,33 @@ export function SandboxFileTree({ sessionId }: SandboxFileTreeProps) {
           tree.map((n) => renderNode(n, 0))
         )}
       </div>
+      {selectedFile && (
+        <div className="border-t border-[#2a2b36] h-1/3 flex flex-col">
+          <div className="flex items-center justify-between px-3 py-1 bg-[#1a1b26] text-xs">
+            <span className="text-neutral-400 truncate">{selectedFile}</span>
+            <button
+              onClick={() => setSelectedFile(null)}
+              className="text-neutral-500 hover:text-neutral-300"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex-1 overflow-auto p-2">
+            {fileLoading ? (
+              <div className="text-xs text-neutral-500">加载中...</div>
+            ) : fileContent ? (
+              <pre className="text-xs text-neutral-200 font-mono whitespace-pre-wrap break-all">
+                {fileContent.content}
+                {fileContent.truncated && (
+                  <span className="text-yellow-400">
+                    {'\n\n'}... 文件过大，仅显示前 100KB（共 {fileContent.size} 字节）
+                  </span>
+                )}
+              </pre>
+            ) : null}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

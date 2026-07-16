@@ -21,6 +21,7 @@ interface SandboxStore {
   sendTerminalInput: (sessionId: string, data: string) => void;
   startTerminal: (sessionId: string, cols: number, rows: number) => void;
   stopTerminal: (sessionId: string) => void;
+  resizeTerminal: (sessionId: string, cols: number, rows: number) => void;
   subscribeBrowser: (sessionId: string, url?: string) => void;
   unsubscribeBrowser: (sessionId: string) => void;
   setBrowserFrame: (dataUrl: string | null) => void;
@@ -101,6 +102,9 @@ export const useSandboxStore = create<SandboxStore>((set, get) => ({
 
   stopTerminal: (sessionId) => {
     wsManager.send({ type: 'sandbox_terminal_stop', sessionId });
+  },
+  resizeTerminal: (sessionId, cols, rows) => {
+    wsManager.send({ type: 'sandbox_terminal_resize', sessionId, cols, rows });
   },
 
   subscribeBrowser: (sessionId, url) => {

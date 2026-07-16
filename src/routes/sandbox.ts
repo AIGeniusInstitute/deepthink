@@ -309,6 +309,45 @@ router.get('/sessions/:id/files', authMiddleware, async (c) => {
   }
 });
 
+// GET /api/sandbox/sessions/:id/files/read?path= — read a text file
+router.get('/sessions/:id/files/read', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: '未登录' }, 401);
+  const id = c.req.param('id');
+  const rawPath = c.req.query('path') || '';
+
+  const norm = path.posix.normalize(rawPath).replace(/\/+$/, '');
+  if (norm !== '/workspace' && !norm.startsWith('/workspace/')) {
+    return c.json({ error: '路径必须在 /workspace 下' }, 400);
+  }
+  if (norm.includes('/../') || norm === '..') {
+    return c.json({ error: '路径必须在 /workspace 下' }, 400);
+  }
+
+  // Text file extension whitelist
+  const ext = path.posix.extname(norm).toLowerCase();
+  const textExts = new Set([
+    '.py', '.js', '.ts', '.json', '.txt', '.md', '.html', '.css',
+    '.sh', '.yaml', '.yml', '.env', '.cfg', '.ini', '.xml', '.csv',
+    '.log', '.toml', '.jsx', '.tsx', '.sql', '.rb', '.go', '.rs',
+    '.java', '.c', '.cpp', '.h', '.hpp', '.php', '.swift', '.kt',
+  ]);
+  if (!textExts.has(ext) && ext !== '') {
+    return c.json({ error: '不支持预览该文件类型（仅支持文本文件）' }, 400);
+  }
+
+  const session = getSandboxManager().get(id);
+  if (!session) return c.json({ error: '沙箱不存在' }, 404);
+  if (session.userId !== user.id) return c.json({ error: 'Forbidden' }, 403);
+
+  try {
+    const result = await getSandboxManager().readFile(id, norm);
+    return c.json(result);
+  } catch (e: any) {
+    return c.json({ error: e.message ?? '读取失败' }, 400);
+  }
+});
+
 // GET /api/sandbox/sessions/:id/executions — recent executions
 router.get('/sessions/:id/executions', authMiddleware, async (c) => {
   const user = c.get('user');
