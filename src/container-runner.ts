@@ -33,6 +33,8 @@ import {
   shellQuoteEnvLines,
   writeCredentialsFile,
   getAtomcodeConfig,
+  getCodexConfig,
+  getOpencodeConfig,
 } from './runtime-config.js';
 import { providerPool } from './provider-pool.js';
 import {
@@ -43,6 +45,10 @@ import {
   getAtomcodeSessionId,
   setAtomcodeSessionId,
   clearAtomcodeSessionId,
+  getCodexThreadId,
+  setCodexThreadId,
+  getOpencodeSessionId,
+  setOpencodeSessionId,
   getAgentDefinition,
   listAgentMounts,
   getKnowledgeBase,
@@ -251,7 +257,7 @@ export interface ContainerInput {
    * When 'atomcode', agent-runner branches to atomcode-engine.ts instead of
    * calling SDK query().
    */
-  engine?: 'claude' | 'atomcode';
+  engine?: 'claude' | 'atomcode' | 'codex' | 'opencode';
   /** Agent PaaS: 用户自定义 Agent 定义 + 挂载资源（已展平）。 */
   agentDefinition?: {
     id: string;
@@ -815,9 +821,13 @@ export function buildVolumeMounts(
   if (sysSettings.subagentModel && sysSettings.subagentModel !== 'inherit') {
     envLines.push(`SUBAGENT_MODEL=${sysSettings.subagentModel}`);
   }
-  // AtomCode 引擎配置：注入到 /workspace/env-dir/env，agent-runner 读取
-  // ATOMCODE_BINARY_PATH 等环境变量。仅当 group.engine === 'atomcode' 时注入。
-  const groupEngine = (group.engine ?? 'claude') as 'claude' | 'atomcode';
+  // AtomCode/Codex/OpenCode 引擎配置：注入到 /workspace/env-dir/env，agent-runner 读取
+  // 对应二进制路径等环境变量。仅当 group.engine !== 'claude' 时注入。
+  const groupEngine = (group.engine ?? 'claude') as
+    | 'claude'
+    | 'atomcode'
+    | 'codex'
+    | 'opencode';
   if (groupEngine === 'atomcode') {
     const atomcodeCfg = getAtomcodeConfig();
     if (!atomcodeCfg.enabled || !atomcodeCfg.binaryPath) {
@@ -832,6 +842,34 @@ export function buildVolumeMounts(
     if (atomcodeCfg.atomcodeHome) {
       envLines.push(`ATOMCODE_HOME=${atomcodeCfg.atomcodeHome}`);
     }
+  }
+  if (groupEngine === 'codex') {
+    const codexCfg = getCodexConfig();
+    if (!codexCfg.enabled || !codexCfg.binaryPath) {
+      throw new Error(
+        `Group ${group.folder} has engine=codex but Codex is not enabled or binaryPath is empty. Configure in Settings → Codex 引擎.`,
+      );
+    }
+    envLines.push(`CODEX_BINARY_PATH=${codexCfg.binaryPath}`);
+    envLines.push(`CODEX_DEFAULT_MODEL=${codexCfg.defaultModel}`);
+    envLines.push(`CODEX_WORKING_DIR=${codexCfg.workingDir || '/workspace/group'}`);
+  }
+  if (groupEngine === 'opencode') {
+    const opencodeCfg = getOpencodeConfig();
+    if (!opencodeCfg.enabled || !opencodeCfg.bunPath || !opencodeCfg.opencodePath) {
+      throw new Error(
+        `Group ${group.folder} has engine=opencode but OpenCode is not enabled or bunPath/opencodePath is empty. Configure in Settings → OpenCode 引擎.`,
+      );
+    }
+    envLines.push(`OPENCODE_BUN_PATH=${opencodeCfg.bunPath}`);
+    envLines.push(`OPENCODE_SOURCE_PATH=${opencodeCfg.opencodePath}`);
+    envLines.push(`OPENCODE_HOST=${opencodeCfg.host || '127.0.0.1'}`);
+    envLines.push(`OPENCODE_BASE_PORT=${opencodeCfg.basePort}`);
+    envLines.push(`OPENCODE_PORT_RANGE=${opencodeCfg.portRange}`);
+    envLines.push(`OPENCODE_PASSWORD=${opencodeCfg.password}`);
+    envLines.push(`OPENCODE_PROVIDER_ID=${opencodeCfg.providerID}`);
+    envLines.push(`OPENCODE_MODEL_ID=${opencodeCfg.modelID}`);
+    envLines.push(`OPENCODE_WORKING_DIR=${opencodeCfg.workingDir || '/workspace/group'}`);
   }
   if (envLines.length > 0) {
     const envFilePath = path.join(envDir, 'env');
@@ -1203,7 +1241,11 @@ export async function runContainerAgent(
       const ownerLanguage = group.created_by
         ? getUserById(group.created_by)?.language ?? DEFAULT_LANGUAGE
         : DEFAULT_LANGUAGE;
-      const engine = (group.engine ?? 'claude') as 'claude' | 'atomcode';
+      const engine = (group.engine ?? 'claude') as
+        | 'claude'
+        | 'atomcode'
+        | 'codex'
+        | 'opencode';
       const dockerAgentDef = loadGroupAgentDefinition(
         group.agentDefId,
         group.created_by,
@@ -1677,7 +1719,11 @@ export async function runHostAgent(
   hostClaudeContextPlan.audit.warnings = hostClaudeContextSync.warnings;
 
   // 5. 构建环境变量
-  const groupEngine = (group.engine ?? 'claude') as 'claude' | 'atomcode';
+  const groupEngine = (group.engine ?? 'claude') as
+    | 'claude'
+    | 'atomcode'
+    | 'codex'
+    | 'opencode';
   const hostEnv: Record<string, string> = {
     ...(process.env as Record<string, string>),
   };
@@ -1882,6 +1928,38 @@ export async function runHostAgent(
       hostEnv['ATOMCODE_WORKING_DIR'] = groupDir;
     }
 
+    // Codex 引擎：注入 env vars 供 agent-runner 的 codex-engine.ts 读取
+    if (groupEngine === 'codex') {
+      const codexCfg = getCodexConfig();
+      if (!codexCfg.enabled || !codexCfg.binaryPath) {
+        return hostModeSetupError(
+          'Codex 引擎未启用或二进制路径为空。请在 设置 → Codex 引擎 中配置。',
+        );
+      }
+      hostEnv['CODEX_BINARY_PATH'] = codexCfg.binaryPath;
+      hostEnv['CODEX_DEFAULT_MODEL'] = codexCfg.defaultModel;
+      hostEnv['CODEX_WORKING_DIR'] = codexCfg.workingDir || groupDir;
+    }
+
+    // OpenCode 引擎：注入 env vars 供 agent-runner 的 opencode-engine.ts 读取
+    if (groupEngine === 'opencode') {
+      const opencodeCfg = getOpencodeConfig();
+      if (!opencodeCfg.enabled || !opencodeCfg.bunPath || !opencodeCfg.opencodePath) {
+        return hostModeSetupError(
+          'OpenCode 引擎未启用或 bunPath/opencodePath 为空。请在 设置 → OpenCode 引擎 中配置。',
+        );
+      }
+      hostEnv['OPENCODE_BUN_PATH'] = opencodeCfg.bunPath;
+      hostEnv['OPENCODE_SOURCE_PATH'] = opencodeCfg.opencodePath;
+      hostEnv['OPENCODE_HOST'] = opencodeCfg.host || '127.0.0.1';
+      hostEnv['OPENCODE_BASE_PORT'] = String(opencodeCfg.basePort);
+      hostEnv['OPENCODE_PORT_RANGE'] = String(opencodeCfg.portRange);
+      hostEnv['OPENCODE_PASSWORD'] = opencodeCfg.password;
+      hostEnv['OPENCODE_PROVIDER_ID'] = opencodeCfg.providerID;
+      hostEnv['OPENCODE_MODEL_ID'] = opencodeCfg.modelID;
+      hostEnv['OPENCODE_WORKING_DIR'] = opencodeCfg.workingDir || groupDir;
+    }
+
     // 5b. Host capability preflight — detect external tools & inject env vars
     const capResult = await checkHostCapabilities();
     logCapabilityPreflight(group.name, capResult);
@@ -2025,13 +2103,19 @@ export async function runHostAgent(
       const ownerLanguage = group.created_by
         ? getUserById(group.created_by)?.language ?? DEFAULT_LANGUAGE
         : DEFAULT_LANGUAGE;
-      // AtomCode 引擎：session 走 atomcode_session_id 列；agent-runner 的
-      // atomcode-engine.ts 把 done 事件的 session_id 写回该列。
+      // 引擎 session 分流：atomcode/codex/opencode 各走专用列；agent-runner
+      // 把对应 session_id 写回该列。Claude 走默认 session_id 列。
       const engineSessionId =
         groupEngine === 'atomcode'
           ? (getAtomcodeSessionId(group.folder, input.agentId || '') ??
             input.sessionId)
-          : input.sessionId;
+          : groupEngine === 'codex'
+            ? (getCodexThreadId(group.folder, input.agentId || '') ??
+              input.sessionId)
+            : groupEngine === 'opencode'
+              ? (getOpencodeSessionId(group.folder, input.agentId || '') ??
+                input.sessionId)
+              : input.sessionId;
       const hostAgentDef = loadGroupAgentDefinition(
         group.agentDefId,
         group.created_by,

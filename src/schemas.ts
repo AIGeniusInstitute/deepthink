@@ -241,7 +241,7 @@ export const GroupPatchSchema = z.object({
     .enum(['auto', 'always', 'when_mentioned', 'owner_mentioned', 'disabled'])
     .optional(),
   execution_mode: z.enum(['container', 'host']).optional(),
-  engine: z.enum(['claude', 'atomcode']).optional(),
+  engine: z.enum(['claude', 'atomcode', 'codex', 'opencode']).optional(),
   agent_def_id: z.string().max(200).nullable().optional(),
 });
 
@@ -250,7 +250,7 @@ export const AgentDefinitionCreateSchema = z.object({
   description: z.string().max(500).optional(),
   system_prompt: z.string().max(20000).optional(),
   model: z.string().max(100).optional().nullable(),
-  engine: z.enum(['claude', 'atomcode']).optional(),
+  engine: z.enum(['claude', 'atomcode', 'codex', 'opencode']).optional(),
   avatar_emoji: z.string().max(20).optional().nullable(),
   avatar_color: z.string().max(50).optional().nullable(),
   max_turns: z.number().int().min(1).max(200).optional().nullable(),
@@ -263,7 +263,7 @@ export const AgentDefinitionPatchSchema = z.object({
   description: z.string().max(500).optional(),
   system_prompt: z.string().max(20000).optional(),
   model: z.string().max(100).optional().nullable(),
-  engine: z.enum(['claude', 'atomcode']).optional(),
+  engine: z.enum(['claude', 'atomcode', 'codex', 'opencode']).optional(),
   avatar_emoji: z.string().max(20).optional().nullable(),
   avatar_color: z.string().max(50).optional().nullable(),
   max_turns: z.number().int().min(1).max(200).optional().nullable(),
@@ -312,6 +312,26 @@ export const AtomcodeConfigSchema = z.object({
   basePort: z.number().int().min(1024).max(65535).optional(),
   portRange: z.number().int().min(1).max(65535).optional(),
   atomcodeHome: z.string().max(512).optional(),
+});
+
+export const CodexConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  binaryPath: z.string().max(512).optional(),
+  defaultModel: z.string().max(128).optional(),
+  workingDir: z.string().max(512).optional(),
+});
+
+export const OpencodeConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  bunPath: z.string().max(512).optional(),
+  opencodePath: z.string().max(512).optional(),
+  host: z.string().max(64).optional(),
+  basePort: z.number().int().min(1024).max(65535).optional(),
+  portRange: z.number().int().min(1).max(65535).optional(),
+  password: z.string().max(256).optional(),
+  providerID: z.string().max(64).optional(),
+  modelID: z.string().max(128).optional(),
+  workingDir: z.string().max(512).optional(),
 });
 
 export const AtomcodeProviderCreateSchema = z.object({

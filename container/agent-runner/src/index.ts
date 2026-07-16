@@ -2228,9 +2228,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Engine branch: atomcode routes to atomcode-engine.ts, bypassing the
-  // Claude Agent SDK query() path entirely.
-  const engine = (containerInput.engine ?? 'claude') as 'claude' | 'atomcode';
+  // Engine branch: atomcode/codex/opencode route to dedicated engine adapters,
+  // bypassing the Claude Agent SDK query() path entirely.
+  const engine = (containerInput.engine ?? 'claude') as
+    | 'claude'
+    | 'atomcode'
+    | 'codex'
+    | 'opencode';
   if (engine === 'atomcode') {
     log('Engine = atomcode, routing to atomcode-engine adapter');
     const { runAtomcodeEngine } = await import('./atomcode-engine.js');
@@ -2245,6 +2249,44 @@ async function main(): Promise<void> {
         status: 'error',
         result: null,
         error: `AtomCode engine error: ${err instanceof Error ? err.message : String(err)}`,
+        turnId: containerInput.turnId,
+      });
+    }
+    process.exit(0);
+  }
+  if (engine === 'codex') {
+    log('Engine = codex, routing to codex-engine adapter');
+    const { runCodexEngine } = await import('./codex-engine.js');
+    try {
+      await runCodexEngine({
+        containerInput,
+        writeOutput,
+        log,
+      });
+    } catch (err) {
+      writeOutput({
+        status: 'error',
+        result: null,
+        error: `Codex engine error: ${err instanceof Error ? err.message : String(err)}`,
+        turnId: containerInput.turnId,
+      });
+    }
+    process.exit(0);
+  }
+  if (engine === 'opencode') {
+    log('Engine = opencode, routing to opencode-engine adapter');
+    const { runOpencodeEngine } = await import('./opencode-engine.js');
+    try {
+      await runOpencodeEngine({
+        containerInput,
+        writeOutput,
+        log,
+      });
+    } catch (err) {
+      writeOutput({
+        status: 'error',
+        result: null,
+        error: `OpenCode engine error: ${err instanceof Error ? err.message : String(err)}`,
         turnId: containerInput.turnId,
       });
     }
