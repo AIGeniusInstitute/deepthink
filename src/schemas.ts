@@ -314,11 +314,27 @@ export const AtomcodeConfigSchema = z.object({
   atomcodeHome: z.string().max(512).optional(),
 });
 
+export const CodexProviderSchema = z.object({
+  name: z.string().min(1).max(64),
+  apiKey: z.string().min(1).max(512),
+  baseURL: z.string().min(1).max(512),
+  model: z.string().min(1).max(128),
+});
+
 export const CodexConfigSchema = z.object({
   enabled: z.boolean().optional(),
   binaryPath: z.string().max(512).optional(),
   defaultModel: z.string().max(128).optional(),
   workingDir: z.string().max(512).optional(),
+  providers: z.array(CodexProviderSchema).optional(),
+});
+
+export const OpencodeProviderSchema = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().min(1).max(64),
+  apiKey: z.string().min(1).max(512),
+  baseURL: z.string().min(1).max(512),
+  models: z.array(z.string().min(1).max(128)).min(1),
 });
 
 export const OpencodeConfigSchema = z.object({
@@ -332,6 +348,7 @@ export const OpencodeConfigSchema = z.object({
   providerID: z.string().max(64).optional(),
   modelID: z.string().max(128).optional(),
   workingDir: z.string().max(512).optional(),
+  providers: z.array(OpencodeProviderSchema).optional(),
 });
 
 export const AtomcodeProviderCreateSchema = z.object({

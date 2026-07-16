@@ -64,6 +64,107 @@ interface RunOpts {
   log: (message: string) => void;
 }
 
+interface OpencodeProviderInput {
+  id: string;
+  name: string;
+  apiKey: string;
+  baseURL: string;
+  models: string[];
+}
+
+/**
+ * Write a temporary opencode.jsonc with:
+ *   - provider entries from injected providers JSON
+ *   - mcp.deepthink local-server pointing to mcp-bridge.js
+ *
+ * Returns the file path (also sets OPENCODE_CONFIG env on caller's behalf
+ * is NOT done here — caller sets process.env.OPENCODE_CONFIG from return value).
+ */
+async function writeOpencodeConfigFile(
+  providersJson: string,
+  mcpBridgePath: string,
+  log: (m: string) => void,
+): Promise<string | null> {
+  let providers: OpencodeProviderInput[] = [];
+  if (providersJson) {
+    try {
+      const parsed = JSON.parse(providersJson);
+      if (Array.isArray(parsed)) {
+        providers = parsed.filter(
+          (p): p is OpencodeProviderInput =>
+            !!p && typeof p === 'object' &&
+            typeof p.id === 'string' && typeof p.apiKey === 'string' &&
+            typeof p.baseURL === 'string' && Array.isArray(p.models) &&
+            p.models.every((m: unknown) => typeof m === 'string'),
+        );
+      }
+    } catch (err) {
+      log(`Failed to parse OPENCODE_PROVIDERS_JSON: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  const sessionsRoot = process.env.CLAUDE_CONFIG_DIR || path.join(process.env.HOME || '/tmp', '.opencode-deepthink');
+  const configDir = path.join(sessionsRoot, '.opencode');
+  try {
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.chmodSync(configDir, 0o700);
+  } catch (err) {
+    log(`Failed to mkdir opencode config dir ${configDir}: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+  const configPath = path.join(configDir, 'opencode.jsonc');
+
+  // Build config object. opencode.jsonc schema:
+  //   { "provider": { <id>: { "name", "api_key", "base_url", "models": { <model>: { "name" } } } },
+  //     "mcp": { "deepthink": { "type":"local", "command":["node","..."], "environment": { ... } } } }
+  const config: Record<string, unknown> = { provider: {}, mcp: {} };
+
+  for (const p of providers) {
+    const modelsMap: Record<string, { name: string }> = {};
+    for (const m of p.models) {
+      modelsMap[m] = { name: m };
+    }
+    (config.provider as Record<string, unknown>)[p.id] = {
+      name: p.name || p.id,
+      api_key: p.apiKey,
+      base_url: p.baseURL,
+      models: modelsMap,
+    };
+  }
+
+  if (fs.existsSync(mcpBridgePath)) {
+    const environment: Record<string, string> = {};
+    for (const k of [
+      'DT_CHAT_JID', 'DT_GROUP_FOLDER', 'DT_IS_HOME', 'DT_IS_ADMIN_HOME',
+      'DT_IPC_DIR', 'DT_WORKSPACE_GROUP', 'DT_WORKSPACE_GLOBAL',
+      'DT_WORKSPACE_MEMORY', 'DT_DISABLE_MEMORY_LAYER',
+    ]) {
+      if (process.env[k] !== undefined) {
+        environment[k] = String(process.env[k]);
+      }
+    }
+    (config.mcp as Record<string, unknown>).deepthink = {
+      type: 'local',
+      command: ['node', mcpBridgePath],
+      environment,
+    };
+  } else {
+    log(`mcp-bridge.js not found at ${mcpBridgePath}, skipping MCP bridge config`);
+  }
+
+  try {
+    const tmp = `${configPath}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', { mode: 0o600 });
+    fs.renameSync(tmp, configPath);
+    fs.chmodSync(configPath, 0o600);
+    log(`Wrote opencode config: ${configPath} (providers=${providers.length})`);
+    return configPath;
+  } catch (err) {
+    log(`Failed to write opencode config: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
 function emitStream(
   writeOutput: (out: ContainerOutput) => void,
   streamEvent: StreamEvent,
@@ -522,13 +623,26 @@ export async function runOpencodeEngine(opts: RunOpts): Promise<void> {
     return;
   }
 
+  // ── 1b. Generate temporary opencode.jsonc with providers + MCP bridge ──
+  // Override DT_CHAT_JID with the actual chatJid from containerInput
+  if (containerInput.chatJid) {
+    process.env.DT_CHAT_JID = containerInput.chatJid;
+  }
+  const providersJson = process.env.OPENCODE_PROVIDERS_JSON?.trim() ?? '';
+  const mcpBridgePath = path.join(__dirname, 'mcp-bridge.js');
+  const configPath = await writeOpencodeConfigFile(providersJson, mcpBridgePath, log);
+  if (configPath) {
+    process.env.OPENCODE_CONFIG = configPath;
+    log(`OpenCode config: OPENCODE_CONFIG=${configPath}`);
+  }
+
   // ── 2. Prepare initial prompt (drain IPC, scheduled task prefix) ──
   let prompt = containerInput.prompt;
   if (containerInput.isScheduledTask) {
     prompt =
       '[定时任务 - 以下内容由系统自动发送。]\n\n' +
-      '注意：OpenCode 引擎不内置 DeepThink MCP 工具，无法调用 send_message。' +
-      '本次运行的最终输出会作为结果保存到对话历史，但不会主动推送消息。\n\n' +
+      '本次运行的最终输出会作为结果保存到对话历史。' +
+      '如需主动向用户/群组推送消息，请使用 send_message MCP 工具。\n\n' +
       prompt;
   }
   try { fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL); } catch { /* ignore */ }

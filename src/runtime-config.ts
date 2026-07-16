@@ -4166,6 +4166,14 @@ export function toPublicAtomcodeConfig(cfg: AtomcodeConfig): AtomcodeConfig {
 // Codex engine config
 // ───────────────────────────────────────────────────────────────────────────
 
+export interface CodexProvider {
+  name: string;
+  /** API key, stored plaintext in 0o600 file (same as password). */
+  apiKey: string;
+  baseURL: string;
+  model: string;
+}
+
 export interface CodexConfig {
   enabled: boolean;
   /** codex 二进制绝对路径 */
@@ -4174,6 +4182,8 @@ export interface CodexConfig {
   defaultModel: string;
   /** 工作目录，默认 /workspace/group */
   workingDir: string;
+  /** LLM providers (apiKey/baseURL/model). First entry is primary. */
+  providers: CodexProvider[];
   updatedAt: string | null;
 }
 
@@ -4184,8 +4194,25 @@ const DEFAULT_CODEX_CONFIG: CodexConfig = {
   binaryPath: '',
   defaultModel: 'gpt-5.1-codex',
   workingDir: '/workspace/group',
+  providers: [],
   updatedAt: null,
 };
+
+function sanitizeProviders(raw: unknown): CodexProvider[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CodexProvider[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const p = item as Partial<CodexProvider>;
+    const name = typeof p.name === 'string' ? p.name.trim() : '';
+    const apiKey = typeof p.apiKey === 'string' ? p.apiKey : '';
+    const baseURL = typeof p.baseURL === 'string' ? p.baseURL.trim() : '';
+    const model = typeof p.model === 'string' ? p.model.trim() : '';
+    if (!name || !apiKey || !baseURL || !model) continue;
+    out.push({ name, apiKey, baseURL, model });
+  }
+  return out;
+}
 
 export function getCodexConfig(): CodexConfig {
   try {
@@ -4206,6 +4233,7 @@ export function getCodexConfig(): CodexConfig {
         typeof parsed.workingDir === 'string' && parsed.workingDir
           ? parsed.workingDir
           : '/workspace/group',
+      providers: sanitizeProviders(parsed.providers),
       enabled: !!parsed.enabled,
       updatedAt: parsed.updatedAt ?? null,
     };
@@ -4228,6 +4256,7 @@ export function saveCodexConfig(cfg: Partial<CodexConfig>): CodexConfig {
       typeof cfg.workingDir === 'string' && cfg.workingDir
         ? cfg.workingDir
         : current.workingDir,
+    providers: Array.isArray(cfg.providers) ? sanitizeProviders(cfg.providers) : current.providers,
     updatedAt: new Date().toISOString(),
   };
   fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
@@ -4235,14 +4264,29 @@ export function saveCodexConfig(cfg: Partial<CodexConfig>): CodexConfig {
   return merged;
 }
 
-/** 脱敏版用于 API 响应 */
+/** 脱敏版用于 API 响应：apiKey 字段保留长度但屏蔽内容 */
 export function toPublicCodexConfig(cfg: CodexConfig): CodexConfig {
-  return { ...cfg };
+  return {
+    ...cfg,
+    providers: cfg.providers.map((p) => ({
+      ...p,
+      apiKey: p.apiKey ? `****${p.apiKey.slice(-4)}` : '',
+    })),
+  };
 }
 
 // ───────────────────────────────────────────────────────────────────────────
 // OpenCode engine config
 // ───────────────────────────────────────────────────────────────────────────
+
+export interface OpencodeProvider {
+  id: string;
+  name: string;
+  apiKey: string;
+  baseURL: string;
+  /** Supported models; first entry is default. */
+  models: string[];
+}
 
 export interface OpencodeConfig {
   enabled: boolean;
@@ -4264,13 +4308,16 @@ export interface OpencodeConfig {
   modelID: string;
   /** 工作目录，默认 /workspace/group */
   workingDir: string;
+  /** LLM providers config (apiKey/baseURL/models). */
+  providers: OpencodeProvider[];
   updatedAt: string | null;
 }
 
-/** OpenCode 配置的公开表示（password 改为 has_password 标志位） */
+/** OpenCode 配置的公开表示（password 改为 has_password 标志位；apiKey 脱敏） */
 export interface PublicOpencodeConfig
-  extends Omit<OpencodeConfig, 'password'> {
+  extends Omit<OpencodeConfig, 'password' | 'providers'> {
   hasPassword: boolean;
+  providers: Array<Omit<OpencodeProvider, 'apiKey'> & { hasApiKey: boolean }>;
 }
 
 const OPENCODE_CONFIG_FILE = path.join(CLAUDE_CONFIG_DIR, 'opencode.json');
@@ -4286,8 +4333,28 @@ const DEFAULT_OPENCODE_CONFIG: OpencodeConfig = {
   providerID: 'anthropic',
   modelID: 'claude-sonnet-4-6',
   workingDir: '/workspace/group',
+  providers: [],
   updatedAt: null,
 };
+
+function sanitizeOpencodeProviders(raw: unknown): OpencodeProvider[] {
+  if (!Array.isArray(raw)) return [];
+  const out: OpencodeProvider[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const p = item as Partial<OpencodeProvider>;
+    const id = typeof p.id === 'string' ? p.id.trim() : '';
+    const name = typeof p.name === 'string' ? p.name.trim() : '';
+    const apiKey = typeof p.apiKey === 'string' ? p.apiKey : '';
+    const baseURL = typeof p.baseURL === 'string' ? p.baseURL.trim() : '';
+    const models = Array.isArray(p.models)
+      ? p.models.filter((m): m is string => typeof m === 'string' && m.trim().length > 0).map((m) => m.trim())
+      : [];
+    if (!id || !apiKey || !baseURL || models.length === 0) continue;
+    out.push({ id, name: name || id, apiKey, baseURL, models });
+  }
+  return out;
+}
 
 export function getOpencodeConfig(): OpencodeConfig {
   try {
@@ -4324,6 +4391,7 @@ export function getOpencodeConfig(): OpencodeConfig {
         typeof parsed.workingDir === 'string' && parsed.workingDir
           ? parsed.workingDir
           : '/workspace/group',
+      providers: sanitizeOpencodeProviders(parsed.providers),
       enabled: !!parsed.enabled,
       updatedAt: parsed.updatedAt ?? null,
     };
@@ -4363,6 +4431,7 @@ export function saveOpencodeConfig(cfg: Partial<OpencodeConfig>): OpencodeConfig
       typeof cfg.workingDir === 'string' && cfg.workingDir
         ? cfg.workingDir
         : current.workingDir,
+    providers: Array.isArray(cfg.providers) ? sanitizeOpencodeProviders(cfg.providers) : current.providers,
     updatedAt: new Date().toISOString(),
   };
   fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
@@ -4370,8 +4439,15 @@ export function saveOpencodeConfig(cfg: Partial<OpencodeConfig>): OpencodeConfig
   return merged;
 }
 
-/** 脱敏版用于 API 响应：password 替换为 hasPassword 标志位 */
+/** 脱敏版用于 API 响应：password 替换为 hasPassword 标志位；apiKey 脱敏 */
 export function toPublicOpencodeConfig(cfg: OpencodeConfig): PublicOpencodeConfig {
-  const { password, ...rest } = cfg;
-  return { ...rest, hasPassword: password.length > 0 };
+  const { password, providers, ...rest } = cfg;
+  return {
+    ...rest,
+    hasPassword: password.length > 0,
+    providers: providers.map((p) => {
+      const { apiKey, ...restP } = p;
+      return { ...restP, hasApiKey: apiKey.length > 0 };
+    }),
+  };
 }

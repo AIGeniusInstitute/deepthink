@@ -35,7 +35,9 @@ import {
   getAtomcodeConfig,
   getCodexConfig,
   getOpencodeConfig,
+  saveOpencodeConfig,
 } from './runtime-config.js';
+import { ensureBunInstalled } from './bun-installer.js';
 import { providerPool } from './provider-pool.js';
 import {
   deleteSession,
@@ -853,12 +855,30 @@ export function buildVolumeMounts(
     envLines.push(`CODEX_BINARY_PATH=${codexCfg.binaryPath}`);
     envLines.push(`CODEX_DEFAULT_MODEL=${codexCfg.defaultModel}`);
     envLines.push(`CODEX_WORKING_DIR=${codexCfg.workingDir || '/workspace/group'}`);
+    envLines.push(`CODEX_PROVIDERS_JSON=${JSON.stringify(codexCfg.providers).replace(/'/g, "'\\''")}`);
+    envLines.push(`DT_CHAT_JID=web:${group.folder}`);
+    envLines.push(`DT_GROUP_FOLDER=${group.folder}`);
+    envLines.push(`DT_IS_HOME=${!!group.is_home}`);
+    envLines.push(`DT_IS_ADMIN_HOME=${!!group.is_home && group.folder === 'main'}`);
+    envLines.push(`DT_IPC_DIR=/workspace/ipc`);
+    envLines.push(`DT_WORKSPACE_GROUP=/workspace/group`);
+    envLines.push(`DT_WORKSPACE_GLOBAL=/workspace/global`);
+    envLines.push(`DT_WORKSPACE_MEMORY=/workspace/memory`);
+    envLines.push(`DT_DISABLE_MEMORY_LAYER=false`);
   }
   if (groupEngine === 'opencode') {
     const opencodeCfg = getOpencodeConfig();
-    if (!opencodeCfg.enabled || !opencodeCfg.bunPath || !opencodeCfg.opencodePath) {
+    if (!opencodeCfg.enabled || !opencodeCfg.opencodePath) {
       throw new Error(
-        `Group ${group.folder} has engine=opencode but OpenCode is not enabled or bunPath/opencodePath is empty. Configure in Settings → OpenCode 引擎.`,
+        `Group ${group.folder} has engine=opencode but OpenCode is not enabled or opencodePath is empty. Configure in Settings → OpenCode 引擎.`,
+      );
+    }
+    if (!opencodeCfg.bunPath) {
+      // Container mode can't auto-install (buildVolumeMounts is sync). Hint the
+      // host-side install path — runHostAgent handles auto-install. For container
+      // mode, user must save OpenCode settings once to trigger the host-side install.
+      throw new Error(
+        `Group ${group.folder} has engine=opencode but bunPath is empty. Open Settings → OpenCode 引擎 and click Test to auto-install Bun, then retry.`,
       );
     }
     envLines.push(`OPENCODE_BUN_PATH=${opencodeCfg.bunPath}`);
@@ -870,6 +890,16 @@ export function buildVolumeMounts(
     envLines.push(`OPENCODE_PROVIDER_ID=${opencodeCfg.providerID}`);
     envLines.push(`OPENCODE_MODEL_ID=${opencodeCfg.modelID}`);
     envLines.push(`OPENCODE_WORKING_DIR=${opencodeCfg.workingDir || '/workspace/group'}`);
+    envLines.push(`OPENCODE_PROVIDERS_JSON=${JSON.stringify(opencodeCfg.providers).replace(/'/g, "'\\''")}`);
+    envLines.push(`DT_CHAT_JID=web:${group.folder}`);
+    envLines.push(`DT_GROUP_FOLDER=${group.folder}`);
+    envLines.push(`DT_IS_HOME=${!!group.is_home}`);
+    envLines.push(`DT_IS_ADMIN_HOME=${!!group.is_home && group.folder === 'main'}`);
+    envLines.push(`DT_IPC_DIR=/workspace/ipc`);
+    envLines.push(`DT_WORKSPACE_GROUP=/workspace/group`);
+    envLines.push(`DT_WORKSPACE_GLOBAL=/workspace/global`);
+    envLines.push(`DT_WORKSPACE_MEMORY=/workspace/memory`);
+    envLines.push(`DT_DISABLE_MEMORY_LAYER=false`);
   }
   if (envLines.length > 0) {
     const envFilePath = path.join(envDir, 'env');
@@ -1928,6 +1958,9 @@ export async function runHostAgent(
       hostEnv['ATOMCODE_WORKING_DIR'] = groupDir;
     }
 
+    // Determine admin-home flag locally for DT_* env injection (mirrors buildVolumeMounts)
+    const isGroupAdminHome = !!group.is_home && group.folder === 'main';
+
     // Codex 引擎：注入 env vars 供 agent-runner 的 codex-engine.ts 读取
     if (groupEngine === 'codex') {
       const codexCfg = getCodexConfig();
@@ -1939,15 +1972,43 @@ export async function runHostAgent(
       hostEnv['CODEX_BINARY_PATH'] = codexCfg.binaryPath;
       hostEnv['CODEX_DEFAULT_MODEL'] = codexCfg.defaultModel;
       hostEnv['CODEX_WORKING_DIR'] = codexCfg.workingDir || groupDir;
+      // Inject providers JSON for codex-engine to write into temporary config.toml
+      hostEnv['CODEX_PROVIDERS_JSON'] = JSON.stringify(codexCfg.providers);
+      // MCP bridge context — propagated to the bridge subprocess via generated config.toml
+      hostEnv['DT_CHAT_JID'] = `web:${group.folder}`;
+      hostEnv['DT_GROUP_FOLDER'] = group.folder;
+      hostEnv['DT_IS_HOME'] = String(!!group.is_home);
+      hostEnv['DT_IS_ADMIN_HOME'] = String(isGroupAdminHome);
+      hostEnv['DT_IPC_DIR'] = groupIpcDir;
+      hostEnv['DT_WORKSPACE_GROUP'] = groupDir;
+      if (hostEnv['DEEPTHINK_WORKSPACE_GLOBAL']) {
+        hostEnv['DT_WORKSPACE_GLOBAL'] = hostEnv['DEEPTHINK_WORKSPACE_GLOBAL'];
+      }
+      if (hostEnv['DEEPTHINK_WORKSPACE_MEMORY']) {
+        hostEnv['DT_WORKSPACE_MEMORY'] = hostEnv['DEEPTHINK_WORKSPACE_MEMORY'];
+      }
+      hostEnv['DT_DISABLE_MEMORY_LAYER'] = hostEnv['DEEPTHINK_DISABLE_MEMORY_LAYER'] ?? 'false';
     }
 
     // OpenCode 引擎：注入 env vars 供 agent-runner 的 opencode-engine.ts 读取
     if (groupEngine === 'opencode') {
-      const opencodeCfg = getOpencodeConfig();
-      if (!opencodeCfg.enabled || !opencodeCfg.bunPath || !opencodeCfg.opencodePath) {
+      // Ensure bun is available — auto-install if missing and bunPath is empty
+      let opencodeCfg = getOpencodeConfig();
+      if (!opencodeCfg.enabled || !opencodeCfg.opencodePath) {
         return hostModeSetupError(
-          'OpenCode 引擎未启用或 bunPath/opencodePath 为空。请在 设置 → OpenCode 引擎 中配置。',
+          'OpenCode 引擎未启用或 opencodePath 为空。请在 设置 → OpenCode 引擎 中配置。',
         );
+      }
+      if (!opencodeCfg.bunPath) {
+        try {
+          const { bunPath } = await ensureBunInstalled();
+          opencodeCfg = saveOpencodeConfig({ bunPath });
+          logger.info({ bunPath }, 'OpenCode: bun auto-installed');
+        } catch (err) {
+          return hostModeSetupError(
+            `Bun 运行时未安装且自动下载失败：${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
       }
       hostEnv['OPENCODE_BUN_PATH'] = opencodeCfg.bunPath;
       hostEnv['OPENCODE_SOURCE_PATH'] = opencodeCfg.opencodePath;
@@ -1958,6 +2019,22 @@ export async function runHostAgent(
       hostEnv['OPENCODE_PROVIDER_ID'] = opencodeCfg.providerID;
       hostEnv['OPENCODE_MODEL_ID'] = opencodeCfg.modelID;
       hostEnv['OPENCODE_WORKING_DIR'] = opencodeCfg.workingDir || groupDir;
+      // Inject providers JSON for opencode-engine to write into temporary opencode.jsonc
+      hostEnv['OPENCODE_PROVIDERS_JSON'] = JSON.stringify(opencodeCfg.providers);
+      // MCP bridge context
+      hostEnv['DT_CHAT_JID'] = `web:${group.folder}`;
+      hostEnv['DT_GROUP_FOLDER'] = group.folder;
+      hostEnv['DT_IS_HOME'] = String(!!group.is_home);
+      hostEnv['DT_IS_ADMIN_HOME'] = String(isGroupAdminHome);
+      hostEnv['DT_IPC_DIR'] = groupIpcDir;
+      hostEnv['DT_WORKSPACE_GROUP'] = groupDir;
+      if (hostEnv['DEEPTHINK_WORKSPACE_GLOBAL']) {
+        hostEnv['DT_WORKSPACE_GLOBAL'] = hostEnv['DEEPTHINK_WORKSPACE_GLOBAL'];
+      }
+      if (hostEnv['DEEPTHINK_WORKSPACE_MEMORY']) {
+        hostEnv['DT_WORKSPACE_MEMORY'] = hostEnv['DEEPTHINK_WORKSPACE_MEMORY'];
+      }
+      hostEnv['DT_DISABLE_MEMORY_LAYER'] = hostEnv['DEEPTHINK_DISABLE_MEMORY_LAYER'] ?? 'false';
     }
 
     // 5b. Host capability preflight — detect external tools & inject env vars
