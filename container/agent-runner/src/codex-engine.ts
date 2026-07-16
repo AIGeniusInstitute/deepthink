@@ -147,6 +147,117 @@ interface RunOneTurnResult {
   error?: string;
 }
 
+interface CodexProviderInput {
+  name: string;
+  apiKey: string;
+  baseURL: string;
+  model: string;
+}
+
+/**
+ * Write a temporary $CODEX_HOME/config.toml with:
+ *   - model_providers from injected providers JSON (apiKey via env_key)
+ *   - mcp_servers.deepthink pointing to mcp-bridge.js
+ *
+ * Returns the CODEX_HOME directory path, or null if both providers and
+ * mcp-bridge are unavailable (caller should still proceed — codex will
+ * use its default config).
+ */
+async function writeCodexConfig(
+  providersJson: string,
+  mcpBridgePath: string,
+  log: (m: string) => void,
+): Promise<string | null> {
+  let providers: CodexProviderInput[] = [];
+  if (providersJson) {
+    try {
+      const parsed = JSON.parse(providersJson);
+      if (Array.isArray(parsed)) {
+        providers = parsed.filter(
+          (p): p is CodexProviderInput =>
+            !!p && typeof p === 'object' &&
+            typeof p.name === 'string' && typeof p.apiKey === 'string' &&
+            typeof p.baseURL === 'string' && typeof p.model === 'string',
+        );
+      }
+    } catch (err) {
+      log(`Failed to parse CODEX_PROVIDERS_JSON: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Sessions dir holds per-group .codex home. Use a subdirectory to avoid clashes.
+  const sessionsRoot = process.env.CLAUDE_CONFIG_DIR || path.join(process.env.HOME || '/tmp', '.codex-deepthink');
+  const codexHome = path.join(sessionsRoot, '.codex');
+  try {
+    fs.mkdirSync(codexHome, { recursive: true });
+    fs.chmodSync(codexHome, 0o700);
+  } catch (err) {
+    log(`Failed to mkdir CODEX_HOME ${codexHome}: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+
+  const lines: string[] = [];
+  // Default model and provider
+  if (providers.length > 0) {
+    const primary = providers[0];
+    lines.push(`model = "${primary.model.replace(/"/g, '\\"')}"`);
+    lines.push(`model_provider = "deepthink"`);
+  }
+
+  for (let i = 0; i < providers.length; i++) {
+    const p = providers[i];
+    const providerKey = i === 0 ? 'deepthink' : `deepthink_${i}`;
+    lines.push('');
+    lines.push(`[model_providers.${providerKey}]`);
+    lines.push(`name = "${p.name.replace(/"/g, '\\"')}"`);
+    lines.push(`base_url = "${p.baseURL.replace(/"/g, '\\"')}"`);
+    // env_key names an env var codex will read for the API key. We set the
+    // env var on the codex subprocess below.
+    const envKeyName = `DEEPTHINK_CODEX_API_KEY_${i}`;
+    lines.push(`env_key = "${envKeyName}"`);
+    // Inject the apiKey into process.env so codex subprocess inherits it.
+    process.env[envKeyName] = p.apiKey;
+  }
+
+  // MCP bridge — only if the compiled bridge exists
+  if (fs.existsSync(mcpBridgePath)) {
+    lines.push('');
+    lines.push(`[mcp_servers.deepthink]`);
+    lines.push(`command = "node"`);
+    lines.push(`args = ["${mcpBridgePath.replace(/"/g, '\\"')}"]`);
+    // env_vars: pass DT_* context to the bridge subprocess explicitly
+    const envVars: Record<string, string> = {};
+    for (const k of [
+      'DT_CHAT_JID', 'DT_GROUP_FOLDER', 'DT_IS_HOME', 'DT_IS_ADMIN_HOME',
+      'DT_IPC_DIR', 'DT_WORKSPACE_GROUP', 'DT_WORKSPACE_GLOBAL',
+      'DT_WORKSPACE_MEMORY', 'DT_DISABLE_MEMORY_LAYER',
+    ]) {
+      if (process.env[k] !== undefined) {
+        envVars[k] = process.env[k] as string;
+      }
+    }
+    const envVarsToml = Object.entries(envVars)
+      .map(([k, v]) => `${k} = "${String(v).replace(/"/g, '\\"')}"`)
+      .join(', ');
+    lines.push(`env_vars = { ${envVarsToml} }`);
+  } else {
+    log(`mcp-bridge.js not found at ${mcpBridgePath}, skipping MCP bridge config`);
+  }
+
+  try {
+    const configPath = path.join(codexHome, 'config.toml');
+    const tmp = `${configPath}.tmp`;
+    fs.writeFileSync(tmp, lines.join('\n') + '\n', { mode: 0o600 });
+    fs.renameSync(tmp, configPath);
+    fs.chmodSync(configPath, 0o600);
+    log(`Wrote codex config: ${configPath} (providers=${providers.length})`);
+    return codexHome;
+  } catch (err) {
+    log(`Failed to write codex config: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
 /**
  * Spawn one `codex exec --json` invocation and stream JSONL events.
  */
@@ -369,13 +480,27 @@ export async function runCodexEngine(opts: RunOpts): Promise<void> {
     return;
   }
 
+  // ── 1b. Generate temporary $CODEX_HOME/config.toml with providers + MCP bridge ──
+  // Override DT_CHAT_JID with the actual chatJid from containerInput (the
+  // container-runner only knows group.folder, so sets a web:{folder} default).
+  if (containerInput.chatJid) {
+    process.env.DT_CHAT_JID = containerInput.chatJid;
+  }
+  const providersJson = process.env.CODEX_PROVIDERS_JSON?.trim() ?? '';
+  const mcpBridgePath = path.join(__dirname, 'mcp-bridge.js');
+  const codexHome = await writeCodexConfig(providersJson, mcpBridgePath, log);
+  if (codexHome) {
+    process.env.CODEX_HOME = codexHome;
+    log(`Codex config: CODEX_HOME=${codexHome}`);
+  }
+
   // ── 2. Prepare initial prompt (drain IPC, scheduled task prefix) ──
   let prompt = containerInput.prompt;
   if (containerInput.isScheduledTask) {
     prompt =
       '[定时任务 - 以下内容由系统自动发送。]\n\n' +
-      '注意：Codex 引擎不内置 DeepThink MCP 工具，无法调用 send_message。' +
-      '本次运行的最终输出会作为结果保存到对话历史，但不会主动推送消息。\n\n' +
+      '本次运行的最终输出会作为结果保存到对话历史。' +
+      '如需主动向用户/群组推送消息，请使用 send_message MCP 工具。\n\n' +
       prompt;
   }
   try { fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL); } catch { /* ignore */ }

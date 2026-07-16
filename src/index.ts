@@ -22,6 +22,7 @@ import {
 import { detectImageMimeType } from './image-detector.js';
 import { interruptibleSleep } from './message-notifier.js';
 import { createIpcSendDeduplicator } from './ipc-send-dedup.js';
+import { ensureBunInstalled } from './bun-installer.js';
 import {
   AvailableGroup,
   ContainerInput,
@@ -10505,6 +10506,16 @@ async function main(): Promise<void> {
   migrateSystemIMToPerUser();
 
   loadState();
+
+  // Pre-warm Bun runtime for OpenCode engine (non-blocking, host-mode only).
+  // Runs in background; failures are logged but do not block startup.
+  void ensureBunInstalled().then((bunPath) => {
+    if (bunPath) {
+      logger.info({ bunPath }, 'Bun runtime ready for OpenCode engine');
+    }
+  }).catch((err) => {
+    logger.warn({ err }, 'Failed to pre-warm Bun runtime');
+  });
 
   // Plugin catalog scan: one shot 5s after startup + every 1h thereafter.
   // Disabled when SystemSettings.pluginAutoScan = false; admin can still

@@ -3403,9 +3403,23 @@ configRoutes.put('/codex', authMiddleware, systemConfigMiddleware, async (c) => 
   if (!validation.success) {
     return c.json({ error: 'Invalid config', details: validation.error.flatten() }, 400);
   }
-  const saved = saveCodexConfig(validation.data);
+  const data = validation.data;
+  // providers: if apiKey is empty or matches masked pattern, keep existing
+  if (Array.isArray(data.providers)) {
+    const current = getCodexConfig();
+    const currentByName = new Map(current.providers.map((p) => [p.name, p.apiKey]));
+    data.providers = data.providers.map((p) => {
+      const masked = !p.apiKey || p.apiKey.startsWith('****');
+      if (masked) {
+        const existing = currentByName.get(p.name);
+        if (existing) return { ...p, apiKey: existing };
+      }
+      return p;
+    });
+  }
+  const saved = saveCodexConfig(data);
   const actor = (c.get('user') as AuthUser).username;
-  logger.info({ actor, enabled: saved.enabled }, 'Codex config updated');
+  logger.info({ actor, enabled: saved.enabled, providerCount: saved.providers.length }, 'Codex config updated');
   return c.json(toPublicCodexConfig(saved));
 });
 
@@ -3468,9 +3482,22 @@ configRoutes.put('/opencode', authMiddleware, systemConfigMiddleware, async (c) 
     const current = getOpencodeConfig();
     data.password = current.password;
   }
+  // providers: if apiKey is empty or matches masked pattern, keep existing
+  if (Array.isArray(data.providers)) {
+    const current = getOpencodeConfig();
+    const currentById = new Map(current.providers.map((p) => [p.id, p.apiKey]));
+    data.providers = data.providers.map((p) => {
+      const masked = !p.apiKey || p.apiKey.startsWith('****');
+      if (masked) {
+        const existing = currentById.get(p.id);
+        if (existing) return { ...p, apiKey: existing };
+      }
+      return p;
+    });
+  }
   const saved = saveOpencodeConfig(data);
   const actor = (c.get('user') as AuthUser).username;
-  logger.info({ actor, enabled: saved.enabled }, 'OpenCode config updated');
+  logger.info({ actor, enabled: saved.enabled, providerCount: saved.providers.length }, 'OpenCode config updated');
   return c.json(toPublicOpencodeConfig(saved));
 });
 

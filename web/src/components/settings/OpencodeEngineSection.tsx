@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Plug, Check } from 'lucide-react';
+import { Loader2, Plug, Check, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Label } from '@/components/ui/label';
@@ -8,6 +8,15 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { getErrorMessage } from './types';
+
+interface OpencodeProvider {
+  id: string;
+  name: string;
+  apiKey: string;
+  baseURL: string;
+  models: string[];
+  hasApiKey?: boolean;
+}
 
 interface OpencodeConfig {
   enabled: boolean;
@@ -20,6 +29,7 @@ interface OpencodeConfig {
   providerID: string;
   modelID: string;
   workingDir: string;
+  providers: OpencodeProvider[];
   updatedAt: string | null;
 }
 
@@ -40,6 +50,7 @@ const DEFAULT_CONFIG: OpencodeConfig = {
   providerID: 'anthropic',
   modelID: 'claude-sonnet-4-6',
   workingDir: '/workspace/group',
+  providers: [],
   updatedAt: null,
 };
 
@@ -55,7 +66,7 @@ export function OpencodeEngineSection() {
     setLoading(true);
     try {
       const data = await api.get<OpencodeConfig>('/api/config/opencode');
-      setCfg({ ...DEFAULT_CONFIG, ...data });
+      setCfg({ ...DEFAULT_CONFIG, ...data, providers: data.providers ?? [] });
       setPassword('');
     } catch (err) {
       toast.error(getErrorMessage(err, '加载 OpenCode 配置失败'));
@@ -70,10 +81,9 @@ export function OpencodeEngineSection() {
     setSaving(true);
     try {
       const payload: Record<string, unknown> = { ...cfg, password: password || undefined };
-      // Remove hasPassword (read-only field) before save
       delete payload.hasPassword;
       const data = await api.put<OpencodeConfig>('/api/config/opencode', payload);
-      setCfg({ ...DEFAULT_CONFIG, ...data });
+      setCfg({ ...DEFAULT_CONFIG, ...data, providers: data.providers ?? [] });
       setPassword('');
       toast.success('OpenCode 配置已保存');
     } catch (err) {
@@ -99,6 +109,22 @@ export function OpencodeEngineSection() {
     } finally {
       setTesting(false);
     }
+  };
+
+  const updateProvider = (idx: number, patch: Partial<OpencodeProvider>): void => {
+    setCfg((c) => ({
+      ...c,
+      providers: c.providers.map((p, i) => i === idx ? { ...p, ...patch } : p),
+    }));
+  };
+  const addProvider = (): void => {
+    setCfg((c) => ({
+      ...c,
+      providers: [...c.providers, { id: '', name: '', apiKey: '', baseURL: '', models: [] }],
+    }));
+  };
+  const removeProvider = (idx: number): void => {
+    setCfg((c) => ({ ...c, providers: c.providers.filter((_, i) => i !== idx) }));
   };
 
   if (loading) {
@@ -139,10 +165,10 @@ export function OpencodeEngineSection() {
           id="opencode-bun"
           value={cfg.bunPath}
           onChange={(e) => setCfg({ ...cfg, bunPath: e.target.value })}
-          placeholder="/opt/homebrew/bin/bun"
+          placeholder="/opt/homebrew/bin/bun 或留空让 DeepThink 自动安装"
         />
         <p className="text-xs text-muted-foreground">
-          bun 可执行文件路径。可通过 <code>which bun</code> 查找。要求 bun@1.3.14+。
+          bun 可执行文件路径。可通过 <code>which bun</code> 查找。留空时宿主机模式启动会自动下载 bun v1.3.14 到 <code>data/bin/</code>。要求 bun@1.3.14+。
         </p>
       </div>
 
@@ -243,6 +269,83 @@ export function OpencodeEngineSection() {
         </p>
       </div>
 
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label className="text-base">LLM Provider 配置</Label>
+            <p className="text-xs text-muted-foreground mt-1">
+              引擎启动时会动态生成 <code>opencode.jsonc</code> 并通过 <code>OPENCODE_CONFIG</code> 注入，无需手动编辑 <code>~/.opencode/opencode.jsonc</code>。
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={addProvider}>
+            <Plus className="w-3.5 h-3.5 mr-1" /> 添加 Provider
+          </Button>
+        </div>
+        {cfg.providers.length === 0 ? (
+          <div className="text-xs text-muted-foreground p-3 rounded border border-dashed">
+            尚未配置 Provider。点击「添加 Provider」开始。
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {cfg.providers.map((p, i) => (
+              <div key={i} className="border rounded p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Provider #{i + 1}{i === 0 ? ' (主)' : ''}
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={() => removeProvider(i)}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">ID</Label>
+                    <Input
+                      value={p.id}
+                      onChange={(e) => updateProvider(i, { id: e.target.value })}
+                      placeholder="anthropic"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">名称</Label>
+                    <Input
+                      value={p.name}
+                      onChange={(e) => updateProvider(i, { name: e.target.value })}
+                      placeholder="Anthropic"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Base URL</Label>
+                  <Input
+                    value={p.baseURL}
+                    onChange={(e) => updateProvider(i, { baseURL: e.target.value })}
+                    placeholder="https://api.anthropic.com/v1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Models（逗号分隔）</Label>
+                  <Input
+                    value={p.models.join(', ')}
+                    onChange={(e) => updateProvider(i, { models: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+                    placeholder="claude-sonnet-4-6, claude-opus-4-7"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">API Key</Label>
+                  <Input
+                    type="password"
+                    value={p.apiKey.startsWith('****') ? '' : p.apiKey}
+                    onChange={(e) => updateProvider(i, { apiKey: e.target.value })}
+                    placeholder={p.apiKey.startsWith('****') || p.hasApiKey ? `已保存 (${p.apiKey.startsWith('****') ? p.apiKey : '****'})` : 'sk-...'}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center gap-2">
         <Button onClick={handleSave} disabled={saving}>
           {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
@@ -267,11 +370,11 @@ export function OpencodeEngineSection() {
       <div className="p-3 rounded-md bg-muted/40 text-xs text-muted-foreground">
         <p className="font-medium mb-1">说明</p>
         <ul className="list-disc list-inside space-y-0.5">
-          <li>OpenCode Provider 由 <code>opencode.jsonc</code> 管理，不在 DeepThink UI 配置</li>
+          <li>Provider 配置在 DeepThink 内管理，引擎启动时动态生成临时 <code>opencode.jsonc</code>（路径 <code>data/sessions/&lt;folder&gt;/.opencode/</code>）</li>
           <li>切换到 OpenCode 引擎后会开新会话（不重放历史）</li>
-          <li>OpenCode 引擎下 DeepThink 内置 MCP 工具不可用</li>
+          <li>OpenCode 引擎下 Agent 可使用 DeepThink 内置 MCP 工具（send_message / schedule_task / memory_*），通过 mcp-bridge 桥接</li>
+          <li>Bun 未安装时宿主机模式自动下载到 <code>data/bin/bun-v1.3.14/</code>；容器模式需预先指定路径</li>
           <li>每个 agent-runner 进程启动独立的 opencode serve 实例（随机端口）</li>
-          <li>Session 持久化到 <code>~/.local/share/opencode/storage/</code>，serve 进程退出后 session 仍可恢复</li>
         </ul>
       </div>
     </div>
