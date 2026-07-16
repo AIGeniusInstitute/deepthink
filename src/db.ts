@@ -963,7 +963,8 @@ export function initDatabase(): void {
       submitted_by TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_market_type ON marketplace_items(item_type);
-    CREATE INDEX IF NOT EXISTS idx_market_status ON marketplace_items(status);
+    -- idx_market_status 在后续 ensureColumn 补齐 status 列后再创建，
+    -- 避免老库（marketplace_items 缺 status 列）启动时 "no such column: status"
 
     CREATE TABLE IF NOT EXISTS marketplace_reviews (
       id TEXT PRIMARY KEY,
@@ -1063,6 +1064,8 @@ export function initDatabase(): void {
   ensureColumn('kb_documents', 'embedding_model', 'TEXT');
   ensureColumn('marketplace_items', 'status', "TEXT NOT NULL DEFAULT 'approved'");
   ensureColumn('marketplace_items', 'submitted_by', 'TEXT');
+  // 补齐 status 列后再创建索引（老库 marketplace_items 缺 status 列）
+  db.exec('CREATE INDEX IF NOT EXISTS idx_market_status ON marketplace_items(status);');
 
   // Lightweight migrations for existing DBs
   ensureColumn('users', 'permissions', "TEXT NOT NULL DEFAULT '[]'");
