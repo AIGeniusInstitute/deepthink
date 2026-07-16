@@ -2171,6 +2171,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streaming: { ...s.streaming, [chatJid]: next },
       };
     });
+
+    // ⑦ Sandbox tool linkage — when agent calls sandbox_* tools, the host
+    // pushes a tool_progress carrying toolInput.sandboxSessionId. Notify the
+    // chat sidebar sandbox panel to auto-focus the session + switch subtab.
+    // (Lazy import to avoid a static circular dependency.)
+    if (event.eventType === 'tool_progress' && event.toolName) {
+      const toolName = event.toolName;
+      if (toolName.startsWith('sandbox_browser') || toolName === 'sandbox_run_code') {
+        const sid = (event.toolInput as any)?.sandboxSessionId;
+        if (sid && typeof window !== 'undefined') {
+          const subtab = toolName.startsWith('sandbox_browser') ? 'browser' : 'terminal';
+          window.dispatchEvent(new CustomEvent('sandbox-tool-active', {
+            detail: { sessionId: sid, subtab }
+          }));
+        }
+      }
+    }
   },
 
   // 通过 WebSocket new_message 事件立即添加消息（避免轮询延迟导致消息"丢失"）

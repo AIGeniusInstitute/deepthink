@@ -10,7 +10,7 @@ import { ContainerEnvPanel } from './ContainerEnvPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { PromptDialog } from '@/components/common/PromptDialog';
-import { ArrowLeft, FolderOpen, Link, MessageSquare, Monitor, Moon, MoreHorizontal, PanelRightClose, PanelRightOpen, Puzzle, Server, Sun, Terminal, Users, Variable, Workflow, X } from 'lucide-react';import { useDisplayMode } from '../../hooks/useDisplayMode';
+import { ArrowLeft, FolderOpen, Globe, Link, MessageSquare, Monitor, Moon, MoreHorizontal, PanelRightClose, PanelRightOpen, Puzzle, Server, Sun, Terminal, Users, Variable, Workflow, X } from 'lucide-react';import { useDisplayMode } from '../../hooks/useDisplayMode';
 import { useTheme } from '../../hooks/useTheme';
 import { cn } from '@/lib/utils';
 import { wsManager } from '../../api/ws';
@@ -20,6 +20,7 @@ import { GroupMembersPanel } from './GroupMembersPanel';
 import { WorkspaceSkillsPanel } from './WorkspaceSkillsPanel';
 import { WorkspaceMcpPanel } from './WorkspaceMcpPanel';
 import { DagView } from './DagView';
+import { SandboxPanel } from '../sandbox/SandboxPanel';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AgentTabBar } from './AgentTabBar';
 import { ImBindingDialog } from './ImBindingDialog';
@@ -39,6 +40,7 @@ const SIDEBAR_TABS = [
   { id: 'skills' as const, icon: Puzzle, label: '工作区 Skills' },
   { id: 'mcp' as const, icon: Server, label: '工作区 MCP' },
   { id: 'dag' as const, icon: Workflow, label: '执行 DAG' },
+  { id: 'sandbox' as const, icon: Globe, label: '沙箱' },
   { id: 'members' as const, icon: Users, label: '成员' },
 ];
 
@@ -50,7 +52,7 @@ const TERMINAL_MAX_RATIO = 0.7;
 // Stable empty references to avoid infinite re-render loops in Zustand selectors
 const EMPTY_AGENTS: import('../../types').AgentInfo[] = [];
 
-type SidebarTab = 'files' | 'env' | 'skills' | 'mcp' | 'dag' | 'members';
+type SidebarTab = 'files' | 'env' | 'skills' | 'mcp' | 'dag' | 'sandbox' | 'members';
 
 interface ChatViewProps {
   groupJid: string;
@@ -867,6 +869,8 @@ export function ChatView({ groupJid, onBack, headerLeft }: ChatViewProps) {
               />
             ) : sidebarTab === 'dag' ? (
               <DagView chatJid={groupJid} />
+            ) : sidebarTab === 'sandbox' ? (
+              <SandboxPanel groupJid={groupJid} />
             ) : (
               <GroupMembersPanel groupJid={groupJid} />
             )}

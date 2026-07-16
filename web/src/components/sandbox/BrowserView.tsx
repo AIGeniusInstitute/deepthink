@@ -7,9 +7,12 @@ interface BrowserViewProps {
 }
 
 export function BrowserView({ sessionId }: BrowserViewProps) {
-  const frame = useSandboxStore((s) => s.browserFrame);
+  // Read per-session frame so multiple inline panels can coexist without
+  // overwriting each other's frame.
+  const frame = useSandboxStore((s) => s.browserFrames[sessionId] ?? null);
   const subscribe = useSandboxStore((s) => s.subscribeBrowser);
   const unsubscribe = useSandboxStore((s) => s.unsubscribeBrowser);
+  const isSubscribed = useSandboxStore((s) => s.subscribedSessions.has(sessionId));
   const [started, setStarted] = useState(false);
   const [fps, setFps] = useState(0);
   const frameCountRef = useRef(0);
@@ -31,7 +34,9 @@ export function BrowserView({ sessionId }: BrowserViewProps) {
       if (data?.sessionId === sessionId) console.error('[sandbox browser]', data.error);
     });
 
-    subscribe(sessionId);
+    if (!isSubscribed) {
+      subscribe(sessionId);
+    }
     const fpsTimer = setInterval(() => {
       setFps(frameCountRef.current);
       frameCountRef.current = 0;
@@ -45,7 +50,8 @@ export function BrowserView({ sessionId }: BrowserViewProps) {
       unsubscribe(sessionId);
       clearInterval(fpsTimer);
     };
-  }, [started, sessionId, subscribe, unsubscribe]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, started]);
 
   return (
     <div className="h-full flex flex-col bg-[#0f0f14]">
