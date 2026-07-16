@@ -25,11 +25,13 @@ import { UsagePage } from './UsagePage';
 import { MonitorPage } from './MonitorPage';
 import { Card, CardContent } from '@/components/ui/card';
 import { AtomcodeEngineSection } from '../components/settings/AtomcodeEngineSection';
+import { CodexEngineSection } from '../components/settings/CodexEngineSection';
+import { OpencodeEngineSection } from '../components/settings/OpencodeEngineSection';
 import { EmbeddingSettingsSection } from '../components/settings/EmbeddingSettingsSection';
 import type { SettingsTab } from '../components/settings/types';
 
-const VALID_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'about', 'bindings', 'usage', 'monitor', 'language', 'atomcode', 'embedding'];
-const SYSTEM_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'atomcode', 'embedding'];
+const VALID_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'about', 'bindings', 'usage', 'monitor', 'language', 'atomcode', 'codex', 'opencode', 'embedding'];
+const SYSTEM_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'atomcode', 'codex', 'opencode', 'embedding'];
 const FULLPAGE_TABS: SettingsTab[] = ['groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'bindings', 'usage', 'monitor'];
 
 export function SettingsPage() {
@@ -79,6 +81,8 @@ export function SettingsPage() {
       tabs.push({ key: 'appearance', label: '全局外观' });
       tabs.push({ key: 'system', label: '系统' });
       tabs.push({ key: 'atomcode', label: 'AtomCode' });
+      tabs.push({ key: 'codex', label: 'Codex' });
+      tabs.push({ key: 'opencode', label: 'OpenCode' });
       tabs.push({ key: 'embedding', label: 'Embedding' });
     }
     tabs.push({ key: 'groups', label: '会话' });
@@ -130,6 +134,8 @@ export function SettingsPage() {
     monitor: '系统监控',
     language: '语言',
     atomcode: 'AtomCode 引擎',
+    codex: 'Codex 引擎',
+    opencode: 'OpenCode 引擎',
     embedding: 'Embedding 配置',
   };
 
@@ -227,6 +233,8 @@ export function SettingsPage() {
                   {activeTab === 'about' && <AboutSection />}
                   {activeTab === 'language' && <LanguageSection />}
                   {activeTab === 'atomcode' && <AtomcodeEngineSection />}
+                  {activeTab === 'codex' && <CodexEngineSection />}
+                  {activeTab === 'opencode' && <OpencodeEngineSection />}
                   {activeTab === 'embedding' && <EmbeddingSettingsSection />}
                 </CardContent>
               </Card>

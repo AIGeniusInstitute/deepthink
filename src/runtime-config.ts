@@ -4161,3 +4161,217 @@ export function saveAtomcodeConfig(cfg: Partial<AtomcodeConfig>): AtomcodeConfig
 export function toPublicAtomcodeConfig(cfg: AtomcodeConfig): AtomcodeConfig {
   return { ...cfg };
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// Codex engine config
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface CodexConfig {
+  enabled: boolean;
+  /** codex 二进制绝对路径 */
+  binaryPath: string;
+  /** 默认模型，默认 gpt-5.1-codex */
+  defaultModel: string;
+  /** 工作目录，默认 /workspace/group */
+  workingDir: string;
+  updatedAt: string | null;
+}
+
+const CODEX_CONFIG_FILE = path.join(CLAUDE_CONFIG_DIR, 'codex.json');
+
+const DEFAULT_CODEX_CONFIG: CodexConfig = {
+  enabled: false,
+  binaryPath: '',
+  defaultModel: 'gpt-5.1-codex',
+  workingDir: '/workspace/group',
+  updatedAt: null,
+};
+
+export function getCodexConfig(): CodexConfig {
+  try {
+    if (!fs.existsSync(CODEX_CONFIG_FILE)) {
+      return { ...DEFAULT_CODEX_CONFIG };
+    }
+    const raw = fs.readFileSync(CODEX_CONFIG_FILE, 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<CodexConfig>;
+    return {
+      ...DEFAULT_CODEX_CONFIG,
+      ...parsed,
+      binaryPath: typeof parsed.binaryPath === 'string' ? parsed.binaryPath : '',
+      defaultModel:
+        typeof parsed.defaultModel === 'string' && parsed.defaultModel
+          ? parsed.defaultModel
+          : 'gpt-5.1-codex',
+      workingDir:
+        typeof parsed.workingDir === 'string' && parsed.workingDir
+          ? parsed.workingDir
+          : '/workspace/group',
+      enabled: !!parsed.enabled,
+      updatedAt: parsed.updatedAt ?? null,
+    };
+  } catch (err) {
+    logger.warn({ err }, 'getCodexConfig: failed to read, using defaults');
+    return { ...DEFAULT_CODEX_CONFIG };
+  }
+}
+
+export function saveCodexConfig(cfg: Partial<CodexConfig>): CodexConfig {
+  const current = getCodexConfig();
+  const merged: CodexConfig = {
+    enabled: !!cfg.enabled,
+    binaryPath: typeof cfg.binaryPath === 'string' ? cfg.binaryPath : current.binaryPath,
+    defaultModel:
+      typeof cfg.defaultModel === 'string' && cfg.defaultModel
+        ? cfg.defaultModel
+        : current.defaultModel,
+    workingDir:
+      typeof cfg.workingDir === 'string' && cfg.workingDir
+        ? cfg.workingDir
+        : current.workingDir,
+    updatedAt: new Date().toISOString(),
+  };
+  fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
+  writeSecretFile(CODEX_CONFIG_FILE, JSON.stringify(merged, null, 2) + '\n');
+  return merged;
+}
+
+/** 脱敏版用于 API 响应 */
+export function toPublicCodexConfig(cfg: CodexConfig): CodexConfig {
+  return { ...cfg };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// OpenCode engine config
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface OpencodeConfig {
+  enabled: boolean;
+  /** bun 二进制绝对路径 */
+  bunPath: string;
+  /** opencode 源码入口路径 packages/opencode/src/index.ts */
+  opencodePath: string;
+  /** serve 绑定地址，默认 127.0.0.1 */
+  host: string;
+  /** 起始端口，默认 15000 */
+  basePort: number;
+  /** 端口池大小，默认 100 */
+  portRange: number;
+  /** OPENCODE_SERVER_PASSWORD，加密存储 */
+  password: string;
+  /** 默认 providerID，如 anthropic */
+  providerID: string;
+  /** 默认 modelID，如 claude-sonnet-4-6 */
+  modelID: string;
+  /** 工作目录，默认 /workspace/group */
+  workingDir: string;
+  updatedAt: string | null;
+}
+
+/** OpenCode 配置的公开表示（password 改为 has_password 标志位） */
+export interface PublicOpencodeConfig
+  extends Omit<OpencodeConfig, 'password'> {
+  hasPassword: boolean;
+}
+
+const OPENCODE_CONFIG_FILE = path.join(CLAUDE_CONFIG_DIR, 'opencode.json');
+
+const DEFAULT_OPENCODE_CONFIG: OpencodeConfig = {
+  enabled: false,
+  bunPath: '',
+  opencodePath: '',
+  host: '127.0.0.1',
+  basePort: 15000,
+  portRange: 100,
+  password: '',
+  providerID: 'anthropic',
+  modelID: 'claude-sonnet-4-6',
+  workingDir: '/workspace/group',
+  updatedAt: null,
+};
+
+export function getOpencodeConfig(): OpencodeConfig {
+  try {
+    if (!fs.existsSync(OPENCODE_CONFIG_FILE)) {
+      return { ...DEFAULT_OPENCODE_CONFIG };
+    }
+    const raw = fs.readFileSync(OPENCODE_CONFIG_FILE, 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<OpencodeConfig>;
+    return {
+      ...DEFAULT_OPENCODE_CONFIG,
+      ...parsed,
+      bunPath: typeof parsed.bunPath === 'string' ? parsed.bunPath : '',
+      opencodePath:
+        typeof parsed.opencodePath === 'string' ? parsed.opencodePath : '',
+      host: typeof parsed.host === 'string' && parsed.host ? parsed.host : '127.0.0.1',
+      basePort:
+        typeof parsed.basePort === 'number' && parsed.basePort > 0
+          ? Math.floor(parsed.basePort)
+          : 15000,
+      portRange:
+        typeof parsed.portRange === 'number' && parsed.portRange > 0
+          ? Math.floor(parsed.portRange)
+          : 100,
+      password: typeof parsed.password === 'string' ? parsed.password : '',
+      providerID:
+        typeof parsed.providerID === 'string' && parsed.providerID
+          ? parsed.providerID
+          : 'anthropic',
+      modelID:
+        typeof parsed.modelID === 'string' && parsed.modelID
+          ? parsed.modelID
+          : 'claude-sonnet-4-6',
+      workingDir:
+        typeof parsed.workingDir === 'string' && parsed.workingDir
+          ? parsed.workingDir
+          : '/workspace/group',
+      enabled: !!parsed.enabled,
+      updatedAt: parsed.updatedAt ?? null,
+    };
+  } catch (err) {
+    logger.warn({ err }, 'getOpencodeConfig: failed to read, using defaults');
+    return { ...DEFAULT_OPENCODE_CONFIG };
+  }
+}
+
+export function saveOpencodeConfig(cfg: Partial<OpencodeConfig>): OpencodeConfig {
+  const current = getOpencodeConfig();
+  const merged: OpencodeConfig = {
+    enabled: !!cfg.enabled,
+    bunPath: typeof cfg.bunPath === 'string' ? cfg.bunPath : current.bunPath,
+    opencodePath:
+      typeof cfg.opencodePath === 'string' ? cfg.opencodePath : current.opencodePath,
+    host: typeof cfg.host === 'string' && cfg.host ? cfg.host : '127.0.0.1',
+    basePort:
+      typeof cfg.basePort === 'number' && cfg.basePort > 0
+        ? Math.floor(cfg.basePort)
+        : current.basePort,
+    portRange:
+      typeof cfg.portRange === 'number' && cfg.portRange > 0
+        ? Math.floor(cfg.portRange)
+        : current.portRange,
+    password:
+      typeof cfg.password === 'string' ? cfg.password : current.password,
+    providerID:
+      typeof cfg.providerID === 'string' && cfg.providerID
+        ? cfg.providerID
+        : current.providerID,
+    modelID:
+      typeof cfg.modelID === 'string' && cfg.modelID
+        ? cfg.modelID
+        : current.modelID,
+    workingDir:
+      typeof cfg.workingDir === 'string' && cfg.workingDir
+        ? cfg.workingDir
+        : current.workingDir,
+    updatedAt: new Date().toISOString(),
+  };
+  fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
+  writeSecretFile(OPENCODE_CONFIG_FILE, JSON.stringify(merged, null, 2) + '\n');
+  return merged;
+}
+
+/** 脱敏版用于 API 响应：password 替换为 hasPassword 标志位 */
+export function toPublicOpencodeConfig(cfg: OpencodeConfig): PublicOpencodeConfig {
+  const { password, ...rest } = cfg;
+  return { ...rest, hasPassword: password.length > 0 };
+}

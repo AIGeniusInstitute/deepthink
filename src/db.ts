@@ -1141,6 +1141,8 @@ export function initDatabase(): void {
   ensureColumn('registered_groups', 'agent_def_id', 'TEXT');
   ensureColumn('sessions', 'atomcode_session_id', 'TEXT');
   ensureColumn('sessions', 'sandbox_session_id', 'TEXT');
+  ensureColumn('sessions', 'codex_thread_id', 'TEXT');
+  ensureColumn('sessions', 'opencode_session_id', 'TEXT');
   ensureColumn('users', 'agent_quota', 'INTEGER NOT NULL DEFAULT 10');
   ensureColumn('messages', 'token_usage', 'TEXT');
   ensureColumn('messages', 'turn_id', 'TEXT');
@@ -3721,6 +3723,90 @@ export function clearAtomcodeSessionId(
   ).run(groupFolder, effectiveAgentId);
 }
 
+/**
+ * Codex engine session helpers. Codex thread IDs (UUIDv7) are stored in a
+ * separate column (codex_thread_id) for resume on subsequent turns.
+ */
+export function getCodexThreadId(
+  groupFolder: string,
+  agentId?: string | null,
+): string | undefined {
+  const effectiveAgentId = agentId || '';
+  const row = db
+    .prepare(
+      'SELECT codex_thread_id FROM sessions WHERE group_folder = ? AND agent_id = ?',
+    )
+    .get(groupFolder, effectiveAgentId) as
+    | { codex_thread_id: string | null }
+    | undefined;
+  return row?.codex_thread_id ?? undefined;
+}
+
+export function setCodexThreadId(
+  groupFolder: string,
+  threadId: string,
+  agentId?: string | null,
+): void {
+  const effectiveAgentId = agentId || '';
+  db.prepare(
+    `INSERT INTO sessions (group_folder, session_id, agent_id, codex_thread_id)
+     VALUES (?, '', ?, ?)
+     ON CONFLICT(group_folder, agent_id) DO UPDATE SET codex_thread_id = excluded.codex_thread_id`,
+  ).run(groupFolder, effectiveAgentId, threadId);
+}
+
+export function clearCodexThreadId(
+  groupFolder: string,
+  agentId?: string | null,
+): void {
+  const effectiveAgentId = agentId || '';
+  db.prepare(
+    `UPDATE sessions SET codex_thread_id = NULL WHERE group_folder = ? AND agent_id = ?`,
+  ).run(groupFolder, effectiveAgentId);
+}
+
+/**
+ * OpenCode engine session helpers. OpenCode session IDs (prefixed `ses_`)
+ * are stored in a separate column (opencode_session_id).
+ */
+export function getOpencodeSessionId(
+  groupFolder: string,
+  agentId?: string | null,
+): string | undefined {
+  const effectiveAgentId = agentId || '';
+  const row = db
+    .prepare(
+      'SELECT opencode_session_id FROM sessions WHERE group_folder = ? AND agent_id = ?',
+    )
+    .get(groupFolder, effectiveAgentId) as
+    | { opencode_session_id: string | null }
+    | undefined;
+  return row?.opencode_session_id ?? undefined;
+}
+
+export function setOpencodeSessionId(
+  groupFolder: string,
+  sessionId: string,
+  agentId?: string | null,
+): void {
+  const effectiveAgentId = agentId || '';
+  db.prepare(
+    `INSERT INTO sessions (group_folder, session_id, agent_id, opencode_session_id)
+     VALUES (?, '', ?, ?)
+     ON CONFLICT(group_folder, agent_id) DO UPDATE SET opencode_session_id = excluded.opencode_session_id`,
+  ).run(groupFolder, effectiveAgentId, sessionId);
+}
+
+export function clearOpencodeSessionId(
+  groupFolder: string,
+  agentId?: string | null,
+): void {
+  const effectiveAgentId = agentId || '';
+  db.prepare(
+    `UPDATE sessions SET opencode_session_id = NULL WHERE group_folder = ? AND agent_id = ?`,
+  ).run(groupFolder, effectiveAgentId);
+}
+
 export function deleteAllSessionsForFolder(groupFolder: string): void {
   db.prepare('DELETE FROM sessions WHERE group_folder = ?').run(groupFolder);
 }
@@ -3893,7 +3979,10 @@ function parseGroupRow(
     feishu_chat_mode: row.feishu_chat_mode ?? undefined,
     feishu_group_message_type: row.feishu_group_message_type ?? undefined,
     sender_allowlist: senderAllowlist,
-    engine: row.engine === 'atomcode' ? 'atomcode' : 'claude',
+    engine:
+      row.engine === 'atomcode' || row.engine === 'codex' || row.engine === 'opencode'
+        ? (row.engine as 'atomcode' | 'codex' | 'opencode')
+        : 'claude',
     agentDefId: row.agent_def_id ?? null,
   };
 }
@@ -8198,7 +8287,7 @@ export interface AgentSnapshot {
   description: string;
   system_prompt: string;
   model: string | null;
-  engine: 'claude' | 'atomcode';
+  engine: 'claude' | 'atomcode' | 'codex' | 'opencode';
   avatar_emoji: string | null;
   avatar_color: string | null;
   max_turns: number | null;
@@ -8220,7 +8309,10 @@ export function saveAgentVersionSnapshot(
     description: existing.description,
     system_prompt: existing.system_prompt,
     model: existing.model,
-    engine: (existing.engine === 'atomcode' ? 'atomcode' : 'claude') as 'claude' | 'atomcode',
+    engine:
+      existing.engine === 'atomcode' || existing.engine === 'codex' || existing.engine === 'opencode'
+        ? (existing.engine as 'atomcode' | 'codex' | 'opencode')
+        : 'claude',
     avatar_emoji: existing.avatar_emoji,
     avatar_color: existing.avatar_color,
     max_turns: existing.max_turns,

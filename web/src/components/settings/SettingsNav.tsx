@@ -35,6 +35,8 @@ const systemItems: NavItem[] = [
   { key: 'appearance', label: '全局外观', icon: <Palette className="w-4 h-4" />, group: 'system' },
   { key: 'system', label: '系统参数', icon: <SlidersHorizontal className="w-4 h-4" />, group: 'system' },
   { key: 'atomcode', label: 'AtomCode 引擎', icon: <Server className="w-4 h-4" />, group: 'system' },
+  { key: 'codex', label: 'Codex 引擎', icon: <Server className="w-4 h-4" />, group: 'system' },
+  { key: 'opencode', label: 'OpenCode 引擎', icon: <Server className="w-4 h-4" />, group: 'system' },
   { key: 'embedding', label: 'Embedding 配置', icon: <Cpu className="w-4 h-4" />, group: 'system' },
 ];
 

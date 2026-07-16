@@ -50,9 +50,11 @@ export interface ContainerInput {
   /**
    * Agent execution engine. 'claude' (default) uses Claude Agent SDK query().
    * 'atomcode' routes to atomcode-engine.ts which drives atomcode-daemon's
-   * HTTP/SSE /chat endpoint instead.
+   * HTTP/SSE /chat endpoint. 'codex' routes to codex-engine.ts which drives
+   * `codex exec --json` JSONL. 'opencode' routes to opencode-engine.ts which
+   * drives `opencode serve` REST+SSE.
    */
-  engine?: 'claude' | 'atomcode';
+  engine?: 'claude' | 'atomcode' | 'codex' | 'opencode';
   /** Agent PaaS: when group is bound to a user-defined Agent, this carries
    * the definition + mounts. agent-runner main() uses it to override system
    * prompt, model, and filter MCP/Skill to only those listed in mounts. */

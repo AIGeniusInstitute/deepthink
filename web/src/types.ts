@@ -21,7 +21,7 @@ export interface GroupInfo {
   activation_mode?: 'auto' | 'always' | 'when_mentioned' | 'owner_mentioned' | 'disabled';
   conversation_source?: 'manual' | 'feishu_thread';
   conversation_nav_mode?: 'horizontal' | 'vertical_threads';
-  engine?: 'claude' | 'atomcode';
+  engine?: 'claude' | 'atomcode' | 'codex' | 'opencode';
   agent_def_id?: string | null;
 }
 

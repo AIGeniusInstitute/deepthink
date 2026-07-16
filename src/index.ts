@@ -64,6 +64,8 @@ import {
   setRouterState,
   setSession,
   setAtomcodeSessionId,
+  setCodexThreadId,
+  setOpencodeSessionId,
   deleteSession,
   storeMessageDirect,
   updateLatestMessageTokenUsage,
@@ -4895,6 +4897,10 @@ async function runAgent(
           sessions[group.folder] = output.newSessionId;
           if (group.engine === 'atomcode') {
             setAtomcodeSessionId(group.folder, output.newSessionId);
+          } else if (group.engine === 'codex') {
+            setCodexThreadId(group.folder, output.newSessionId);
+          } else if (group.engine === 'opencode') {
+            setOpencodeSessionId(group.folder, output.newSessionId);
           } else {
             setSession(group.folder, output.newSessionId);
           }
@@ -4978,6 +4984,10 @@ async function runAgent(
       sessions[group.folder] = output.newSessionId;
       if (group.engine === 'atomcode') {
         setAtomcodeSessionId(group.folder, output.newSessionId);
+      } else if (group.engine === 'codex') {
+        setCodexThreadId(group.folder, output.newSessionId);
+      } else if (group.engine === 'opencode') {
+        setOpencodeSessionId(group.folder, output.newSessionId);
       } else {
         setSession(group.folder, output.newSessionId);
       }
@@ -7808,6 +7818,10 @@ async function processAgentConversation(
     ) {
       if (effectiveGroup.engine === 'atomcode') {
         setAtomcodeSessionId(effectiveGroup.folder, output.newSessionId, agentId);
+      } else if (effectiveGroup.engine === 'codex') {
+        setCodexThreadId(effectiveGroup.folder, output.newSessionId, agentId);
+      } else if (effectiveGroup.engine === 'opencode') {
+        setOpencodeSessionId(effectiveGroup.folder, output.newSessionId, agentId);
       } else {
         setSession(effectiveGroup.folder, output.newSessionId, agentId);
       }
@@ -8390,6 +8404,10 @@ async function processAgentConversation(
     ) {
       if (effectiveGroup.engine === 'atomcode') {
         setAtomcodeSessionId(effectiveGroup.folder, output.newSessionId, agentId);
+      } else if (effectiveGroup.engine === 'codex') {
+        setCodexThreadId(effectiveGroup.folder, output.newSessionId, agentId);
+      } else if (effectiveGroup.engine === 'opencode') {
+        setOpencodeSessionId(effectiveGroup.folder, output.newSessionId, agentId);
       } else {
         setSession(effectiveGroup.folder, output.newSessionId, agentId);
       }

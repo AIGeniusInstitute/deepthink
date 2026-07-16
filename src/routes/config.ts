@@ -3377,4 +3377,139 @@ configRoutes.get('/atomcode/models', authMiddleware, systemConfigMiddleware, asy
   }
 });
 
+// ─── Codex Engine Config ─────────────────────────────────────
+
+import {
+  getCodexConfig,
+  saveCodexConfig,
+  toPublicCodexConfig,
+  getOpencodeConfig,
+  saveOpencodeConfig,
+  toPublicOpencodeConfig,
+} from '../runtime-config.js';
+import { CodexConfigSchema, OpencodeConfigSchema } from '../schemas.js';
+import { spawn } from 'child_process';
+
+/** GET /api/config/codex — get Codex config (admin) */
+configRoutes.get('/codex', authMiddleware, systemConfigMiddleware, (c) => {
+  const cfg = getCodexConfig();
+  return c.json(toPublicCodexConfig(cfg));
+});
+
+/** PUT /api/config/codex — save Codex config (admin) */
+configRoutes.put('/codex', authMiddleware, systemConfigMiddleware, async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const validation = CodexConfigSchema.safeParse(body);
+  if (!validation.success) {
+    return c.json({ error: 'Invalid config', details: validation.error.flatten() }, 400);
+  }
+  const saved = saveCodexConfig(validation.data);
+  const actor = (c.get('user') as AuthUser).username;
+  logger.info({ actor, enabled: saved.enabled }, 'Codex config updated');
+  return c.json(toPublicCodexConfig(saved));
+});
+
+/** POST /api/config/codex/test — verify codex binary by running `codex --version` */
+configRoutes.post('/codex/test', authMiddleware, systemConfigMiddleware, async (c) => {
+  const cfg = getCodexConfig();
+  if (!cfg.binaryPath) {
+    return c.json({ ok: false, error: 'Codex 二进制路径未配置' }, 200);
+  }
+  try {
+    const result = await new Promise<{ ok: boolean; version: string; error?: string }>(
+      (resolve) => {
+        const proc = spawn(cfg.binaryPath, ['--version'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+        proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+        const timer = setTimeout(() => {
+          proc.kill('SIGKILL');
+          resolve({ ok: false, version: '', error: 'timeout' });
+        }, 10_000);
+        proc.on('close', (code) => {
+          clearTimeout(timer);
+          if (code === 0) {
+            resolve({ ok: true, version: stdout.trim() });
+          } else {
+            resolve({ ok: false, version: '', error: stderr.trim() || `exit ${code}` });
+          }
+        });
+        proc.on('error', (err) => {
+          clearTimeout(timer);
+          resolve({ ok: false, version: '', error: err.message });
+        });
+      },
+    );
+    return c.json(result);
+  } catch (err) {
+    return c.json({ ok: false, version: '', error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ─── OpenCode Engine Config ──────────────────────────────────
+
+/** GET /api/config/opencode — get OpenCode config (admin, password masked) */
+configRoutes.get('/opencode', authMiddleware, systemConfigMiddleware, (c) => {
+  const cfg = getOpencodeConfig();
+  return c.json(toPublicOpencodeConfig(cfg));
+});
+
+/** PUT /api/config/opencode — save OpenCode config (admin) */
+configRoutes.put('/opencode', authMiddleware, systemConfigMiddleware, async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const validation = OpencodeConfigSchema.safeParse(body);
+  if (!validation.success) {
+    return c.json({ error: 'Invalid config', details: validation.error.flatten() }, 400);
+  }
+  const data = validation.data;
+  // password 为 undefined 时不覆盖；空字符串显式清除
+  if (data.password === undefined) {
+    const current = getOpencodeConfig();
+    data.password = current.password;
+  }
+  const saved = saveOpencodeConfig(data);
+  const actor = (c.get('user') as AuthUser).username;
+  logger.info({ actor, enabled: saved.enabled }, 'OpenCode config updated');
+  return c.json(toPublicOpencodeConfig(saved));
+});
+
+/** POST /api/config/opencode/test — verify bun + opencode by running `bun --version` */
+configRoutes.post('/opencode/test', authMiddleware, systemConfigMiddleware, async (c) => {
+  const cfg = getOpencodeConfig();
+  if (!cfg.bunPath) {
+    return c.json({ ok: false, error: 'Bun 二进制路径未配置' }, 200);
+  }
+  try {
+    const result = await new Promise<{ ok: boolean; bunVersion: string; error?: string }>(
+      (resolve) => {
+        const proc = spawn(cfg.bunPath, ['--version'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+        proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+        const timer = setTimeout(() => {
+          proc.kill('SIGKILL');
+          resolve({ ok: false, bunVersion: '', error: 'timeout' });
+        }, 10_000);
+        proc.on('close', (code) => {
+          clearTimeout(timer);
+          if (code === 0) {
+            resolve({ ok: true, bunVersion: stdout.trim() });
+          } else {
+            resolve({ ok: false, bunVersion: '', error: stderr.trim() || `exit ${code}` });
+          }
+        });
+        proc.on('error', (err) => {
+          clearTimeout(timer);
+          resolve({ ok: false, bunVersion: '', error: err.message });
+        });
+      },
+    );
+    return c.json(result);
+  } catch (err) {
+    return c.json({ ok: false, bunVersion: '', error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 export default configRoutes;
