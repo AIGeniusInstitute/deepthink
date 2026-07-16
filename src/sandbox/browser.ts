@@ -1,37 +1,33 @@
 /**
- * BrowserController — talks to a sandboxed Chromium via the Chrome DevTools
- * Protocol (CDP) over WebSocket.
+ * BrowserController — controls a sandboxed Chromium via Playwright's
+ * `connectOverCDP`. The browser process lives inside the sandbox container
+ * (subject to cap-drop + memory/cpu/pids limits); the host process
+ * connects to the CDP forwarder port (127.0.0.1:{dynamic}) and drives it
+ * with the Playwright API, which handles auto-wait, selector strategies,
+ * screenshots, and frame management internally.
  *
- * No external `chrome-remote-interface` dependency — we hand-roll CDP calls
- * using the already-bundled `ws` package. P0 keeps the surface area small
- * (navigate / click / type / screenshot / evaluate / frame stream).
+ * Chromium 150 ignores `--remote-debugging-address` and always binds its
+ * DevTools endpoint to 127.0.0.1:9222 — unreachable from the host via
+ * Docker port mapping. cdp-forwarder.js (shipped in the image) bridges
+ * 0.0.0.0:9223 → 127.0.0.1:9222 so the host can connect.
+ *
+ * Uses `playwright-core` only (no browser binary download); the sandbox
+ * image ships Chromium already.
  */
 
-import { WebSocket } from 'ws';
+import { chromium, type Browser, type Page } from 'playwright-core';
 import { logger } from '../logger.js';
 import { spawn } from 'child_process';
-
-interface CdpResponse {
-  id: number;
-  result?: any;
-  error?: { code: number; message: string; data?: any };
-}
-
-interface CdpEvent {
-  method: string;
-  params?: any;
-  sessionId?: string;
-}
+import { CHROMIUM_DEVTOOLS_PORT } from './config.js';
 
 export class BrowserController {
-  private ws: WebSocket | null = null;
-  private nextId = 1;
-  private pending = new Map<number, { resolve: (r: any) => void; reject: (e: Error) => void }>();
+  private browser: Browser | null = null;
+  private page: Page | null = null;
   private frameTimer: NodeJS.Timeout | null = null;
   private onFrame: (dataUrl: string) => void = () => {};
   private readonly cdpPort: number;
   private readonly containerName: string;
-  private chromiumStarted = false;
+  private processesStarted = false;
 
   constructor(cdpPort: number, containerName: string) {
     this.cdpPort = cdpPort;
@@ -41,28 +37,17 @@ export class BrowserController {
   async start(
     onFrame: (dataUrl: string) => void,
     frameIntervalMs: number,
-  initialUrl?: string,
+    initialUrl?: string,
   ): Promise<void> {
     this.onFrame = onFrame;
-    // Ensure chromium is running inside the container (idempotent).
-    await this.ensureChromiumRunning();
+    await this.ensureProcessesRunning();
 
-    // Find page target
-    const target = await this.findPageTarget();
-    if (!target) throw new Error('未找到 Chromium page target');
+    const endpoint = `http://127.0.0.1:${this.cdpPort}`;
+    this.browser = await chromium.connectOverCDP(endpoint, { timeout: 15_000 });
 
-    const wsUrl = target.webSocketDebuggerUrl.replace('localhost', '127.0.0.1');
-    this.ws = new WebSocket(wsUrl);
-    await new Promise<void>((resolve, reject) => {
-      this.ws!.once('open', resolve);
-      this.ws!.once('error', (err) => reject(new Error(`CDP 连接失败: ${err.message}`)));
-    });
-
-    this.ws.on('message', (raw) => this.handleMessage(raw.toString()));
-    this.ws.on('error', (err) => logger.warn({ err: err.message }, 'CDP ws error'));
-
-    await this.call('Page.enable');
-    await this.call('Runtime.enable');
+    // Reuse the default context + first page (chromium launched with about:blank).
+    const ctx = this.browser.contexts()[0] ?? await this.browser.newContext();
+    this.page = ctx.pages()[0] ?? await ctx.newPage();
 
     if (initialUrl) {
       await this.navigate(initialUrl);
@@ -71,52 +56,39 @@ export class BrowserController {
   }
 
   async navigate(url: string): Promise<void> {
-    if (!this.ws) throw new Error('浏览器未启动');
-    await this.call('Page.navigate', { url });
-    // Wait for load event (best-effort, 10s timeout)
-    await this.waitForLoadEvent(10_000);
+    if (!this.page) throw new Error('浏览器未启动');
+    await this.page.goto(url, { waitUntil: 'load', timeout: 30_000 });
   }
 
   async click(selector: string): Promise<void> {
-    await this.evaluate(
-      `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (el) el.click(); return !!el; })()`,
-    );
+    if (!this.page) throw new Error('浏览器未启动');
+    await this.page.click(selector, { timeout: 10_000 });
   }
 
   async type(selector: string, text: string): Promise<void> {
-    await this.evaluate(
-      `(() => {
-        const el = document.querySelector(${JSON.stringify(selector)});
-        if (!el) return false;
-        el.focus();
-        el.value = ${JSON.stringify(text)};
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        return true;
-      })()`,
-    );
+    if (!this.page) throw new Error('浏览器未启动');
+    await this.page.fill(selector, text, { timeout: 10_000 });
   }
 
   async screenshot(): Promise<string> {
-    const { data } = await this.call('Page.captureScreenshot', { format: 'png' });
-    return `data:image/png;base64,${data}`;
+    if (!this.page) throw new Error('浏览器未启动');
+    const buf = await this.page.screenshot({ type: 'png' });
+    return `data:image/png;base64,${buf.toString('base64')}`;
   }
 
   async evaluate(expression: string): Promise<any> {
-    const r = await this.call('Runtime.evaluate', {
-      expression,
-      returnByValue: true,
-      awaitPromise: true,
-    });
-    return r?.result?.value;
+    if (!this.page) throw new Error('浏览器未启动');
+    return await this.page.evaluate(`(() => (${expression}))()`);
   }
 
   async getTitle(): Promise<string | null> {
-    return this.evaluate('document.title');
+    if (!this.page) return null;
+    try { return await this.page.title(); } catch { return null; }
   }
 
   async getCurrentUrl(): Promise<string | null> {
-    return this.evaluate('location.href');
+    if (!this.page) return null;
+    return this.page.url();
   }
 
   async stop(): Promise<void> {
@@ -124,124 +96,55 @@ export class BrowserController {
       clearInterval(this.frameTimer);
       this.frameTimer = null;
     }
-    if (this.ws) {
-      try { await this.ws.close(); } catch { /* ignore */ }
-      this.ws = null;
+    if (this.browser) {
+      try { await this.browser.close(); } catch { /* ignore */ }
+      this.browser = null;
     }
-    // Stop chromium inside container
-    if (this.chromiumStarted) {
-      try {
-        await new Promise<void>((resolve) => {
-          const p = spawn(
-            'docker',
-            ['exec', this.containerName, 'sh', '-c', 'pkill -f "chromium --headless" 2>/dev/null; true'],
-            { stdio: 'ignore' },
-          );
-          p.on('close', () => resolve());
-          p.on('error', () => resolve());
-        });
-      } catch { /* ignore */ }
-      this.chromiumStarted = false;
+    this.page = null;
+    if (this.processesStarted) {
+      await this.killProcessesInContainer();
+      this.processesStarted = false;
     }
   }
 
   private startFrameLoop(intervalMs: number): void {
     this.frameTimer = setInterval(async () => {
       try {
-        const { data } = await this.call('Page.captureScreenshot', {
-          format: 'jpeg',
-          quality: 60,
-        });
-        this.onFrame(`data:image/jpeg;base64,${data}`);
-      } catch (e) {
+        if (!this.page) return;
+        const buf = await this.page.screenshot({ type: 'jpeg', quality: 60 });
+        this.onFrame(`data:image/jpeg;base64,${buf.toString('base64')}`);
+      } catch {
         // swallow — frame loop must not die
       }
     }, intervalMs);
   }
 
-  private async call(method: string, params: any = {}): Promise<any> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error('CDP socket not open');
-    }
-    const id = this.nextId++;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`CDP call timeout: ${method}`));
-      }, 15_000);
-      this.pending.set(id, {
-        resolve: (r) => { clearTimeout(timer); resolve(r); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
-      });
-      const payload = JSON.stringify({ id, method, params });
-      this.ws!.send(payload, (err) => {
-        if (err) {
-          this.pending.delete(id);
-          reject(new Error(`CDP send error: ${err.message}`));
-        }
-      });
-    });
-  }
-
-  private handleMessage(raw: string): void {
-    let msg: CdpResponse | CdpEvent;
-    try { msg = JSON.parse(raw); } catch { return; }
-    if ('id' in msg && msg.id) {
-      const p = this.pending.get(msg.id);
-      if (!p) return;
-      this.pending.delete(msg.id);
-      if (msg.error) p.reject(new Error(`CDP error: ${msg.error.message}`));
-      else p.resolve(msg.result);
-    } else if ('method' in msg) {
-      // event — currently only loadEventFired is handled via waitForLoadEvent
-      if (msg.method === 'Page.loadEventFired') {
-        this.loadListeners.forEach((fn) => fn());
-      }
-    }
-  }
-
-  private loadListeners = new Set<() => void>();
-
-  private waitForLoadEvent(timeoutMs: number): Promise<void> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.loadListeners.delete(fn);
-        resolve(); // resolve anyway — load event may have already fired
-      }, timeoutMs);
-      const fn = () => {
-        clearTimeout(timer);
-        this.loadListeners.delete(fn);
-        resolve();
-      };
-      this.loadListeners.add(fn);
-    });
-  }
-
-  private async ensureChromiumRunning(): Promise<void> {
-    if (this.chromiumStarted) return;
+  private async ensureProcessesRunning(): Promise<void> {
+    if (this.processesStarted) return;
     // Start chromium in background inside the container.
-    // --no-sandbox is acceptable here: the container already drops ALL caps,
-    // runs as uid 1000 with seccomp + pids/memory limits. The kernel sandbox
+    // --no-sandbox is acceptable: the container already drops ALL caps,
+    // runs as uid 1000 with memory/cpu/pids limits. The kernel sandbox
     // isn't needed because the container IS the sandbox.
-    const args = [
-      'exec', '-d', this.containerName,
-      'chromium',
-      '--headless=new',
-      '--no-sandbox',
-      '--disable-gpu',
-      '--remote-debugging-port=9222',
-      '--remote-debugging-address=127.0.0.1',
-      '--disable-dev-shm-usage',
-      '--user-data-dir=/tmp/chromium',
-      'about:blank',
-    ];
-    await new Promise<void>((resolve) => {
-      const p = spawn('docker', args, { stdio: 'ignore' });
-      p.on('close', () => resolve());
-      p.on('error', () => resolve());
-    });
-    this.chromiumStarted = true;
-    // Wait for CDP endpoint to be reachable
+    // Wrap in `sh -c` so chromium resolves via PATH (docker exec doesn't
+    // source the shell environment by default).
+    // Chromium binds 127.0.0.1:9222 (its remote-debugging-address flag is
+    // ignored by Chromium 150 for security), so cdp-forwarder.js bridges
+    // 0.0.0.0:9223 → 127.0.0.1:9222.
+    await this.spawnInContainer(
+      `chromium --headless=new --no-sandbox --disable-gpu `
+      + `--use-gl=angle --use-angle=swiftshader `
+      + `--remote-debugging-port=${CHROMIUM_DEVTOOLS_PORT} `
+      + `--disable-dev-shm-usage --user-data-dir=/tmp/chromium about:blank `
+      + `> /tmp/chromium.log 2>&1`,
+    );
+    // Wait briefly for chromium to bind 9222 before starting the forwarder,
+    // otherwise the forwarder's first connections will ECONNREFUSE.
+    await this.waitForTcpReady('127.0.0.1', CHROMIUM_DEVTOOLS_PORT, 5_000);
+    await this.spawnInContainer(
+      `node /usr/local/lib/cdp-forwarder.js > /tmp/cdp-forwarder.log 2>&1`,
+    );
+    this.processesStarted = true;
+    // Wait for CDP forwarder to be reachable from the host
     const start = Date.now();
     while (Date.now() - start < 10_000) {
       const ok = await this.pingCdp();
@@ -251,6 +154,39 @@ export class BrowserController {
     throw new Error('Chromium CDP 启动超时');
   }
 
+  private async spawnInContainer(cmd: string): Promise<void> {
+    const args = [
+      'exec', '-d', '-u', '1000:1000', this.containerName,
+      'sh', '-c', cmd,
+    ];
+    await new Promise<void>((resolve) => {
+      const p = spawn('docker', args, { stdio: 'ignore' });
+      p.on('close', () => resolve());
+      p.on('error', () => resolve());
+    });
+  }
+
+  private async waitForTcpReady(host: string, port: number, timeoutMs: number): Promise<void> {
+    // Probe via `docker exec` curl since /tmp/chromium.log is mode 0700 and
+    // we'd need user 1000 to read it — easier to just probe the port.
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const ok = await new Promise<boolean>((resolve) => {
+        const p = spawn(
+          'docker',
+          ['exec', '-u', '1000:1000', this.containerName, 'sh', '-c',
+           `curl -sf http://${host}:${port}/json/version > /dev/null 2>&1`],
+          { stdio: 'ignore' },
+        );
+        p.on('close', (code) => resolve(code === 0));
+        p.on('error', () => resolve(false));
+      });
+      if (ok) return;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    // Non-fatal: forwarder will retry, chromium.log will tell us why.
+  }
+
   private async pingCdp(): Promise<boolean> {
     try {
       const res = await fetch(`http://127.0.0.1:${this.cdpPort}/json/version`);
@@ -258,10 +194,17 @@ export class BrowserController {
     } catch { return false; }
   }
 
-  private async findPageTarget(): Promise<any | null> {
-    const res = await fetch(`http://127.0.0.1:${this.cdpPort}/json`);
-    if (!res.ok) return null;
-    const targets = await res.json() as any[];
-    return targets.find((t) => t.type === 'page') ?? null;
+  private async killProcessesInContainer(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const p = spawn(
+        'docker',
+        ['exec', this.containerName, 'sh', '-c',
+         'pkill -f "chromium --headless" 2>/dev/null; '
+         + 'pkill -f "cdp-forwarder.js" 2>/dev/null; true'],
+        { stdio: 'ignore' },
+      );
+      p.on('close', () => resolve());
+      p.on('error', () => resolve());
+    });
   }
 }

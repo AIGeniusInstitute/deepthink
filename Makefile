@@ -1,7 +1,8 @@
 .PHONY: dev dev-backend dev-web build build-backend build-web start \
        typecheck typecheck-backend typecheck-web typecheck-agent-runner \
        format format-check install install-host-tools clean reset-init update-sdk ensure-latest-sdk sync-types \
-       backup restore help _ensure-docker-image logs status stop \
+       backup restore help _ensure-docker-image _ensure-sandbox-image \
+       sandbox-build logs status stop \
        _check-sync _build-web-if-stale _build-ar-if-stale _build-backend-if-stale \
        _start-pm2 _start-direct \
        admin-create admin-passwd \
@@ -34,6 +35,7 @@ PM2_GUARD = PM2_WAS_RUNNING=0; \
 dev: ## 启动前后端（首次自动安装依赖和构建容器镜像）；自动暂停 pm2，退出后恢复
 	@if [ ! -d node_modules ] || [ package.json -nt node_modules ] || [ web/package.json -nt web/node_modules ] || [ container/agent-runner/package.json -nt container/agent-runner/node_modules ]; then echo "📦 依赖有更新，安装依赖..."; $(MAKE) install; fi
 	@$(MAKE) _ensure-docker-image
+	@$(MAKE) _ensure-sandbox-image
 	@$(PKG) --prefix container/agent-runner run build --silent 2>/dev/null || $(PKG) --prefix container/agent-runner run build
 	@$(PM2_GUARD); \
 	echo "🚀 使用 $(PKG) 启动..."; \
@@ -70,6 +72,7 @@ start: ensure-latest-sdk ## 一键启动生产环境（pm2 托管时自动走 pm
 _start-pm2: ## (内部) pm2 托管模式：build 后 pm2 restart
 	@echo "🔄 检测到 pm2 托管 deepthink，改走 pm2 restart（端口 $(PORT)）"
 	@$(MAKE) _check-sync _build-web-if-stale _build-ar-if-stale _build-backend-if-stale
+	@$(MAKE) _ensure-sandbox-image
 	@WEB_PORT=$(PORT) pm2 restart deepthink --update-env
 	@sleep 2
 	@pm2 logs deepthink --lines 20 --nostream || true
@@ -84,6 +87,7 @@ _start-direct: ## (内部) 裸跑模式（无 pm2 或未注册）
 	fi
 	@if [ ! -d node_modules ] || [ package.json -nt node_modules ] || [ web/package.json -nt web/node_modules ] || [ container/agent-runner/package.json -nt container/agent-runner/node_modules ]; then echo "📦 依赖有更新，安装依赖..."; $(MAKE) install; fi
 	@$(MAKE) _ensure-docker-image
+	@$(MAKE) _ensure-sandbox-image
 	@$(MAKE) _check-sync
 	@$(MAKE) _build-backend-if-stale
 	@$(MAKE) _build-web-if-stale
@@ -219,6 +223,37 @@ _ensure-docker-image: ## (内部) 检测 Docker 镜像是否需要构建/重建
 	  fi; \
 	fi
 
+# ─── Sandbox Docker Image ────────────────────────────────────
+
+# 沙箱镜像源文件：Dockerfile、entry.sh、seccomp-profile.json
+SANDBOX_SRC := container/sandbox/Dockerfile container/sandbox/entry.sh container/sandbox/seccomp-profile.json
+
+sandbox-build: ## 构建沙箱镜像 deepthink-sandbox:latest（用于代码执行 + 浏览器自动化）
+	@./container/sandbox/build.sh
+	@touch .sandbox-docker-build-sentinel
+
+_ensure-sandbox-image: ## (内部) 检测沙箱镜像是否需要构建/重建
+	@if command -v docker >/dev/null 2>&1; then \
+	  if ! docker image inspect deepthink-sandbox:latest >/dev/null 2>&1; then \
+	    echo "🐳 沙箱镜像不存在，正在构建..."; \
+	    $(MAKE) sandbox-build; \
+	  elif [ ! -f .sandbox-docker-build-sentinel ]; then \
+	    echo "🐳 沙箱镜像 sentinel 缺失，正在重建..."; \
+	    $(MAKE) sandbox-build; \
+	  else \
+	    STALE=0; \
+	    for f in $(SANDBOX_SRC); do \
+	      if [ "$$f" -nt .sandbox-docker-build-sentinel ]; then STALE=1; break; fi; \
+	    done; \
+	    if [ "$$STALE" = "1" ]; then \
+	      echo "🐳 检测到沙箱源码变更，正在重建沙箱镜像..."; \
+	      $(MAKE) sandbox-build; \
+	    else \
+	      echo "✅ 沙箱镜像无需重建"; \
+	    fi; \
+	  fi; \
+	fi
+
 # ─── Shared Types ────────────────────────────────────────────
 
 sync-types: ## 同步 shared/ 下的类型定义到各子项目
@@ -275,7 +310,7 @@ clean: ## 清理构建产物
 	rm -rf dist
 	rm -rf web/dist
 	rm -rf container/agent-runner/dist
-	rm -f .build-sentinel .docker-build-sentinel
+	rm -f .build-sentinel .docker-build-sentinel .sandbox-docker-build-sentinel
 
 reset-init: ## 完全重置为首装状态（清空所有运行时数据）
 	rm -rf data store groups
