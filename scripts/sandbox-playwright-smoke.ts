@@ -70,12 +70,16 @@ async function main() {
   const frames: string[] = [];
   try {
     console.log('[smoke] starting BrowserController (Playwright connectOverCDP)...');
+    // Use https://example.com to verify that the chromium flag bundle
+    // (--disable-features=IsolateOrigins,site-per-process,Translate,
+    // --disable-site-isolation-trials, waitUntil: 'domcontentloaded')
+    // resolves net::ERR_ABORTED on real HTTPS sites.
     await ctrl.start(
       (dataUrl) => frames.push(dataUrl),
-      500,
-      'data:text/html,<html><head><title>Smoke Test</title></head><body><h1 id="x">hello</h1></body></html>',
+      250,
+      'https://example.com',
     );
-    console.log('[smoke] navigated to data URL');
+    console.log('[smoke] navigated to https://example.com');
 
     const title = await ctrl.getTitle();
     const url = await ctrl.getCurrentUrl();
@@ -83,9 +87,6 @@ async function main() {
 
     const evalResult = await ctrl.evaluate('document.title');
     console.log('[smoke] evaluate(document.title):', evalResult);
-
-    const evalH1 = await ctrl.evaluate('document.getElementById("x").textContent');
-    console.log('[smoke] evaluate(h1):', evalH1);
 
     const png = await ctrl.screenshot();
     const buf = Buffer.from(png.split(',')[1], 'base64');
@@ -97,17 +98,18 @@ async function main() {
       console.error('[smoke] FAIL: screenshot too small (<1KB, expected real page render)');
       process.exit(2);
     }
-    if (title !== 'Smoke Test') {
-      console.error('[smoke] FAIL: title mismatch (expected "Smoke Test")');
+    if (title !== 'Example Domain') {
+      console.error('[smoke] FAIL: title mismatch (expected "Example Domain")');
       process.exit(3);
     }
-    if (evalH1 !== 'hello') {
-      console.error('[smoke] FAIL: h1 text mismatch');
-      process.exit(5);
-    }
-    // Let the frame loop fire at least twice (500ms interval).
-    await new Promise((r) => setTimeout(r, 1200));
+    // Let the frame loop fire at least 4 times (250ms interval).
+    await new Promise((r) => setTimeout(r, 1100));
     console.log('[smoke] frames received during test:', frames.length);
+    if (frames.length === 0) {
+      console.error('[smoke] FAIL: no frames pushed via onFrame callback');
+      process.exit(4);
+    }
+    console.log('[smoke] ✅ ALL CHECKS PASSED');
     if (frames.length === 0) {
       console.error('[smoke] FAIL: no frames pushed via onFrame callback');
       process.exit(4);
