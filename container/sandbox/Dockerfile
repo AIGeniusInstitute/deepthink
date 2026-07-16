@@ -49,6 +49,7 @@ USER node
 WORKDIR /workspace
 
 COPY --chown=node:node entry.sh /entry.sh
+COPY --chown=node:node cdp-forwarder.js /usr/local/lib/cdp-forwarder.js
 RUN chmod +x /entry.sh
 
 # /workspace is overwritten at runtime by tmpfs (see security.ts buildDockerRunArgs)
