@@ -29,6 +29,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
+import { fileURLToPath } from 'node:url';
 
 import type { ContainerInput, ContainerOutput, StreamEvent } from './types.js';
 
@@ -625,7 +626,7 @@ export async function runOpencodeEngine(opts: RunOpts): Promise<void> {
     process.env.DT_CHAT_JID = containerInput.chatJid;
   }
   const providersJson = process.env.OPENCODE_PROVIDERS_JSON?.trim() ?? '';
-  const mcpBridgePath = path.join(__dirname, 'mcp-bridge.js');
+  const mcpBridgePath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'mcp-bridge.js');
   const configPath = await writeOpencodeConfigFile(providersJson, mcpBridgePath, log);
   if (configPath) {
     process.env.OPENCODE_CONFIG = configPath;

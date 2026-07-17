@@ -30,6 +30,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 import * as readline from 'node:readline';
+import { fileURLToPath } from 'node:url';
 
 import type { ContainerInput, ContainerOutput, StreamEvent } from './types.js';
 
@@ -487,7 +488,7 @@ export async function runCodexEngine(opts: RunOpts): Promise<void> {
     process.env.DT_CHAT_JID = containerInput.chatJid;
   }
   const providersJson = process.env.CODEX_PROVIDERS_JSON?.trim() ?? '';
-  const mcpBridgePath = path.join(__dirname, 'mcp-bridge.js');
+  const mcpBridgePath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'mcp-bridge.js');
   const codexHome = await writeCodexConfig(providersJson, mcpBridgePath, log);
   if (codexHome) {
     process.env.CODEX_HOME = codexHome;
