@@ -15,7 +15,7 @@
   - [x] 3.3 新建 `web/src/pages/EnginesPage.tsx`
 - [x] step4 验证(tsc 0 / build 0 / 1205 测试通过)
 - [x] step5 测试报告(`docs/test_report/top-nav-mcp-memory-engine/TEST_REPORT.md`)
-- [ ] step6 合并 main + push
+- [x] step6 合并 main + push(merge commit `8baa784`,已推送 origin/main;worktree 已清理)
 
 ## 变更记录
 
