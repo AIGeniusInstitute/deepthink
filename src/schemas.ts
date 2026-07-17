@@ -340,8 +340,7 @@ export const OpencodeProviderSchema = z.object({
 
 export const OpencodeConfigSchema = z.object({
   enabled: z.boolean().optional(),
-  bunPath: z.string().max(512).optional(),
-  opencodePath: z.string().max(512).optional(),
+  binaryPath: z.string().max(512).optional(),
   host: z.string().max(64).optional(),
   basePort: z.number().int().min(1024).max(65535).optional(),
   portRange: z.number().int().min(1).max(65535).optional(),

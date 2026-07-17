@@ -3491,41 +3491,41 @@ configRoutes.put('/opencode', authMiddleware, systemConfigMiddleware, async (c) 
   return c.json(toPublicOpencodeConfig(saved));
 });
 
-/** POST /api/config/opencode/test — verify bun + opencode by running `bun --version` */
+/** POST /api/config/opencode/test — verify opencode binary by running `<binaryPath> --version` */
 configRoutes.post('/opencode/test', authMiddleware, systemConfigMiddleware, async (c) => {
   const cfg = getOpencodeConfig();
-  if (!cfg.bunPath) {
-    return c.json({ ok: false, error: 'Bun 二进制路径未配置' }, 200);
+  if (!cfg.binaryPath) {
+    return c.json({ ok: false, error: 'OpenCode 二进制路径未配置' }, 200);
   }
   try {
-    const result = await new Promise<{ ok: boolean; bunVersion: string; error?: string }>(
+    const result = await new Promise<{ ok: boolean; version: string; error?: string }>(
       (resolve) => {
-        const proc = spawn(cfg.bunPath, ['--version'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        const proc = spawn(cfg.binaryPath, ['--version'], { stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
         let stderr = '';
         proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
         proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
         const timer = setTimeout(() => {
           proc.kill('SIGKILL');
-          resolve({ ok: false, bunVersion: '', error: 'timeout' });
+          resolve({ ok: false, version: '', error: 'timeout' });
         }, 10_000);
         proc.on('close', (code) => {
           clearTimeout(timer);
           if (code === 0) {
-            resolve({ ok: true, bunVersion: stdout.trim() });
+            resolve({ ok: true, version: stdout.trim() });
           } else {
-            resolve({ ok: false, bunVersion: '', error: stderr.trim() || `exit ${code}` });
+            resolve({ ok: false, version: '', error: stderr.trim() || `exit ${code}` });
           }
         });
         proc.on('error', (err) => {
           clearTimeout(timer);
-          resolve({ ok: false, bunVersion: '', error: err.message });
+          resolve({ ok: false, version: '', error: err.message });
         });
       },
     );
     return c.json(result);
   } catch (err) {
-    return c.json({ ok: false, bunVersion: '', error: err instanceof Error ? err.message : String(err) });
+    return c.json({ ok: false, version: '', error: err instanceof Error ? err.message : String(err) });
   }
 });
 

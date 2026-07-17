@@ -146,10 +146,10 @@ export function CodexEngineSection() {
           id="codex-binary"
           value={cfg.binaryPath}
           onChange={(e) => setCfg({ ...cfg, binaryPath: e.target.value })}
-          placeholder="/opt/homebrew/bin/codex 或 ~/codex/target/release/codex"
+          placeholder="macOS: /opt/homebrew/bin/codex · Linux: /usr/local/bin/codex · Windows: %LOCALAPPDATA%\codex\codex.exe"
         />
         <p className="text-xs text-muted-foreground">
-          Codex CLI 的绝对路径。可通过 <code>which codex</code> 查找。
+          Codex CLI 的绝对路径。macOS/Linux 可用 <code>which codex</code>；Windows 可用 <code>where codex</code> 查找。
         </p>
       </div>
 

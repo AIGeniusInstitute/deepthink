@@ -6,7 +6,7 @@
  * ContainerInput.engine === 'opencode'.
  *
  * Lifecycle:
- *   1. spawn `bun run <opencodePath> serve --hostname 127.0.0.1 --port <port>`
+ *   1. spawn `<binaryPath> serve --hostname 127.0.0.1 --port <port>`
  *      with env OPENCODE_SERVER_PASSWORD (and OPENCODE_SERVER_USERNAME=opencode).
  *   2. Poll `GET /doc` until ready (30s timeout).
  *   3. POST /session to create a session (or reuse provided sessionID).
@@ -212,8 +212,7 @@ function isPortFree(port: number): Promise<boolean> {
 
 /** Start opencode serve on a random loopback port, wait for GET /doc. */
 async function startServe(opts: {
-  bunPath: string;
-  opencodePath: string;
+  binaryPath: string;
   basePort: number;
   portRange: number;
   host: string;
@@ -222,20 +221,18 @@ async function startServe(opts: {
   log: (m: string) => void;
   logFile?: string;
 }): Promise<{ baseUrl: string; process: ChildProcess; port: number }> {
-  const { bunPath, opencodePath, basePort, portRange, host, password, workingDir, log, logFile } = opts;
-  if (!bunPath) throw new Error('OPENCODE_BUN_PATH is empty');
-  if (!opencodePath) throw new Error('OPENCODE_SOURCE_PATH is empty');
-  if (!fs.existsSync(bunPath)) throw new Error(`bun not found at ${bunPath}`);
-  if (!fs.existsSync(opencodePath)) throw new Error(`opencode source not found at ${opencodePath}`);
+  const { binaryPath, basePort, portRange, host, password, workingDir, log, logFile } = opts;
+  if (!binaryPath) throw new Error('OPENCODE_BINARY_PATH is empty');
+  if (!fs.existsSync(binaryPath)) throw new Error(`opencode binary not found at ${binaryPath}`);
 
   const port = await pickFreePort(basePort, portRange, log);
   if (!port) {
     throw new Error(`No free port available in [${basePort}, ${basePort + portRange})`);
   }
 
-  // bun run <opencodePath> serve --hostname 127.0.0.1 --port <port>
-  const args = ['run', opencodePath, 'serve', '--hostname', host || '127.0.0.1', '--port', String(port)];
-  log(`Spawning opencode serve: ${bunPath} ${args.join(' ')} (cwd=${workingDir})`);
+  // <binaryPath> serve --hostname 127.0.0.1 --port <port>
+  const args = ['serve', '--hostname', host || '127.0.0.1', '--port', String(port)];
+  log(`Spawning opencode serve: ${binaryPath} ${args.join(' ')} (cwd=${workingDir})`);
 
   const childEnv: Record<string, string | undefined> = {
     ...process.env,
@@ -251,7 +248,7 @@ async function startServe(opts: {
     } catch { /* ignore */ }
   }
 
-  const proc = spawn(bunPath, args, {
+  const proc = spawn(binaryPath, args, {
     stdio: ['ignore', 'pipe', 'pipe'],
     cwd: workingDir,
     env: childEnv,
@@ -602,8 +599,7 @@ export async function runOpencodeEngine(opts: RunOpts): Promise<void> {
   const turnId = containerInput.turnId;
 
   // ── 1. Read engine env vars (injected by container-runner) ──
-  const bunPath = process.env.OPENCODE_BUN_PATH?.trim() ?? '';
-  const opencodePath = process.env.OPENCODE_SOURCE_PATH?.trim() ?? '';
+  const binaryPath = process.env.OPENCODE_BINARY_PATH?.trim() ?? '';
   const host = process.env.OPENCODE_HOST?.trim() || '127.0.0.1';
   const basePort = parseInt(process.env.OPENCODE_BASE_PORT ?? '15000', 10);
   const portRange = parseInt(process.env.OPENCODE_PORT_RANGE ?? '100', 10);
@@ -612,12 +608,12 @@ export async function runOpencodeEngine(opts: RunOpts): Promise<void> {
   const modelID = process.env.OPENCODE_MODEL_ID?.trim() || 'claude-sonnet-4-6';
   const workingDir = process.env.OPENCODE_WORKING_DIR?.trim() || WORKSPACE_GROUP;
 
-  if (!bunPath || !opencodePath) {
+  if (!binaryPath) {
     writeOutput({
       status: 'error',
       result: null,
       error:
-        'OPENCODE_BUN_PATH / OPENCODE_SOURCE_PATH 未注入。请在 设置 → OpenCode 引擎 中配置，并确保群组 engine=opencode。',
+        'OPENCODE_BINARY_PATH 未注入。请在 设置 → OpenCode 引擎 中配置 opencode 二进制路径，并确保群组 engine=opencode。',
       turnId,
     });
     return;
@@ -657,8 +653,7 @@ export async function runOpencodeEngine(opts: RunOpts): Promise<void> {
   let serveInst: { baseUrl: string; process: ChildProcess; port: number };
   try {
     serveInst = await startServe({
-      bunPath,
-      opencodePath,
+      binaryPath,
       basePort,
       portRange,
       host,
