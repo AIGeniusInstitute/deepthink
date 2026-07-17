@@ -42,13 +42,20 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
 | `src/qq.ts` | QQ 连接工厂（`createQQConnection`）：Bot API v2 WebSocket 长连接、OAuth Token 管理、C2C 私聊 + 群聊 @Bot、消息去重（LRU 1000 条 / 30min TTL）、Markdown → 纯文本、长消息分片（5000 字符）、图片下载为 base64 供 Vision |
 | `src/dingtalk.ts` | 钉钉连接工厂（`createDingTalkConnection`）：Stream 协议长连接、消息去重（LRU 1000 条 / 30min TTL）；支持 `text`、`picture`（通过 downloadCode 下载）和 `image`（通过 contentUrl 下载）；图片超过 5MB 不发 base64，仅保存到 `downloads/dingtalk/` |
 | `src/whatsapp.ts` | WhatsApp 连接工厂（`createWhatsAppConnection`）：基于 `@whiskeysockets/baileys` 的 WhatsApp Web 协议；`useMultiFileAuthState` 持久化登录态；QR 经 `qrcode` 渲染 PNG data URL 推前端；自动 3s 重连（logged_out 不重连避免 QR 风暴）；`messages.upsert` 转发文本 + 媒体（image/video/audio/document）下载到 `downloads/whatsapp/{date}/`；小图片附 base64 attachment 供 Vision；`group-participants.update` 触发 onBotAddedToGroup / onBotRemovedFromGroup；群组 `require_mention` 通过 `mentionedJid` 与 `sock.user.id` 比对。详见 [`docs/channels/whatsapp.md`](docs/channels/whatsapp.md) |
+| `src/wechat.ts` | 微信连接工厂（`createWeChatConnection`）：基于 iLink Bot API 的长轮询接收 + context-token 发送 + typing indicator，LRU 消息去重；图片从微信 CDN 下载后用 AES-128-ECB 解密（密钥/逻辑在 `wechat-crypto.ts`），上传携带 iLink app-identity 头。与飞书/DingTalk/QQ/Discord/Telegram 并列的独立 IM 通道适配器 |
+| `src/discord.ts` | Discord 连接工厂：基于 `discord.js` 的 Gateway WS 适配器，支持 guild/DM、附件、2000 字符分片、ack Reaction |
+| `src/discord-streaming-edit.ts` | Discord 流式响应控制器：镜像钉钉 Card API 接口（`feedStreamEventToCard()`），让流式事件驱动逻辑可复用；500ms 节流编辑 + 代码块安全分片 |
 | `src/dingtalk-streaming-card.ts` | 钉钉 AI Card 流式响应控制器（打字机效果） |
+| `src/im-safety/` | IM 安全原语模块（vendored 自 lark SDK `feature/channel`）：短 TTL `ProcessingLock` 覆盖事件进入去重 LRU 前的 in-flight 窗口；`stale-detector` 丢弃 30 分钟以上旧消息作为重连后兜底过滤。被所有 IM 通道适配器共享 |
 | `src/im-downloader.ts` | IM 文件下载工具：`saveDownloadedFile()` 将 Buffer 写入 `downloads/{channel}/{YYYY-MM-DD}/`，支持 `feishu`/`telegram`/`qq`/`dingtalk` 通道，处理路径安全、文件名冲突和大小限制（默认 50MB，见 `MAX_FILE_SIZE_MB`） |
-| `src/im-manager.ts` | IM 连接池管理器（`IMConnectionManager`）：per-user 飞书/Telegram/QQ/钉钉/Discord/WhatsApp 连接管理、热重连、批量断开 |
+| `src/im-manager.ts` | IM 连接池管理器（`IMConnectionManager`）：per-user 飞书/Telegram/QQ/钉钉/Discord/WhatsApp/微信 连接管理、热重连、批量断开 |
 | `src/container-runner.ts` | 容器生命周期：Docker run + 宿主机进程模式、卷挂载构建（isAdminHome 区分权限）、环境变量注入 |
 | `src/agent-output-parser.ts` | Agent 输出解析：OUTPUT_MARKER 流式输出解析、stdout/stderr 处理、进程生命周期回调（从 container-runner.ts 提取的共享逻辑） |
 | `src/group-queue.ts` | 并发控制：最大 20 容器 + 最大 5 宿主机进程、会话级队列、任务优先于消息、指数退避重试 |
 | `src/runtime-config.ts` | 配置存储：AES-256-GCM 加密、分层配置（容器级 > 全局 > 环境变量）、变更审计日志 |
+| `src/provider-pool.ts` | 多提供商负载均衡：round-robin / weighted-round-robin / failover 三种策略，健康状态纯内存管理，配置由 runtime-config V4 注入；`sessions.provider_id` 字段用于 sticky 选择，避免跨 OAuth 账号 thinking block 签名失效 |
+| `src/supervisor.ts`、`src/supervisor-config.ts` | Supervisor SubAgent：用户消息派发前的轻量意图解析器（**不**调用工具），输出严格 JSON 决策（`clarify` 询问用户 / `delegate` 转发原文 / `auto` 重写指令 / `accept` / `retry`）；对应全局 CLAUDE.md 中的 Supervisor Agent 强制约束；超时 60s |
+| `src/atomcode-daemon-manager.ts` | AtomCode 守护进程生命周期：AtomCode 自带 HTTP/SSE daemon（`/chat`、`/providers`），为每个 agent-runner 进程在随机 loopback 端口拉起一个、驱动会话、退出时拆除；config 路由也复用此管理器做临时 provider 管理 daemon —— 容器/宿主机 runner 之外的第三种 provider/runner 面 |
 | `src/task-scheduler.ts` | 定时调度：60s 轮询、cron / interval / once 三种模式、group / isolated 上下文 |
 | `src/file-manager.ts` | 文件安全：路径遍历防护、符号链接检测、系统路径保护（`logs/`、`CLAUDE.md`、`.claude/`、`conversations/`） |
 | `src/mount-security.ts` | 挂载安全：白名单校验、黑名单模式匹配（`.ssh`、`.gnupg` 等）、非主会话只读强制 |
@@ -606,24 +613,29 @@ bug 修复 / 线上事故 / CI 故障等 issue 处理 **不**走 PRD → tech_so
 ### 常用命令
 
 ```bash
-make dev           # 启动前后端（首次自动安装依赖和构建镜像）
-make dev-backend   # 仅启动后端
+make dev           # 启动前后端（首次自动安装依赖和构建镜像）；若 pm2 托管了 deepthink 会自动暂停、退出后恢复
+make dev-backend   # 仅启动后端（tsx 直跑 TS）；同样自动暂停/恢复 pm2
 make dev-web       # 仅启动前端
-make build         # 编译全部（后端 + 前端 + agent-runner）
-make start         # 一键启动生产环境（前台阻塞运行，日志输出到终端）
+make build         # 编译全部（后端 + 前端 + agent-runner，含 sync-types）
+make start         # 一键启动生产环境：若 pm2 注册过 deepthink 则走 `pm2 restart`（端口由 PORT/WEB_PORT 控制），否则前台阻塞运行；启动前自动 `ensure-latest-sdk` 检测 SDK 新版
 make status        # 查看服务运行状态（进程、端口、日志、Docker 容器）
-make logs           # 实时查看日志（仅在用户自行后台化时有效）
-make stop           # 停止占用 9898 端口的服务（前台运行时请直接 Ctrl+C）
+make logs          # 实时查看日志（pm2 托管走 `pm2 logs`，否则需自行后台化）
+make stop          # 停止服务：pm2 托管走 `pm2 stop`，否则 `lsof -ti:PORT -sTCP:LISTEN | xargs kill`（仅杀监听进程，保护 Docker daemon）
+make sandbox-build # 构建沙箱镜像 deepthink-sandbox:latest（用于代码执行 + 浏览器自动化）
+make admin-create  # 创建管理员账号（USERNAME=xxx [PASSWORD=xxx]）
+make admin-passwd  # 改管理员密码（USERNAME=xxx [PASSWORD=xxx]，清掉该账号所有旧登录会话）
 ```
+
+> **pm2 托管**：若用 pm2 注册过 `deepthink`，`make start`/`make stop`/`make logs` 会自动路由到 pm2，而非裸跑。`make dev`/`make dev-backend` 运行期间会暂停 pm2 中的 deepthink 避免端口冲突，退出时恢复。可用 `PORT=xxxx`/`WEB_PORT=xxxx` 指定端口。
 
 **开发模式选择：**
 
 | 场景 | 命令 | 说明 |
 |------|------|------|
-| 改完代码重启 | Ctrl+C 停止后再 `make start` | 前台阻塞运行 |
+| 改完代码重启 | Ctrl+C 停止后再 `make start` | pm2 托管则 `pm2 restart`，否则前台阻塞 |
 | 改完前端热更新 | `make dev-web`（另开终端） | Vite 热更新 |
 | 改完后端快速验证 | `make dev-backend`（另开终端） | tsx watch |
-| 生产环境运行 | `make start` | 前台阻塞运行；如需后台化请自行 `make start > /tmp/deepthink.log 2>&1 &` |
+| 生产环境运行 | `make start` | pm2 路由或前台阻塞；如需后台化请自行 `make start > /tmp/deepthink.log 2>&1 &` |
 
 ```bash
 make typecheck     # TypeScript 全量类型检查（后端 + 前端 + agent-runner）
