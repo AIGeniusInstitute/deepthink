@@ -38,13 +38,14 @@ dev: ## 启动前后端（首次自动安装依赖和构建容器镜像）；自
 	@if [ ! -d node_modules ] || [ package.json -nt node_modules ] || [ web/package.json -nt web/node_modules ] || [ container/agent-runner/package.json -nt container/agent-runner/node_modules ]; then echo "📦 依赖有更新，安装依赖..."; $(MAKE) install; fi
 	@$(MAKE) _ensure-docker-image
 	@$(MAKE) _ensure-sandbox-image
+	@$(MAKE) _ensure-native-abi
 	@$(PKG) --prefix container/agent-runner run build $(NPM_FLAGS) --silent 2>/dev/null || $(PKG) --prefix container/agent-runner run build $(NPM_FLAGS)
 	@$(PM2_GUARD); \
 	echo "🚀 使用 $(PKG) 启动..."; \
 	$(PKG) run dev:all
 
 dev-backend: ## 仅启动后端（tsx 直跑 TS）；自动暂停 pm2，退出后恢复
-	@$(PM2_GUARD); $(RUNNER)
+	@$(MAKE) _ensure-native-abi; $(PM2_GUARD); $(RUNNER)
 
 dev-web: ## 仅启动前端
 	cd web && $(PKG) run dev
@@ -73,7 +74,7 @@ start: ensure-latest-sdk ## 一键启动生产环境（pm2 托管时自动走 pm
 
 _start-pm2: ## (内部) pm2 托管模式：build 后 pm2 restart
 	@echo "🔄 检测到 pm2 托管 deepthink，改走 pm2 restart（端口 $(PORT)）"
-	@$(MAKE) _check-sync _build-web-if-stale _build-ar-if-stale _build-backend-if-stale
+	@$(MAKE) _check-sync _build-web-if-stale _build-ar-if-stale _build-backend-if-stale _ensure-native-abi
 	@$(MAKE) _ensure-sandbox-image
 	@WEB_PORT=$(PORT) pm2 restart deepthink --update-env
 	@sleep 2
@@ -94,6 +95,7 @@ _start-direct: ## (内部) 裸跑模式（无 pm2 或未注册）
 	@$(MAKE) _build-backend-if-stale
 	@$(MAKE) _build-web-if-stale
 	@$(MAKE) _build-ar-if-stale
+	@$(MAKE) _ensure-native-abi
 	@echo "🟢 Node 模式：运行编译后的 dist/index.js（端口 $(PORT)，本项目不使用 bun，WebSocket 需要 node）"
 	WEB_PORT=$(PORT) node dist/index.js
 
@@ -291,6 +293,19 @@ ensure-latest-sdk: ## 启动前自动检测并更新 SDK（agent-runner + 主服
 		echo "✅ [主服务] SDK 更新完成"; \
 	else \
 		echo "✅ [主服务] Claude Agent SDK 已是最新 ($$ROOT_LOCAL)"; \
+	fi
+
+_ensure-native-abi: ## (内部) 探测 better-sqlite3 能否在当前 Node 下加载，ABI 不匹配则自动 npm rebuild
+	@if [ ! -d node_modules/better-sqlite3 ]; then :; \
+	elif node -e "require('better-sqlite3')" 2>/dev/null; then :; \
+	else \
+	  echo "🔄 检测到原生模块（better-sqlite3）ABI 与当前 Node $$(node --version) 不匹配，正在重新编译..."; \
+	  npm rebuild better-sqlite3 --no-progress 2>&1 | tail -5 | sed 's/^/   /'; \
+	  if ! node -e "require('better-sqlite3')" 2>/dev/null; then \
+	    echo "❌ better-sqlite3 重新编译后仍无法加载，请手动执行: npm rebuild better-sqlite3"; \
+	    exit 1; \
+	  fi; \
+	  echo "✅ 原生模块已重新编译"; \
 	fi
 
 # ─── Setup ───────────────────────────────────────────────────
