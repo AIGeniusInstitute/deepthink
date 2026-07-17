@@ -27,7 +27,7 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
 - ✅ 完整记录：每轮测试结果、修复记录、失败原因全部留存
 
 
-## 任务工作流程
+## 需求开发任务工作流程
 
 1、生成需求 prd 文档，写入 docs/prd 目录下，要创建这个需求自己的独立文件夹
 2、设计技术方案，详细开发技术方案文档，写入 docs/tech_solution 目录下，也要创建这个需求自己的独立文件夹
@@ -36,7 +36,7 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
 5、代码提交并push， 合并到 main , 并push
 
 
-## Issue 修复流程
+## Issue 修复任务工作流程
 
 针对 bug 修复 / 线上事故 / CI 故障等 issue 处理（**不**走 PRD → tech_solution → test_report 那条线，因为不是新需求开发）：
 
