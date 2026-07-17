@@ -49,6 +49,29 @@ DeepThink, nền tảng siêu trí tuệ tự tiến hóa Agent tự chủ cấp
 - **PWA di động** — Tối ưu sâu cho di động, cài đặt màn hình chính một chạm, tương thích iOS / Android
 - **Quốc tế hóa** — 29 ngôn ngữ UI với endonym bản địa và hỗ trợ RTL; Agent trả lời theo ngôn ngữ người dùng chọn
 
+## Trưng bày Tính năng
+
+Hướng dẫn trực quan về các khả năng cốt lõi của DeepThink — mỗi màn hình trông như thế nào và giá trị nó mang lại cho người dùng.
+
+| Ảnh chụp | Tính năng | Điểm nổi bật cốt lõi | Ý nghĩa đối với bạn |
+|------|------|------|------|
+| <img src="static/deep-think-main-workspace.png" width="280" /> | **Không gian làm việc chính** | Nhiều tab hội thoại, Markdown trực tuyến, bảng suy nghĩ thời gian thực, truy vết lời gọi công cụ | Một không gian chứa nhiều đoạn chat song song — chuyển ngữ cảnh mà không mất trạng thái, theo dõi Agent suy nghĩ và hành động trực tiếp |
+| <img src="static/deep-think-agent-studio.png" width="280" /> | **Agent Studio** | Tạo / đánh phiên bản / gắn định nghĩa Agent tùy biến, kiểm tra tiền định khả năng máy chủ, quản lý snapshot | Định nghĩa các Agent chuyên môn riêng (code-reviewer, web-researcher…) và tái sử dụng trên mọi phiên |
+| <img src="static/deep-think-agent-edit.png" width="280" /> | **Agent Editor** | Chỉnh sửa `~/.claude/agents/*.md` ngay từ Web UI, system prompt + công cụ + subagent trong một biểu mẫu | Tinh chỉnh hành vi Agent bằng ngôn ngữ tự nhiên — không cần lục file, thay đổi có hiệu lực ở phiên sau |
+| <img src="static/deep-think-agent-test.png" width="280" /> | **Kiểm thử Agent** | Chạy Agent với đầu vào mẫu trước khi phát hành, xem toàn bộ vết đầu ra | Triển khai Agent tự tin — kiểm chứng hành vi trên test case trước khi thả vào sản xuất |
+| <img src="static/deep-think-multi-engine.png" width="280" /> | **Đa Engine** | Engine cắm được (Claude Code / AtomCode / Codex / OpenCode), bảng sẵn sàng thống nhất | Chọn bộ não phù hợp cho từng tác vụ — đổi engine theo phiên mà không cần kiến trúc lại nền tảng |
+| <img src="static/deep-think-engine-config.png" width="280" /> | **Cấu hình Engine** | Vòng đời daemon theo engine, thông tin xác thực provider, tình trạng sức khỏe ngay trước mắt | Chạy nhiều provider song song — thêm thông tin xác thực, giám sát tồn tại, tự động chuyển đổi khi sự cố |
+| <img src="static/deep-think-atomcode-engine.png" width="280" /> | **AtomCode Engine** | Daemon HTTP/SSE độc lập, cổng loopback từng agent-runner, tự tháo dỡ | Dùng AtomCode làm engine lập trình thay thế — daemon độc lập mỗi tiến trình, không xung đột cổng |
+| <img src="static/deep-think-marketplace.png" width="280" /> | **Marketplace** | Mẫu do admin xuất bản (agent / mcp / skill / kb), duyệt, đánh giá, cài một chạm | Khám và cài Agent cùng công cụ chia sẻ như kho ứng dụng — admin tuyển chọn, người dùng cài trong một chạm |
+| <img src="static/deep-think-mcp-servers.png" width="280" /> | **MCP Servers** | MCP Servers stdio + HTTP theo không gian làm việc, độc lập với cấu hình toàn cục | Cấp cho mỗi không gian một bộ công cụ riêng — kết nối Notion, GitHub, cơ sở dữ liệu… phạm vi giới hạn đúng dự án đó |
+| <img src="static/deep-think-skills.png" width="280" /> | **Skills** | Skills cấp dự án / người dùng / không gian, tự động phát hiện qua volume mount + symlink | Dạy Agent kỹ năng mới theo dự án — không cần build lại image, skill xuất hiện ở phiên sau |
+| <img src="static/deep-think-memory.png" width="280" /> | **Hệ thống Trí nhớ** | Trí nhớ người dùng toàn cục / phiên / theo ngày, tìm kiếm toàn văn, chỉnh sửa trực tuyến | Agent nhớ bạn xuyên suốt các phiên — gọi lại sở thích, ngữ cảnh dự án và quyết định mà không phải giải thích lại |
+| <img src="static/deep-think-cron-task.png" width="280" /> | **Nhiệm vụ định lịch** | Cron / khoảng / một lần, thực thi Agent hoặc Script, ngữ cảnh nhóm hoặc cô lập, thông báo IM khi hoàn thành | Tự động hóa công việc định kỳ — báo cáo đêm, kiểm tra chu kỳ, vòng lặp tự chạy, báo bạn trên Feishu/Telegram khi xong |
+| <img src="static/deep-think-sandbox.png" width="280" /> | **Thực thi Sandbox** | Docker + seccomp + cgroups, mã Python / Node / shell, tự động hóa trình duyệt Chromium CDP | Để Agent chạy mã không tin cậy và điều khiển trình duyệt an toàn — cô lập được refor, lộ ra như công cụ MCP |
+| <img src="static/deep-think-system-monitor.png" width="280" /> | **Giám sát Hệ thống** | Danh sách container, trạng thái hàng đợi, phiên hoạt động theo provider, health check, build image một chạm | Nhìn rõ cái gì đang chạy — phát hiện container kẹt, cân bằng tải, build lại image từ trình duyệt |
+| <img src="static/deep-think-tokens.png" width="280" /> | **Sử dụng & Thanh toán** | Phân tích token theo model (đầu vào / đầu ra / cache), chi phí USD, biểu đồ cột + tròn, bộ lọc đa chiều | Biết token và tiền đi đâu — cắt theo người dùng, model, khoảng thời gian, tính cự chính xác cho team |
+| <img src="static/deep-think-about.png" width="280" /> | **Giới thiệu** | Phiên bản, thông tin build, liên kết dự án, kiểm tra cập nhật một chạm | Luôn cập nhật — xem phiên bản build và nhảy thẳng đến tài liệu, repo, kênh cập nhật |
+
 ## Bắt đầu nhanh
 
 ### Điều kiện trước

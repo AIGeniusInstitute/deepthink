@@ -49,6 +49,29 @@ DeepThink, een enterprise-grade platform voor zelfevoluerende superintelligentie
 - **Mobiele PWA** — diep geoptimaliseerd voor mobiel, installatie op thuisscherm met één tik, iOS / Android aangepast
 - **Geïnternationaliseerd** — 29 UI-talen met native endoniemen en RTL-onsteun; de Agent antwoordt in de door de gebruiker gekozen taal
 
+## Functieshowcase
+
+Een visuele rondleiding langs de kernmogelijkheden van DeepThink — hoe elk scherm eruitziet en welke waarde het de gebruiker oplevert.
+
+| Screenshot | Functie | Kernpunten | Wat het voor jou betekent |
+|------|------|------|------|
+| <img src="static/deep-think-main-workspace.png" width="280" /> | **Hoofdwerkruimte** | Multi-conversatie-tabbladen, streaming Markdown, real-time denkpaneel, tool-call-tracing | Eén werkruimte houdt vele parallelle chats — wissel van context zonder status te verliezen, kijk live hoe de Agent denkt en handelt |
+| <img src="static/deep-think-agent-studio.png" width="280" /> | **Agent Studio** | Aangepaste Agent-definities aanmaken / versies beheren / aankoppelen, host-capaciteit preflight, snapshot-beheer | Definieer je eigen specialistische Agents (code-reviewer, web-researcher, …) en hergebruik ze in elke sessie |
+| <img src="static/deep-think-agent-edit.png" width="280" /> | **Agent Editor** | Bewerk `~/.claude/agents/*.md` vanuit de Web UI, system-prompt + tools + subagents in één formulier | Pas het gedrag van een Agent aan in gewone taal — geen bestanden meer doorzoeken, wijzigingen gelden vanaf de volgende sessie |
+| <img src="static/deep-think-agent-test.png" width="280" /> | **Agent Test** | Voer een Agent uit tegen voorbeeld-invoer voordat je publiceert, inspecteer de volledige output-trace | Lever Agents met vertrouwen — verifieer gedrag op testgevallen voordat ze losgelaten worden in productie |
+| <img src="static/deep-think-multi-engine.png" width="280" /> | **Multi-Engine** | Pluggable engines (Claude Code / AtomCode / Codex / OpenCode), uniforme beschikbaarheidsdashboard | Kies voor elke taak het beste brein — wissel per sessie van engine zonder het platform te her-architecteren |
+| <img src="static/deep-think-engine-config.png" width="280" /> | **Engine Config** | Per-engine daemon-levenscyclus, provider-referenties, health-status in één oogopslag | Draai meerdere providers naast elkaar — voeg referenties toe, monitor levendheid en fail over automatisch |
+| <img src="static/deep-think-atomcode-engine.png" width="280" /> | **AtomCode Engine** | Zelfstandige HTTP/SSE-daemon, per-agent-runner loopback-poort, auto-teardown | Gebruik AtomCode als alternatieve codeer-engine — geïsoleerde daemon per proces, geen poortconflicten |
+| <img src="static/deep-think-marketplace.png" width="280" /> | **Marketplace** | Door admin publiceerbare templates (agent / mcp / skill / kb), bladeren, beoordelen, installeren met één klik | Ontdek en installeer gedeelde Agents en tools zoals een app-store — admins cureren, gebruikers installeren met één klik |
+| <img src="static/deep-think-mcp-servers.png" width="280" /> | **MCP Servers** | Per-werkruimte stdio + HTTP MCP Servers, onafhankelijk van de globale configuratie | Geef elke werkruimte een eigen toolset — verbind Notion, GitHub, databases… exact scoped op dat project |
+| <img src="static/deep-think-skills.png" width="280" /> | **Skills** | Skills op project- / gebruikers- / werkruimteniveau, automatisch ontdekt via volume-mounts + symlinks | Leer de Agent nieuwe trucjes per project — geen image-rebuild, skills verschijnen in de volgende sessie |
+| <img src="static/deep-think-memory.png" width="280" /> | **Geheugensysteem** | Gebruikers-globaal / sessie / datum-geheugen, full-text zoek, online bewerken | De Agent herinnert zich jou over sessies heen — roep voorkeuren, project-context en beslissingen op zonder opnieuw uit te leggen |
+| <img src="static/deep-think-cron-task.png" width="280" /> | **Geplande Taken** | Cron / interval / eenmalig, Agent- of Script-uitvoering, groeps- of geïsoleerde context, IM-melding bij afronding | Automatiseer terugkerend werk — nachtelijke rapporten, periodieke controles, zelfdraaiende loops die je via Feishu/Telegram pingen als ze klaar zijn |
+| <img src="static/deep-think-sandbox.png" width="280" /> | **Sandboxed Executie** | Docker + seccomp + cgroups, Python / Node / shell-code, Chromium CDP-browserautomatisering | Laat de Agent niet-vertrouwde code draaien en een browser aansturen in alle veiligheid — verhard geïsoleerd, aangeboden als MCP-tools |
+| <img src="static/deep-think-system-monitor.png" width="280" /> | **Systeemmonitor** | Containerlijst, wachtrij-status, actieve sessies per provider, health-checks, image-build met één klik | Zie precies wat er draait — spot vastgelopen containers, balanceer de last en bouw images op vanuit de browser |
+| <img src="static/deep-think-tokens.png" width="280" /> | **Gebruik & Billing** | Per-model token-uitsplitsing (input / output / cache), USD-kosten, staaf- + cirkeldiagrammen, multidimensionale filters | Weet waar je tokens en geld naartoe gaan — slice op gebruiker, model en tijdsbestek, factureer teams accuraat |
+| <img src="static/deep-think-about.png" width="280" /> | **About** | Versie, build-info, projectlinks, update-checks met één klik | Blijf actueel — zie je build-versie en ga direct naar docs, repo en update-kanalen |
+
 ## Snel aan de slag
 
 ### Voorwaarden

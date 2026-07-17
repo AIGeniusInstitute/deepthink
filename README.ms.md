@@ -49,6 +49,29 @@ DeepThink, platform evolusi-diri superinteligensi Agent autonomi gred enterprise
 - **PWA mudah alih** — dioptimumkan untuk mudah alih, pemasangan ke skrin rumah dengan satu ketik, disesuaikan untuk iOS / Android
 - **Antarabangsa** — 29 bahasa UI dengan endonim natif dan sokongan RTL; Agent membalas dalam bahasa yang dipilih pengguna
 
+## Galakan Ciri
+
+Panduan visual keupayaan teras DeepThink — rupa setiap skrin dan nilai yang ia berikan kepada pengguna.
+
+| Tangkap layar | Ciri | Sorotan Utama | Apa maknanya untuk anda |
+|------|------|------|------|
+| <img src="static/deep-think-main-workspace.png" width="280" /> | **Ruang Kerja Utama** | Tab berbilang perbualan, Markdown strim, panel pemikiran masa nyata, penjejakan panggilan alat | Satu ruang kerja memuatkan banyak sembang selari — tukar konteks tanpa kehilangan keadaan, tengok Agent berfikir dan bertindak secara langsung |
+| <img src="static/deep-think-agent-studio.png" width="280" /> | **Studio Agent** | Cipta / versi / lekap definisi Agent tersuai, pra-tapis keupayaan hos, pengurusan snapshot | Takrifkan Agent pakar anda sendiri (code-reviewer, web-researcher, …) dan guna semula di setiap sesi |
+| <img src="static/deep-think-agent-edit.png" width="280" /> | **Editor Agent** | Edit `~/.claude/agents/*.md` dari Web UI, system-prompt + alat + subagents dalam satu borang | Laras tingkah laku Agent dalam bahasa biasa — tanpa gali fail, perubahan berkenan pada sesi seterusnya |
+| <img src="static/deep-think-agent-test.png" width="280" /> | **Uji Agent** | Jalankan Agent terhadap input sampel sebelum terbit, periksa jejak output penuh | Hantar Agent dengan yakin — sahkan tingkah laku pada kes ujian sebelum lepaskannya dalam pengeluaran |
+| <img src="static/deep-think-multi-engine.png" width="280" /> | **Enjin Berbilang** | Enjin boleh palam (Claude Code / AtomCode / Codex / OpenCode), papan pemuka ketersediaan bersatu | Pilih otak terbaik bagi setiap tugas — tukar enjin per sesi tanpa menambah baik senibina platform |
+| <img src="static/deep-think-engine-config.png" width="280" /> | **Konfigurasi Enjin** | Kitar hayat daemon per-enjin, kredensial provider, status kesihatan sekali pandang | Jalankan berbilang provider sebelah-menyebelah — tambah kredensial, pantau kemandirian, dan alih-gagal secara automatik |
+| <img src="static/deep-think-atomcode-engine.png" width="280" /> | **Enjin AtomCode** | Daemon HTTP/SSE mandiri, port loopback per-agent-runner, auto-roboh | Guna AtomCode sebagai enjin pengekodan alternatif — daemon terasing per proses, tiada konflik port |
+| <img src="static/deep-think-marketplace.png" width="280" /> | **Marketplace** | Templat boleh terbit admin (agent / mcp / skill / kb), layari, nilai, pasang sekali-klik | Temui dan pasang Agent serta alat kongsi seperti gedung aplikasi — admin kurasi, pengguna pasang sekali-klik |
+| <img src="static/deep-think-mcp-servers.png" width="280" /> | **MCP Servers** | MCP Servers stdio + HTTP per-ruang kerja, bebas daripada konfigurasi global | Beri setiap ruang kerja set alatnya sendiri — sambungkan Notion, GitHub, pangkalan data… ditakrif tepat ke projek itu |
+| <img src="static/deep-think-skills.png" width="280" /> | **Skills** | Skills tahap projek / pengguna / ruang kerja, auto ditemui melalui lekap volum + pautan simbolik | Ajar Agent helah baharu setiap projek — tanpa bina semula imej, skills muncul dalam sesi seterusnya |
+| <img src="static/deep-think-memory.png" width="280" /> | **Sistem Ingatan** | Ingatan pengguna-global / sesi / tarikh, carian teks penuh, penyuntingan dalam talian | Agent mengingati anda merentasi sesi — panggil semula keutamaan, konteks projek, dan keputusan tanpa terangkan semula |
+| <img src="static/deep-think-cron-task.png" width="280" /> | **Tugas Terjadual** | Cron / selang / sekali sahaja, pelaksanaan Agent atau Skrip, konteks kumpulan atau terasing, pemberitahuan IM selepas selesai | Automatikkan kerja berulang — laporan malam, semakan berkala, gelung kendiri yang mengetuk anda di Feishu/Telegram bila siap |
+| <img src="static/deep-think-sandbox.png" width="280" /> | **Pelaksanaan Sandbox** | Docker + seccomp + cgroups, kod Python / Node / shell, automasi pelayar Chromium CDP | Biar Agent jalankan kod yang tidak dipercayai dan kawal pelayar dengan selamat — pencilan terkeras, didedahkan sebagai alat MCP |
+| <img src="static/deep-think-system-monitor.png" width="280" /> | **Monitor Sistem** | Senarai kontena, keadaan baris gilir, sesi aktif per-provider, semakan kesihatan, bina imej sekali-klik | Tengok sebenar-benarnya apa yang berjalan — kesan kontena tersekat, imbangkan beban, dan bina semula imej dari pelayar |
+| <img src="static/deep-think-tokens.png" width="280" /> | **Penggunaan & Bil** | Pecahan token per-model (input / output / cache), kos USD, carta bar + pai, penapis berbilang dimensi | Tahu ke mana token dan wang anda pergi — potong mengikut pengguna, model, dan julat masa, bil pasukan dengan tepat |
+| <img src="static/deep-think-about.png" width="280" /> | **About** | Versi, maklumat bina, pautan projek, semakan kemas kini sekali-klik | Kekini — lihat versi bina anda dan terus ke dokumentasi, repo, dan saluran kemas kini |
+
 ## Mula Cepat
 
 ### Prasyarat

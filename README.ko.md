@@ -49,6 +49,29 @@ DeepThink, 엔터프라이즈급 자율형 Agent 자가진화 슈퍼인텔리전
 - **모바일 PWA** — 모바일에 깊게 최적화, 원탭 홈 화면 설치, iOS/Android 대응
 - **국제화** — 29종 UI 언어와 네이티브 고유명칭 및 RTL 지원, Agent가 사용자가 선택한 언어로 응답
 
+## 기능 쇼케이스
+
+DeepThink 핵심 기능의 시각 안내 — 각 화면이 어떤 모습인지, 사용자에게 어떤 가치를 전달하는지 확인하세요.
+
+| 스크린샷 | 기능 | 핵심 하이라이트 | 사용자에게 주는 의미 |
+|------|------|------|------|
+| <img src="static/deep-think-main-workspace.png" width="280" /> | **메인 워크스페이스** | 다중 대화 탭, 스트리밍 Markdown, 실시간 사고 패널, 도구 호출 추적 | 하나의 워크스페이스에 여러 병렬 채팅을 담습니다 — 상태를 잃지 않고 컨텍스트 전환, Agent의 사고와 실행을 라이브로 관찰 |
+| <img src="static/deep-think-agent-studio.png" width="280" /> | **Agent Studio** | 커스텀 Agent 정의 생성 / 버전 관리 / 마운트, 호스트 역량 사전 점검, 스냅샷 관리 | 전문 Agent(code-reviewer, web-researcher…)를 정의해 모든 세션에서 재사용 |
+| <img src="static/deep-think-agent-edit.png" width="280" /> | **Agent 에디터** | Web UI에서 `~/.claude/agents/*.md` 편집, 시스템 프롬프트 + 도구 + 서브 Agent를 한 폼에 | 자연어로 Agent 동작을 조정 — 파일을 뒤질 필요 없이, 변경 사항은 다음 세션에 적용 |
+| <img src="static/deep-think-agent-test.png" width="280" /> | **Agent 테스트** | 게시 전 샘플 입력으로 Agent 실행, 전체 출력 트레이스 검사 | 자신감 있게 Agent 출시 — 실전 투입 전 테스트 케이스로 동작을 검증 |
+| <img src="static/deep-think-multi-engine.png" width="280" /> | **멀티 엔진** | 플러그형 엔진(Claude Code / AtomCode / Codex / OpenCode), 통합 가용성 대시보드 | 작업마다 최적의 두뇌 선택 — 플랫폼 재설계 없이 세션 단위로 엔진 전환 |
+| <img src="static/deep-think-engine-config.png" width="280" /> | **엔진 설정** | 엔진별 데몬 라이프사이클, 프로바이더 자격 증명, 건강 상태를 한눈에 | 여러 프로바이더를 병렬 실행 — 자격 증명 추가, 생존 모니터링, 자동 페일오버 |
+| <img src="static/deep-think-atomcode-engine.png" width="280" /> | **AtomCode 엔진** | 독립형 HTTP/SSE 데몬, agent-runner별 루프백 포트, 자동 해체 | AtomCode를 대체 코딩 엔진으로 사용 — 프로세스마다 독립 데몬, 포트 충돌 없음 |
+| <img src="static/deep-think-marketplace.png" width="280" /> | **Marketplace** | 관리자 발행 템플릿(agent / mcp / skill / kb), 탐색·평가·원클릭 설치 | 앱스토어처럼 공유 Agent와 도구를 발견하고 설치 — 관리자가 큐레이션, 사용자는 원클릭 설치 |
+| <img src="static/deep-think-mcp-servers.png" width="280" /> | **MCP Servers** | 워크스페이스별 stdio + HTTP MCP Servers, 글로벌 설정과 독립 | 각 워크스페이스에 자체 도구 세트 부여 — Notion, GitHub, 데이터베이스…를 해당 프로젝트 범위로 한정해 연결 |
+| <img src="static/deep-think-skills.png" width="280" /> | **Skills** | 프로젝트 / 사용자 / 워크스페이스 수준 Skills, 볼륨 마운트 + 심볼릭 링크로 자동 발견 | 프로젝트별로 Agent에게 새 기술 가르치기 — 이미지 재빌드 없이 다음 세션에 등장 |
+| <img src="static/deep-think-memory.png" width="280" /> | **메모리 시스템** | 사용자 글로벌 / 세션 / 날짜 메모리, 전문 검색, 온라인 편집 | Agent가 세션을 넘어 사용자를 기억 — 취향, 프로젝트 맥락, 결정을 재설명 없이 회상 |
+| <img src="static/deep-think-cron-task.png" width="280" /> | **예약 작업** | Cron / 간격 / 일회성, Agent 또는 스크립트 실행, 그룹 또는 격리 컨텍스트, 완료 시 IM 알림 | 반복 작업 자동화 — 야간 보고, 주기적 점검, 자율 실행 루프, 완료 시 비호/Telegram으로 알림 |
+| <img src="static/deep-think-sandbox.png" width="280" /> | **샌드박스 실행** | Docker + seccomp + cgroups, Python / Node / 셸 코드, Chromium CDP 브라우저 자동화 | Agent가 신뢰할 수 없는 코드를 안전하게 실행하고 브라우저를 구동 — 강화된 격리, MCP 도구로 노출 |
+| <img src="static/deep-think-system-monitor.png" width="280" /> | **시스템 모니터** | 컨테이너 목록, 큐 상태, 프로바이더별 활성 세션, 헬스 체크, 원클릭 이미지 빌드 | 무엇이 돌아가고 있는지 정확히 파악 — 멈춘 컨테이너 발견, 부하 분산, 브라우저에서 이미지 재빌드 |
+| <img src="static/deep-think-tokens.png" width="280" /> | **사용량 및 과금** | 모델별 토큰 분해(입력 / 출력 / 캐시), USD 비용, 막대 + 파이 차트, 다차원 필터 | 토큰과 비용이 어디로 가는지 파악 — 사용자, 모델, 기간으로 분석해 팀에 정확히 과금 |
+| <img src="static/deep-think-about.png" width="280" /> | **정보** | 버전, 빌드 정보, 프로젝트 링크, 원클릭 업데이트 확인 | 항상 최신 유지 — 빌드 버전을 확인하고 문서, 저장소, 업데이트 채널로 바로 이동 |
+
 ## 빠른 시작
 
 ### 사전 조건

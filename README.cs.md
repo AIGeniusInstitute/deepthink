@@ -49,6 +49,29 @@ DeepThink, platforma pro samo-vyvíjející se superinteligenci autonomního Age
 - **Mobilní PWA** — hluboce optimalizováno pro mobil, instalace na domovskou obrazovku jedním klikem, iOS i Android
 - **Internationalizováno** — 29 UI jazyků s nativními endonymy a podporou RTL; Agent odpovídá v jazyce, který si uživatel zvolí
 
+## Ukázka funkcí
+
+Vizuální přehled klíčových možností DeepThink — jak vypadá každá obrazovka a jakou hodnotu přináší uživateli.
+
+| Snímek obrazovky | Funkce | Klíčové vlastnosti | Co to pro vás znamená |
+|------|------|------|------|
+| <img src="static/deep-think-main-workspace.png" width="280" /> | **Hlavní pracovní prostor** | Záložky s více konverzacemi, streamovaný Markdown, panel úvah v reálném čase, trasování volání nástrojů | Jeden pracovní prostor pojme mnoho paralelních chatů — přepínejte kontext bez ztráty stavu a sledujte Agent, jak živě přemýšlí a jedná |
+| <img src="static/deep-think-agent-studio.png" width="280" /> | **Agent Studio** | Tvorba / verzování / nasazení vlastních definic Agent, předběžná kontrola schopností hostitele, správa snapshotů | Definujte vlastní specializované Agent (code-reviewer, web-researcher, …) a opakovaně je používejte v každé relaci |
+| <img src="static/deep-think-agent-edit.png" width="280" /> | **Editor Agent** | Úprava `~/.claude/agents/*.md` z Web UI, systémový prompt + nástroje + subagenti v jednom formuláři | Laděte chování Agent srozumitelným jazykem — bez hrabání se v souborech, změny platí od další relace |
+| <img src="static/deep-think-agent-test.png" width="280" /> | **Testování Agent** | Spuštění Agent na testovacích vstupech před publikací, náhled celého výstupu | Vydávejte Agent s jistotou — ověřte chování na testovacích případech před použitím v produkci |
+| <img src="static/deep-think-multi-engine.png" width="280" /> | **Multi-Engine** | Připojitelné enginy (Claude Code / AtomCode / Codex / OpenCode), sjednocený panel dostupnosti | Vyberte pro každý úkol nejlepší „mozek“ — přepínejte enginy podle relace bez předělávaní platformy |
+| <img src="static/deep-think-engine-config.png" width="280" /> | **Konfigurace enginu** | Životní cyklus démona per engine, přihlašovací údaje providera, stav zdraví na jeden pohled | Provozujte více providerů vedle sebe — přidávejte údaje, sledujte dostupnost a automatický failover |
+| <img src="static/deep-think-atomcode-engine.png" width="280" /> | **Engine AtomCode** | Samostatný HTTP/SSE démon, loopback port na každý agent-runner, auto-odmontování | Používejte AtomCode jako alternativní kódovací engine — izolovaný démon na proces, bez konfliktů portů |
+| <img src="static/deep-think-marketplace.png" width="280" /> | **Marketplace** | Šablony publikované adminem (agent / mcp / skill / kb), prohlížení, hodnocení, instalace jedním kliknutím | Objevujte a instalujte sdílené Agent a nástroje jako z obchodu s aplikacemi — admin kurátoruje, uživatelé instalují jedním kliknutím |
+| <img src="static/deep-think-mcp-servers.png" width="280" /> | **MCP Servers** | stdio + HTTP MCP Servers per pracovní prostor, nezávisle na globálním konfigu | Dejte každému pracovnímu prostoru vlastní sadu nástrojů — připojte Notion, GitHub, databáze… scope přesně pro projekt |
+| <img src="static/deep-think-skills.png" width="280" /> | **Skills** | Skills na úrovni projektu / uživatele / pracovního prostoru, auto-objevování přes svazky a symlinky | Učte Agent nové triky per projekt — bez rebuildu obrazu, dovednosti se objeví v další relaci |
+| <img src="static/deep-think-memory.png" width="280" /> | **Systém paměti** | Paměť uživatelská-globální / relace / podle data, fulltextové vyhledávání, online úpravy | Agent si vás pamatuje mezi relacemi — vzpomínejte na preference, kontext projektu a rozhodnutí bez opětovného vysvětlování |
+| <img src="static/deep-think-cron-task.png" width="280" /> | **Naplánované úlohy** | Cron / interval / jednorázové, provedení Agent nebo skriptem, kontext skupiny nebo izolovaný, notifikace v IM po dokončení | Automatizujte opakující se práci — noční reporty, periodické kontroly, samo-běžné smyčky, které vám pingnou na Feishu/Telegram |
+| <img src="static/deep-think-sandbox.png" width="280" /> | **Izolované spouštění** | Docker + seccomp + cgroups, kód v Python / Node / shell, automatizace prohlížeče Chromium CDP | Nechte Agent spouštět nedůvěryhodný kód a ovládat prohlížeč bezpečně — ztvrzená izolace, dostupné jako MCP nástroje |
+| <img src="static/deep-think-system-monitor.png" width="280" /> | **Systémový monitor** | Seznam kontejnerů, stav fronty, aktivní relace per provider, kontroly zdraví, build obrazu jedním kliknutím | Vidíte přesně, co běží — odhalte zaseknuté kontejnery, vyvažte zátěž a rebuildujte obrazy z prohlížeče |
+| <img src="static/deep-think-tokens.png" width="280" /> | **Využití a fakturace** | Rozpis tokenů podle modelů (vstup / výstup / cache), náklad v USD, sloupcové a koláčové grafy, vícerozměrné filtry | Víte, kam jdou tokeny a peníze — řezy podle uživatele, modelu a časového rozsahu, přesně fakturujte týmy |
+| <img src="static/deep-think-about.png" width="280" /> | **O projektu** | Verze, info o buildu, odkazy projektu, kontrola aktualizací jedním kliknutím | Buďte v obraze — vidíte verzi buildu a rovnou se přesunete k dokumentaci, repozitáři a kanálům aktualizací |
+
 ## Rychlý start
 
 ### Předpoklady

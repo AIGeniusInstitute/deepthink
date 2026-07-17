@@ -49,6 +49,29 @@ DeepThink, kurumsal düzeyde özerk Agent kendi-evrilen süper-zeka platformu; H
 - **Mobil PWA** — Mobil için derinlemesine optimize, ana ekrana tek dokunuşla kurulum, iOS / Android uyumlu
 - **Uluslararası** — 29 UI dili, doğağınızla yazım ve RTL desteği; Agent kullanıcının seçtiği dilde yanıt verir
 
+## Özellik Vitrini
+
+DeepThink'ın temel yeteneklerinin görsel bir turu — her ekranın nasıl göründüğü ve kullanıcıya sağladığı değer.
+
+| Ekran Görüntüsü | Özellik | Temel Öne Çıkanlar | Sizin için ne anlama gelir |
+|------|------|------|------|
+| <img src="static/deep-think-main-workspace.png" width="280" /> | **Ana Çalışma Alanı** | Çoklu konuşma sekmeleri, akış Markdown, gerçek zamanlı düşünme paneli, araç çağırma izleme | Tek çalışma alanı birçok paralel sohbeti barındırır — bağlamı kaybetmeden değiştirin, Agent'ın düşünmesini ve canlı hareket etmesini izleyin |
+| <img src="static/deep-think-agent-studio.png" width="280" /> | **Agent Studio** | Özel Agent tanımları oluşturma / sürümleme / bağlama, sunucu yeteneği ön kontrolü, anlık görüntü yönetimi | Kendi uzman Agent'larınızı tanımlayın (code-reviewer, web-researcher, …) ve her oturumda yeniden kullanın |
+| <img src="static/deep-think-agent-edit.png" width="280" /> | **Agent Editörü** | `~/.claude/agents/*.md` dosyalarını Web arayüzünden düzenleme, sistem komutu + araçlar + alt agent'lar tek formda | Bir Agent'ın davranığını düz dilde ayarlayın — dosya kazısı yok, değişiklikler sonraki oturumda uygulanır |
+| <img src="static/deep-think-agent-test.png" width="280" /> | **Agent Testi** | Bir Agent'ı yayımlamadan önce örnek girdilere karşı çalıştırma, tam çıktı izini inceleme | Agent'ları güvenle gönderin — üretimde serbest bırakmadan önce test vakaları üzerinde davranışı doğrulayın |
+| <img src="static/deep-think-multi-engine.png" width="280" /> | **Çoklu Motor** | Takılabilir motorlar (Claude Code / AtomCode / Codex / OpenCode), birleşik kullanılabilirlik panosu | Her görev için en iyi beyni seçin — platformu yeniden mimarileştirmeden oturum başına motor değiştirin |
+| <img src="static/deep-think-engine-config.png" width="280" /> | **Motor Yapılandırması** | Motor başına daemon yaşam döngüsü, sağlayıcı kimlik bilgileri, sağlık durumu tek bakışta | Birden çok sağlayıcıyı yan yana çalıştırın — kimlik bilgileri ekleyin, canlılığı izleyin ve otomatik olarak yük devredin |
+| <img src="static/deep-think-atomcode-engine.png" width="280" /> | **AtomCode Motoru** | Bağımsız HTTP/SSE daemon, agent-runner başına geri döngü bağlantı noktası, otomatik sökme | AtomCode'u alternatif bir kodlama motoru olarak kullanın — süreç başına izole daemon, bağlantı noktası çakışması yok |
+| <img src="static/deep-think-marketplace.png" width="280" /> | **Marketplace** | Yönetici tarafından yayımlanabilir şablonlar (agent / mcp / skill / kb), gezinme, değerlendirme, tek tıkla yükleme | Paylaşılan Agent'ları ve araçları bir uygulama mağazası gibi keşfedin ve yükleyin — yöneticiler seçer, kullanıcılar tek tıkla yükler |
+| <img src="static/deep-think-mcp-servers.png" width="280" /> | **MCP Sunucuları** | Çalışma alanı başına stdio + HTTP MCP Sunucuları, global yapılandırmadan bağımsız | Her çalışma alanına kendi araç setini verin — Notion, GitHub, veritabanları… bağlayın, tam olarak o projeye kapsamlı |
+| <img src="static/deep-think-skills.png" width="280" /> | **Skills** | Proje / kullanıcı / çalışma alanı düzeyinde Skills, hacim bağlama + sembolik bağlantılar ile otomatik keşfedilir | Agent'a proje başına yeni numaralar öğretin — imaj yeniden derleme yok, skill'ler sonraki oturumda belirir |
+| <img src="static/deep-think-memory.png" width="280" /> | **Bellek Sistemi** | Kullanıcı-global / oturum / tarih belleği, tam metin arama, çevrimiçi düzenleme | Agent sizin hatırlar — tercihler, proje bağlamı ve kararları yeniden açıklamadan geri çağırır |
+| <img src="static/deep-think-cron-task.png" width="280" /> | **Zamanlanmış Görevler** | Cron / aralık / tek seferlik, Agent veya Script yürütme, grup veya izole bağlam, tamamlandığında IM bildirimi | Yinelenen işleri otomatikleştirin — gecelik raporlar, periyodik kontroller, tamamlandığında sizi Feishu/Telegram üzerinden pinglayan kendi kendine çalışan döngüler |
+| <img src="static/deep-think-sandbox.png" width="280" /> | **Korumalı Yürütme** | Docker + seccomp + cgroups, Python / Node / shell kodu, Chromium CDP tarayıcı otomasyonu | Agent'ın güvenilmeyen kodu çalıştırmasına ve güvenli bir şekilde tarayıcı sürmesine izin verin — sertleştirilmiş izolasyon, MCP araçları olarak sunulur |
+| <img src="static/deep-think-system-monitor.png" width="280" /> | **Sistem İzleyici** | Konteyner listesi, kuyruk durumu, sağlayıcı başına etkin oturumlar, sağlık kontrolleri, tek tıkla imaj derleme | Tam olarak neyin çalıştığını görün — takılı konteynerleri tespit edin, yükü dengeleyin ve imajları tarayıcıdan yeniden derleyin |
+| <img src="static/deep-think-tokens.png" width="280" /> | **Kullanım ve Faturalama** | Model başına token dökümü (girdi / çıktı / önbellek), USD maliyet, çubuk + pasta grafikler, çok boyutlu filtreler | Token'larınızın ve paranızın nereye gittiğini bilin — kullanıcı, model ve zaman aralığına göre dilimleyin, ekipleri doğru faturalandırın |
+| <img src="static/deep-think-about.png" width="280" /> | **Hakkında** | Sürüm, derleme bilgisi, proje bağlantıları, tek tıkla güncelleme kontrolleri | Güncel kalın — derleme sürümünüzü görün ve doğrudan dokümanlara, depoya ve güncelleme kanallarına atlayın |
+
 ## Hızlı Başlangıç
 
 ### Ön koşullar

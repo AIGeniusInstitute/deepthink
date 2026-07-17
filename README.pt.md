@@ -49,6 +49,29 @@ DeepThink, uma plataforma de auto-evolução de superinteligência Agent autôno
 - **PWA móvel** — profundamente otimizado para mobile, instalação com um clique na área de trabalho, iOS e Android adaptados
 - **Internacionalizado** — 29 idiomas de UI com endônimos nativos e suporte a RTL; o Agent responde no idioma escolhido pelo usuário
 
+## Vitrine de funcionalidades
+
+Um passeio visual pelas capacidades centrais do DeepThink — a aparência de cada tela e o valor que entrega ao usuário.
+
+| Captura de tela | Funcionalidade | Destaques principais | O que isso significa para você |
+|------|------|------|------|
+| <img src="static/deep-think-main-workspace.png" width="280" /> | **Workspace principal** | Abas de múltiplas conversas, Markdown em streaming, painel de raciocínio em tempo real, rastreamento de chamadas de ferramentas | Um único workspace reúne muitos chats em paralelo — troque de contexto sem perder estado, assista o Agent pensar e agir ao vivo |
+| <img src="static/deep-think-agent-studio.png" width="280" /> | **Agent Studio** | Criar / versionar / montar definições de Agent personalizadas, preflight de capacidades do host, gestão de snapshots | Defina seus próprios Agents especializados (code-reviewer, web-researcher, …) e reutilize-os em todas as sessões |
+| <img src="static/deep-think-agent-edit.png" width="280" /> | **Editor de Agent** | Edite `~/.claude/agents/*.md` pela Web UI, system-prompt + ferramentas + subagentes em um único formulário | Ajuste o comportamento de um Agent em linguagem clara — sem revirar arquivos, mudanças valem na próxima sessão |
+| <img src="static/deep-think-agent-test.png" width="280" /> | **Teste de Agent** | Rode um Agent com entradas de exemplo antes de publicar, inspecione o trace completo de saída | Publique Agents com confiança — verifique o comportamento em casos de teste antes de soltá-los em produção |
+| <img src="static/deep-think-multi-engine.png" width="280" /> | **Multi-Engine** | Motores plugáveis (Claude Code / AtomCode / Codex / OpenCode), painel unificado de disponibilidade | Escolha o melhor cérebro para cada tarefa — troque de motor por sessão sem re-arquitetar a plataforma |
+| <img src="static/deep-think-engine-config.png" width="280" /> | **Configuração de motor** | Ciclo de vida do daemon por motor, credenciais do provider, estado de saúde num relance | Rode vários providers lado a lado — adicione credenciais, monitore a disponibilidade e faça failover automático |
+| <img src="static/deep-think-atomcode-engine.png" width="280" /> | **Motor AtomCode** | Daemon HTTP/SSE autônomo, porta loopback por agent-runner, auto-teardown | Use AtomCode como motor de codificação alternativo — daemon isolado por processo, sem conflitos de porta |
+| <img src="static/deep-think-marketplace.png" width="280" /> | **Marketplace** | Templates publicáveis pelo admin (agent / mcp / skill / kb), navegar, avaliar, instalar com um clique | Descubra e instale Agents e ferramentas compartilhadas como numa app store — admins curam, usuários instalam com um clique |
+| <img src="static/deep-think-mcp-servers.png" width="280" /> | **Servidores MCP** | Servidores MCP stdio + HTTP por workspace, independentes da configuração global | Dê a cada workspace seu próprio conjunto de ferramentas — conecte Notion, GitHub, bancos de dados… escopado exatamente àquele projeto |
+| <img src="static/deep-think-skills.png" width="280" /> | **Skills** | Skills em nível de projeto / usuário / workspace, auto-descobertas via volume mounts + symlinks | Ensine ao Agent novos truques por projeto — sem rebuild de imagem, as skills aparecem na próxima sessão |
+| <img src="static/deep-think-memory.png" width="280" /> | **Sistema de memória** | Memória global de usuário / de sessão / por data, busca em texto completo, edição online | O Agent se lembra de você entre sessões — recupere preferências, contexto de projeto e decisões sem ter que reexplicar |
+| <img src="static/deep-think-cron-task.png" width="280" /> | **Tarefas agendadas** | Cron / intervalo / única vez, execução Agent ou Script, contexto de grupo ou isolado, notificação por IM ao concluir | Automatize trabalho recorrente — relatórios noturnos, checagens periódicas, loops autônomos que te pingam no Feishu/Telegram ao terminar |
+| <img src="static/deep-think-sandbox.png" width="280" /> | **Execução em Sandbox** | Docker + seccomp + cgroups, código Python / Node / shell, automação de navegador via Chromium CDP | Deixe o Agent rodar código não confiável e dirigir um navegador com segurança — isolamento reforçado, exposto como ferramentas MCP |
+| <img src="static/deep-think-system-monitor.png" width="280" /> | **Monitor do sistema** | Lista de containers, estado da fila, sessões ativas por provider, health checks, build de imagem com um clique | Veja exatamente o que está rodando — detecte containers travados, equilibre a carga e reconstrua imagens do navegador |
+| <img src="static/deep-think-tokens.png" width="280" /> | **Uso e faturamento** | Quebra de tokens por modelo (entrada / saída / cache), custo em USD, gráficos de barras + pizza, filtros multidimensionais | Saiba para onde vão seus tokens e seu dinheiro — filtre por usuário, modelo e intervalo, fature equipes com precisão |
+| <img src="static/deep-think-about.png" width="280" /> | **Sobre** | Versão, info de build, links do projeto, verificação de atualizações com um clique | Mantenha-se atualizado — veja sua versão de build e pule direto para docs, repo e canais de atualização |
+
 ## Início rápido
 
 ### Pré-requisitos

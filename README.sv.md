@@ -49,6 +49,29 @@ DeepThink, en företagsklassad plattform för själv-evolverande superintelligen
 - **Mobil PWA** — Djupt optimerad för mobil, installation på hemskärm med ett klick, både iOS och Android
 - **Internationaliserat** — 29 UI-språk med inhemska endonymer och RTL-stöd; Agent svarar på användarens valda språk
 
+## Funktionsöversikt
+
+En visuell genomgång av DeepThinks kärnfunktioner — hur varje skärm ser ut och vilket värde den ger användaren.
+
+| Skärmdump | Funktion | Kärnfunktioner | Vad det betyder för dig |
+|------|------|------|------|
+| <img src="static/deep-think-main-workspace.png" width="280" /> | **Huvudarbetsyta** | Flikar för flera samtal, strömmande Markdown, panel för tankegång i realtid, spårning av verktygsanrop | En arbetsyta rymmer många parallella chatter — växla kontext utan att förlora state och se Agent tänka och agera live |
+| <img src="static/deep-think-agent-studio.png" width="280" /> | **Agent Studio** | Skapa / versionshantera / montera egna Agent-definitioner, förhandskontroll av värd-förmågor, snapshot-hantering | Definiera egna specialiserade Agent (code-reviewer, web-researcher, …) och återanvänd dem i varje session |
+| <img src="static/deep-think-agent-edit.png" width="280" /> | **Agent-redigerare** | Redigera `~/.claude/agents/*.md` från Web UI, system-prompt + verktyg + underagenter i ett formulär | Finjustera Agent:s beteende på vardagsspråk — ingen filgrävning, ändringar gäller från nästa session |
+| <img src="static/deep-think-agent-test.png" width="280" /> | **Agent-test** | Kör Agent mot test-indata innan publicering, inspektera hela utdata | Släpp Agent med självförtroende — verifiera beteende på testfall innan de släpps loss i produktion |
+| <img src="static/deep-think-multi-engine.png" width="280" /> | **Multi-Engine** | Pluggbara engines (Claude Code / AtomCode / Codex / OpenCode), enhetlig tillgänglighetspanel | Välj bästa ”hjärnan” för varje uppgift — byt engine per session utan att bygga om plattformen |
+| <img src="static/deep-think-engine-config.png" width="280" /> | **Engine-konfiguration** | Livscykel för daemon per engine, provider-uppgifter, hälsostatus i en överblick | Kör flera providers sida vid sida — lägg till uppgifter, övervaka liven och automatisk failover |
+| <img src="static/deep-think-atomcode-engine.png" width="280" /> | **AtomCode Engine** | Fristående HTTP/SSE-daemon, loopback-port per agent-runner, auto-nedmontering | Använd AtomCode som alternativ kod-engine — isolerad daemon per process, inga portkonflikter |
+| <img src="static/deep-think-marketplace.png" width="280" /> | **Marketplace** | Admin-publicerbara mallar (agent / mcp / skill / kb), bläddra, betygsätt, installera med ett klick | Hitta och installera delade Agent och verktyg som i en appbutik — admin kurerar, användare installerar med ett klick |
+| <img src="static/deep-think-mcp-servers.png" width="280" /> | **MCP Servers** | stdio + HTTP MCP Servers per arbetsyta, oberoende av global konfig | Ge varje arbetsyta sin egen verktygsuppsättning — anslut Notion, GitHub, databaser… scope exakt för projektet |
+| <img src="static/deep-think-skills.png" width="280" /> | **Skills** | Skills på nivå projekt / användare / arbetsyta, auto-upptäckta via volymer och symlänkar | Lär Agent nya knep per projekt — ingen image-ombyggnad, färdigheter dyker upp i nästa session |
+| <img src="static/deep-think-memory.png" width="280" /> | **Minnenssystem** | Minne användare-globalt / session / datum, fulltextsökning, online-redigering | Agent minns dig mellan sessioner — återkalla preferenser, projektkontext och beslut utan att förklara om |
+| <img src="static/deep-think-cron-task.png" width="280" /> | **Schemalagda uppgifter** | Cron / intervall / engångs, Agent- eller skript-körning, grupp- eller isolerad kontext, IM-notis vid slutförande | Automatisera återkommande arbete — nattliga rapporter, periodiska kontroller, självgående loopar som pingar dig på Feishu/Telegram |
+| <img src="static/deep-think-sandbox.png" width="280" /> | **Sandbox-körning** | Docker + seccomp + cgroups, Python / Node / shell-kod, Chromium CDP-webautomation | Låt Agent köra obetrodd kod och styra en webbläsare säkert — härdad isolering, exponerat som MCP-verktyg |
+| <img src="static/deep-think-system-monitor.png" width="280" /> | **Systemövervakare** | Container-lista, kö-status, aktiva sessioner per provider, hälsokontroller, image-bygge med ett klick | Se exakt vad som körs — upptäck fastnatna containrar, balansera lasten och bygg om images från webbläsaren |
+| <img src="static/deep-think-tokens.png" width="280" /> | **Användning och fakturering** | Token-uppdelning per modell (input / output / cache), USD-kostnad, stapel- och cirkeldiagram, flerdimensionella filter | Vet var dina tokens och pengar tar vägen — snitt per användare, modell och tidsintervall, fakturera teamen korrekt |
+| <img src="static/deep-think-about.png" width="280" /> | **Om** | Version, build-info, projekt-länkar, uppdateringskontroll med ett klick | Håll dig aktuell — se din build-version och gå direkt till dokumentation, repo och uppdateringskanaler |
+
 ## Snabbstart
 
 ### Förutsättningar

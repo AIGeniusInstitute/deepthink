@@ -54,6 +54,29 @@ DeepThink，开源企业级自主 Agent 超级智能体自进化平台，是从 
 
 > 项目借鉴了 [OpenClaw](https://github.com/nicepkg/OpenClaw) 的容器化架构，并融合了 Claude Code 官方 [Cowork](https://github.com/anthropics/claude-code/tree/main/packages/cowork) 的多会话协作思路：多个独立 Agent 会话并行工作，各自拥有隔离的工作空间和持久记忆，结果通过 IM 渠道送达。
 
+## 功能展示
+
+DeepThink 核心能力的可视化导览 —— 每个界面长什么样、为用户带来什么价值。
+
+| 截图 | 功能 | 核心亮点 | 对您意味着什么 |
+|------|------|------|------|
+| <img src="static/deep-think-main-workspace.png" width="280" /> | **主工作区** | 多会话标签页、流式 Markdown、实时思考面板、工具调用追踪 | 一个工作区容纳多个并行对话 —— 切换上下文不丢状态，实时观看 Agent 思考与执行 |
+| <img src="static/deep-think-agent-studio.png" width="280" /> | **Agent Studio** | 创建 / 版本化 / 挂载自定义 Agent 定义、宿主能力预检、快照管理 | 定义专属专家 Agent（code-reviewer、web-researcher…），跨所有会话复用 |
+| <img src="static/deep-think-agent-edit.png" width="280" /> | **Agent 编辑器** | 从 Web UI 编辑 `~/.claude/agents/*.md`，系统提示词 + 工具 + 子 Agent 集于一个表单 | 用自然语言调教 Agent 行为 —— 无需翻文件，改动在下次会话生效 |
+| <img src="static/deep-think-agent-test.png" width="280" /> | **Agent 测试** | 发布前用样例输入运行 Agent，查看完整输出轨迹 | 放心交付 Agent —— 在测试用例上验证行为，再让它在生产中放手运行 |
+| <img src="static/deep-think-multi-engine.png" width="280" /> | **多引擎** | 可插拔引擎（Claude Code / AtomCode / Codex / OpenCode），统一的可用性面板 | 为每个任务挑选最强大脑 —— 按会话切换引擎，无需重构平台 |
+| <img src="static/deep-think-engine-config.png" width="280" /> | **引擎配置** | 每引擎守护进程生命周期、提供商凭据、健康状态一目了然 | 并行运行多个提供商 —— 添加凭据、监控存活、自动故障转移 |
+| <img src="static/deep-think-atomcode-engine.png" width="280" /> | **AtomCode 引擎** | 独立 HTTP/SSE 守护进程、每 agent-runner 环回端口、自动拆除 | 将 AtomCode 作为替代编码引擎 —— 每进程独立守护进程，无端口冲突 |
+| <img src="static/deep-think-marketplace.png" width="280" /> | **Marketplace** | 管理员可发布模板（agent / mcp / skill / kb）、浏览、评分、一键安装 | 像应用商店一样发现并安装共享 Agent 与工具 —— 管理员策展，用户一键安装 |
+| <img src="static/deep-think-mcp-servers.png" width="280" /> | **MCP Servers** | 每工作区 stdio + HTTP MCP Servers，独立于全局配置 | 给每个工作区配置自己的工具集 —— 连接 Notion、GitHub、数据库…精确限定在该项目范围 |
+| <img src="static/deep-think-skills.png" width="280" /> | **Skills** | 项目 / 用户 / 工作区级 Skills，通过卷挂载 + 符号链接自动发现 | 按项目教 Agent 新技能 —— 无需重建镜像，下次会话即可见 |
+| <img src="static/deep-think-memory.png" width="280" /> | **记忆系统** | 用户全局 / 会话 / 日期记忆，全文检索，在线编辑 | Agent 跨会话记住您 —— 回忆偏好、项目上下文与决策，无需重复说明 |
+| <img src="static/deep-think-cron-task.png" width="280" /> | **定时任务** | Cron / 间隔 / 一次性，Agent 或脚本执行，群组或隔离上下文，完成时 IM 通知 | 自动化周期工作 —— 日报、定期巡检、自运行循环，完成后在飞书/Telegram 通知您 |
+| <img src="static/deep-think-sandbox.png" width="280" /> | **沙箱执行** | Docker + seccomp + cgroups，Python / Node / shell 代码，Chromium CDP 浏览器自动化 | 让 Agent 安全运行不可信代码并驱动浏览器 —— 加固隔离，以 MCP 工具形式暴露 |
+| <img src="static/deep-think-system-monitor.png" width="280" /> | **系统监控** | 容器列表、队列状态、每提供商活跃会话、健康检查、一键构建镜像 | 清楚看到正在运行什么 —— 发现卡住的容器、平衡负载、从浏览器重建镜像 |
+| <img src="static/deep-think-tokens.png" width="280" /> | **用量与计费** | 按模型 token 拆分（输入 / 输出 / 缓存）、USD 成本、柱状 + 饼图、多维筛选 | 掌握 token 与花费去向 —— 按用户、模型、时间范围切片，精准向团队计费 |
+| <img src="static/deep-think-about.png" width="280" /> | **关于** | 版本、构建信息、项目链接、一键更新检查 | 保持最新 —— 查看构建版本，直达文档、仓库与更新渠道 |
+
 ## 核心能力
 ### 多通道接入
 
