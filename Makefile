@@ -491,3 +491,102 @@ help: ## 显示帮助
 	@echo ""
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+
+
+# DeepThink Ubuntu 桌面版卸载 Makefile
+# 用途：在本机(Ubuntu)上彻底卸载 DeepThink 桌面版(deb 包 + AppImage + 用户配置)
+#       注意：~/deepthink 是项目源码目录，本脚本【不会】删除它。
+# 用法：
+#   make uninstall      # 完整卸载（deb 包 / AppImage / 配置，全部清理，保留源码）
+#   make stop           # 仅停止运行中的进程
+#   make purge-deb      # 仅卸载 deb 包
+#   make purge-appimage # 仅删除 AppImage 与临时挂载点
+#   make purge-config   # 仅清理用户配置
+#   make verify         # 校验卸载是否干净
+#   make dry-run        # 仅打印将要执行的步骤，不实际执行
+
+APP            := deepthink-desktop
+APP_PKG        := deepthink-desktop
+APP_PROC       := deepthink-desktop
+APP_MOUNT_TMP  := /tmp/.mount_DeepTh*
+OPT_DIR        := /opt/DeepThink
+USR_BIN        := /usr/bin/deepthink-desktop
+DESKTOP_FILE  := /usr/share/applications/deepthink-desktop.desktop
+DOC_DIR        := /usr/share/doc/deepthink-desktop
+ICON_GLOB     := /usr/share/icons/hicolor/*/apps/deepthink-desktop.png
+ALT_LINK      := /etc/alternatives/deepthink-desktop
+CONFIG_DIRS   := $(HOME)/.config/deepthink-desktop $(HOME)/.config/DeepThink
+REPO_DIR      := $(HOME)/deepthink
+
+# 默认目标：完整卸载
+.DEFAULT_GOAL := uninstall
+
+.PHONY: uninstall stop purge-deb purge-appimage purge-config verify dry-run
+
+## 完整卸载：停止进程 -> 卸载 deb -> 清理系统残留 -> 清理配置 -> 清理 AppImage -> 校验
+uninstall: stop purge-deb purge-residual purge-config purge-appimage verify
+
+## 停止运行中的 DeepThink 进程（排除当前 shell，避免误杀）
+stop:
+	@echo ">> 停止运行中的 $(APP) 进程..."
+	@ps -eo pid,args 2>/dev/null \
+		| grep -i '$(APP_PROC)' | grep -v grep | grep -v claude \
+		| awk '{print $$1}' | while read p; do [ -n "$$p" ] && kill -9 "$$p" 2>/dev/null; done
+	@sleep 2
+	@ps -eo args 2>/dev/null | grep -i '$(APP_PROC)' | grep -v grep | grep -v claude \
+		|| echo "   (无残留进程)"
+
+## 卸载 deb 包（purge，含配置文件）
+purge-deb:
+	@echo ">> 卸载 deb 包 $(APP_PKG)..."
+	@if dpkg -l $(APP_PKG) 2>/dev/null | grep -qE '^ii'; then \
+		sudo apt-get purge -y $(APP_PKG); \
+	else \
+		echo "   (deb 包未安装，跳过)"; \
+	fi
+
+## 清理 deb 卸载后可能残留的系统级文件
+purge-residual:
+	@echo ">> 清理系统级残留文件..."
+	@sudo rm -rf $(OPT_DIR) 2>/dev/null || true
+	@sudo rm -f  $(USR_BIN) $(DESKTOP_FILE) $(ALT_LINK) 2>/dev/null || true
+	@sudo rm -rf $(DOC_DIR) 2>/dev/null || true
+	@sudo rm -f  $(ICON_GLOB) 2>/dev/null || true
+	@echo "   系统级残留已清理"
+
+## 清理用户配置目录
+purge-config:
+	@echo ">> 清理用户配置..."
+	@for d in $(CONFIG_DIRS); do rm -rf "$$d" 2>/dev/null && echo "   已删除 $$d"; done
+
+## 删除 AppImage 与临时挂载点
+purge-appimage:
+	@echo ">> 清理 AppImage 与临时挂载点..."
+	@rm -rf $(APP_MOUNT_TMP) 2>/dev/null || true
+	@if [ -d "$(REPO_DIR)/desktop/release" ]; then \
+		rm -f $(REPO_DIR)/desktop/release/DeepThink-*.AppImage 2>/dev/null \
+		&& echo "   AppImage 已删除"; \
+	else \
+		echo "   (无 AppImage 目录，跳过)"; \
+	fi
+
+## 校验卸载是否干净
+verify:
+	@echo ">> 卸载校验："
+	@echo "   1. deb 包:"; dpkg -l $(APP_PKG) 2>/dev/null | grep -E '^ii' && echo "   ✗ 仍存在" || echo "   ✓ 无"
+	@echo "   2. 可执行命令:"; command -v $(APP) >/dev/null 2>&1 && echo "   ✗ 仍存在: $$(command -v $(APP))" || echo "   ✓ 无"
+	@echo "   3. 系统文件残留:"; ls -d $(OPT_DIR) $(USR_BIN) $(DESKTOP_FILE) 2>/dev/null && echo "   ✗ 仍有残留" || echo "   ✓ 无"
+	@echo "   4. 用户配置:"; ls -d $(CONFIG_DIRS) 2>/dev/null && echo "   ✗ 仍有残留" || echo "   ✓ 无"
+	@echo "   5. 运行进程:"; ps -eo args 2>/dev/null | grep -i '$(APP_PROC)' | grep -v grep | grep -v claude && echo "   ✗ 仍有进程" || echo "   ✓ 无"
+	@echo "   6. AppImage 挂载点:"; ls -d $(APP_MOUNT_TMP) 2>/dev/null && echo "   ✗ 仍存在" || echo "   ✓ 无"
+
+## 仅打印将要执行的步骤，不实际执行
+dry-run:
+	@echo "== Dry-run: 以下为 make uninstall 将执行的步骤（不会实际执行）=="
+	@echo "1. 停止 $(APP_PROC) 进程 (kill -9)"
+	@echo "2. sudo apt-get purge -y $(APP_PKG)"
+	@echo "3. sudo rm -rf $(OPT_DIR); sudo rm -f $(USR_BIN) $(DESKTOP_FILE) $(ALT_LINK); sudo rm -rf $(DOC_DIR); sudo rm -f $(ICON_GLOB)"
+	@echo "4. rm -rf $(CONFIG_DIRS)"
+	@echo "5. rm -rf $(APP_MOUNT_TMP); rm -f $(REPO_DIR)/desktop/release/DeepThink-*.AppImage"
+	@echo "6. make verify"
+	@echo "   注：~/deepthink 为项目源码目录，不会被删除。"
