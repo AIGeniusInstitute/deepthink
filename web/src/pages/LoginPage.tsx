@@ -188,18 +188,20 @@ export function LoginPage() {
             <div className="text-center lg:text-left">
               <div className="landing-badge">
                 <Sparkles className="size-3.5" />
-                <span>Powered by Claude Agent SDK</span>
+                <span>Powered By AI Genius Institute & AI光剑.</span>
               </div>
 
               <h1 className="mt-4 lg:mt-6 text-3xl sm:text-4xl lg:text-6xl font-bold text-foreground tracking-tight leading-[1.1]">
                 你的私有
                 <br />
-                <span className="landing-gradient-text">AI Agent 平台</span>
+                <span className="landing-gradient-text">AI 操作系统 (AI Agent Platform)</span>
               </h1>
 
               <p className="mt-4 lg:mt-6 text-sm sm:text-base lg:text-lg text-muted-foreground leading-relaxed max-w-lg mx-auto lg:mx-0">
-                自托管、多用户、多渠道 —— 让 Claude 成为你的全能数字助手。
-                在安全隔离的环境中，自主执行代码、管理文件、调度任务。
+                
+                在安全隔离的沙箱环境中，自主执行代码、管理文件、完成超复杂长程任务。
+                自托管的多用户本地 AI Agent Loop Engineering 系统 (支持桌面端+浏览器+移动端) —— 让 DeepThink 成为你的全能数字助手。
+            
               </p>
 
               {/* Stats — hidden on small mobile to save space */}

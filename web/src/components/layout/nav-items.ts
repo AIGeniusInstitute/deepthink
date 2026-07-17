@@ -6,7 +6,7 @@ export const baseNavItems = [
   { path: '/skills', icon: Puzzle, label: 'Skill' },
   { path: '/knowledge-bases', icon: BookOpen, label: '知识库' },
   { path: '/marketplace', icon: ShoppingBag, label: '市场' },
-  { path: '/mcp-servers', icon: Server, label: 'MCP 服务器' },
+  { path: '/mcp-servers', icon: Server, label: 'MCP' },
   { path: '/memory', icon: BrainCircuit, label: '记忆管理' },
   { path: '/engines', icon: Cpu, label: '引擎' },
   { path: '/sandbox', icon: Boxes, label: '沙箱' },
