@@ -26,20 +26,28 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
 - ✅ 二选一结论：要么"真正修复"，要么"无法修复（需人工介入）"
 - ✅ 完整记录：每轮测试结果、修复记录、失败原因全部留存
 
+## 项目源代码仓库
+
+源代码在本机 ~/deepthink 目录下
+
+Git仓库地址：git@gitcode.com:AIGeniusInstitute/deepthink.git
+
 
 ## 需求开发任务工作流程
 
+0、针对该任务创建工作分支树 worktree
 1、生成需求 prd 文档，写入 docs/prd 目录下，要创建这个需求自己的独立文件夹
 2、设计技术方案，详细开发技术方案文档，写入 docs/tech_solution 目录下，也要创建这个需求自己的独立文件夹
 3、方案全面实施，执行编码；执行过程中，把执行状态写到 docs/task_state 目录下，也要创建这个需求自己的独立文件夹
 4、全部测试和修复全部通过之后， 把需求测试报告写入 docs/test_report 目录下，也要创建这个需求自己的独立文件夹
-5、代码提交并push， 合并到 main , 并push
+5、合并 worktree 分支到 main 分支，提交并push 到 main
 
 
 ## Issue 修复任务工作流程
 
 针对 bug 修复 / 线上事故 / CI 故障等 issue 处理（**不**走 PRD → tech_solution → test_report 那条线，因为不是新需求开发）：
 
+0、针对该任务创建工作分支树 worktree
 1、定位根因：必须有证据（日志、API 输出、测试结果），禁止主观判断下结论
 2、把本次 issue 处理经验沉淀到 `docs/issues/{YYYY-MM-DD}-{slug}.md`，文件结构必须包含：
    - `## 1. 用户现象`：从用户/外部视角描述看到了什么
@@ -51,7 +59,7 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
    - `## 7. 处理卡住的状态`（如适用）：如何救活已 stuck 的运行态
    - `## 8. 经验沉淀 / 预防`：未来怎么避免同类问题、巡检脚本、告警建议
 3、执行编码修复，与 issue 文档一并 commit
-4、push 到 main
+4、合并 worktree 分支到 main 分支，提交并push 到 main
 
 ## 工作原则【最高宪法】
 
