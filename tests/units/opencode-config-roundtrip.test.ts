@@ -36,8 +36,7 @@ const SAVED_KEY = 'sk-secret-123';
 function baseConfig(providers: OpencodeProvider[]): OpencodeConfig {
   return {
     enabled: true,
-    bunPath: '/bin/bun',
-    opencodePath: '',
+    binaryPath: '/usr/local/bin/opencode',
     host: '127.0.0.1',
     basePort: 15000,
     portRange: 100,
@@ -127,7 +126,7 @@ describe('opencode settings (regression: blank page + save 400)', () => {
     // 2. 前端未改 apiKey 直接回存 → schema 通过（不再 400）
     const reparsed = OpencodeConfigSchema.safeParse({
       enabled: true,
-      bunPath: '/bin/bun',
+      binaryPath: '/usr/local/bin/opencode',
       providers: pub.providers, // 缺 apiKey
     });
     expect(reparsed.success).toBe(true);
@@ -138,5 +137,35 @@ describe('opencode settings (regression: blank page + save 400)', () => {
       [seedProvider()],
     );
     expect(providers[0]!.apiKey).toBe(SAVED_KEY);
+  });
+
+  test('legacy config with old bunPath/opencodePath fields does not break schema', () => {
+    // 旧版 opencode.json 含 bunPath/opencodePath（源码时代遗留），升级后
+    // 回存时前端可能仍带上旧字段。OpencodeConfigSchema 已移除这两个字段，
+    // zod 默认 strip 未知键 → safeParse 成功，binaryPath 可独立写入。
+    const legacy = {
+      enabled: true,
+      bunPath: '/opt/homebrew/bin/bun',
+      opencodePath: '/Users/xingzhi/opencode/packages/opencode/src/index.ts',
+      binaryPath: '/usr/local/bin/opencode',
+      host: '127.0.0.1',
+      basePort: 15000,
+      portRange: 100,
+      providerID: 'anthropic',
+      modelID: 'claude-sonnet-4-6',
+      workingDir: '/workspace/group',
+      providers: [
+        {
+          id: 'anthropic',
+          name: 'Anthropic',
+          baseURL: 'https://api.anthropic.com/v1',
+          models: ['claude-sonnet-4-6'],
+          hasApiKey: true,
+        },
+      ],
+    };
+    const parsed = OpencodeConfigSchema.safeParse(legacy);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data!.binaryPath).toBe('/usr/local/bin/opencode');
   });
 });

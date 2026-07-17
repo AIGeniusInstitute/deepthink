@@ -4290,10 +4290,8 @@ export interface OpencodeProvider {
 
 export interface OpencodeConfig {
   enabled: boolean;
-  /** bun 二进制绝对路径 */
-  bunPath: string;
-  /** opencode 源码入口路径 packages/opencode/src/index.ts */
-  opencodePath: string;
+  /** opencode 二进制绝对路径（与 atomcode/codex 的 binaryPath 范式一致） */
+  binaryPath: string;
   /** serve 绑定地址，默认 127.0.0.1 */
   host: string;
   /** 起始端口，默认 15000 */
@@ -4324,8 +4322,7 @@ const OPENCODE_CONFIG_FILE = path.join(CLAUDE_CONFIG_DIR, 'opencode.json');
 
 const DEFAULT_OPENCODE_CONFIG: OpencodeConfig = {
   enabled: false,
-  bunPath: '',
-  opencodePath: '',
+  binaryPath: '',
   host: '127.0.0.1',
   basePort: 15000,
   portRange: 100,
@@ -4366,9 +4363,7 @@ export function getOpencodeConfig(): OpencodeConfig {
     return {
       ...DEFAULT_OPENCODE_CONFIG,
       ...parsed,
-      bunPath: typeof parsed.bunPath === 'string' ? parsed.bunPath : '',
-      opencodePath:
-        typeof parsed.opencodePath === 'string' ? parsed.opencodePath : '',
+      binaryPath: typeof parsed.binaryPath === 'string' ? parsed.binaryPath : '',
       host: typeof parsed.host === 'string' && parsed.host ? parsed.host : '127.0.0.1',
       basePort:
         typeof parsed.basePort === 'number' && parsed.basePort > 0
@@ -4405,9 +4400,7 @@ export function saveOpencodeConfig(cfg: Partial<OpencodeConfig>): OpencodeConfig
   const current = getOpencodeConfig();
   const merged: OpencodeConfig = {
     enabled: !!cfg.enabled,
-    bunPath: typeof cfg.bunPath === 'string' ? cfg.bunPath : current.bunPath,
-    opencodePath:
-      typeof cfg.opencodePath === 'string' ? cfg.opencodePath : current.opencodePath,
+    binaryPath: typeof cfg.binaryPath === 'string' ? cfg.binaryPath : current.binaryPath,
     host: typeof cfg.host === 'string' && cfg.host ? cfg.host : '127.0.0.1',
     basePort:
       typeof cfg.basePort === 'number' && cfg.basePort > 0

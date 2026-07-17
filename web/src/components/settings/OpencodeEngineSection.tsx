@@ -21,8 +21,7 @@ interface OpencodeProvider {
 
 interface OpencodeConfig {
   enabled: boolean;
-  bunPath: string;
-  opencodePath: string;
+  binaryPath: string;
   host: string;
   basePort: number;
   portRange: number;
@@ -36,14 +35,13 @@ interface OpencodeConfig {
 
 interface OpencodeTestResult {
   ok: boolean;
-  bunVersion: string;
+  version: string;
   error?: string;
 }
 
 const DEFAULT_CONFIG: OpencodeConfig = {
   enabled: false,
-  bunPath: '',
-  opencodePath: '',
+  binaryPath: '',
   host: '127.0.0.1',
   basePort: 15000,
   portRange: 100,
@@ -101,9 +99,9 @@ export function OpencodeEngineSection() {
       const result = await api.post<OpencodeTestResult>('/api/config/opencode/test', {});
       setTestResult(result);
       if (result.ok) {
-        toast.success(`Bun 可用：${result.bunVersion}`);
+        toast.success(`OpenCode 可用：${result.version}`);
       } else {
-        toast.error(`Bun 不可用：${result.error ?? '未知错误'}`);
+        toast.error(`OpenCode 不可用：${result.error ?? '未知错误'}`);
       }
     } catch (err) {
       toast.error(getErrorMessage(err, '测试失败'));
@@ -143,7 +141,7 @@ export function OpencodeEngineSection() {
         <p className="text-sm text-muted-foreground">
           配置 OpenCode 作为 DeepThink 的 Agent 执行引擎。OpenCode 通过
           <code className="mx-1 px-1 py-0.5 bg-muted rounded text-xs">opencode serve</code>
-          HTTP/SSE API 接入，需预装 Bun 运行时 + opencode 源码（Bun + TypeScript + Effect）。
+          HTTP/SSE API 接入，需预装 opencode 二进制（支持 serve 子命令）。
         </p>
       </div>
 
@@ -161,28 +159,15 @@ export function OpencodeEngineSection() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="opencode-bun">Bun 二进制路径</Label>
+        <Label htmlFor="opencode-binary">OpenCode 二进制路径</Label>
         <Input
-          id="opencode-bun"
-          value={cfg.bunPath}
-          onChange={(e) => setCfg({ ...cfg, bunPath: e.target.value })}
-          placeholder="/opt/homebrew/bin/bun 或留空让 DeepThink 自动安装"
+          id="opencode-binary"
+          value={cfg.binaryPath}
+          onChange={(e) => setCfg({ ...cfg, binaryPath: e.target.value })}
+          placeholder="macOS: /opt/homebrew/bin/opencode · Linux: /usr/local/bin/opencode · Windows: %LOCALAPPDATA%\opencode\opencode.exe"
         />
         <p className="text-xs text-muted-foreground">
-          bun 可执行文件路径。可通过 <code>which bun</code> 查找。留空时宿主机模式启动会自动下载 bun v1.3.14 到 <code>data/bin/</code>。要求 bun@1.3.14+。
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="opencode-source">OpenCode 源码入口路径</Label>
-        <Input
-          id="opencode-source"
-          value={cfg.opencodePath}
-          onChange={(e) => setCfg({ ...cfg, opencodePath: e.target.value })}
-          placeholder="/Users/xingzhi/opencode/packages/opencode/src/index.ts"
-        />
-        <p className="text-xs text-muted-foreground">
-          opencode 仓库的 packages/opencode/src/index.ts 文件路径。
+          opencode 二进制的绝对路径。macOS/Linux 可用 <code>which opencode</code>；Windows 可用 <code>where opencode</code> 查找。
         </p>
       </div>
 
@@ -354,12 +339,12 @@ export function OpencodeEngineSection() {
         </Button>
         <Button variant="outline" onClick={handleTest} disabled={testing}>
           {testing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plug className="w-4 h-4 mr-2" />}
-          测试 Bun
+          测试 OpenCode
         </Button>
         {testResult ? (
           <span className={`text-sm flex items-center gap-1 ${testResult.ok ? 'text-green-600' : 'text-red-600'}`}>
             {testResult.ok ? <Check className="w-3.5 h-3.5" /> : null}
-            {testResult.ok ? `Bun ${testResult.bunVersion}` : `不可用 - ${testResult.error}`}
+            {testResult.ok ? `OpenCode ${testResult.version}` : `不可用 - ${testResult.error}`}
           </span>
         ) : null}
       </div>
@@ -374,7 +359,7 @@ export function OpencodeEngineSection() {
           <li>Provider 配置在 DeepThink 内管理，引擎启动时动态生成临时 <code>opencode.jsonc</code>（路径 <code>data/sessions/&lt;folder&gt;/.opencode/</code>）</li>
           <li>切换到 OpenCode 引擎后会开新会话（不重放历史）</li>
           <li>OpenCode 引擎下 Agent 可使用 DeepThink 内置 MCP 工具（send_message / schedule_task / memory_*），通过 mcp-bridge 桥接</li>
-          <li>Bun 未安装时宿主机模式自动下载到 <code>data/bin/bun-v1.3.14/</code>；容器模式需预先指定路径</li>
+          <li>需在宿主机预装 opencode 二进制（支持 serve 子命令）；容器模式下填宿主机绝对路径，会自动 bind-mount 到容器同路径</li>
           <li>每个 agent-runner 进程启动独立的 opencode serve 实例（随机端口）</li>
         </ul>
       </div>

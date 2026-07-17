@@ -35,9 +35,8 @@ import {
   getAtomcodeConfig,
   getCodexConfig,
   getOpencodeConfig,
-  saveOpencodeConfig,
 } from './runtime-config.js';
-import { ensureBunInstalled } from './bun-installer.js';
+
 import { providerPool } from './provider-pool.js';
 import {
   deleteSession,
@@ -868,21 +867,12 @@ export function buildVolumeMounts(
   }
   if (groupEngine === 'opencode') {
     const opencodeCfg = getOpencodeConfig();
-    if (!opencodeCfg.enabled || !opencodeCfg.opencodePath) {
+    if (!opencodeCfg.enabled || !opencodeCfg.binaryPath) {
       throw new Error(
-        `Group ${group.folder} has engine=opencode but OpenCode is not enabled or opencodePath is empty. Configure in Settings → OpenCode 引擎.`,
+        `Group ${group.folder} has engine=opencode but OpenCode is not enabled or binaryPath is empty. Configure in Settings → OpenCode 引擎.`,
       );
     }
-    if (!opencodeCfg.bunPath) {
-      // Container mode can't auto-install (buildVolumeMounts is sync). Hint the
-      // host-side install path — runHostAgent handles auto-install. For container
-      // mode, user must save OpenCode settings once to trigger the host-side install.
-      throw new Error(
-        `Group ${group.folder} has engine=opencode but bunPath is empty. Open Settings → OpenCode 引擎 and click Test to auto-install Bun, then retry.`,
-      );
-    }
-    envLines.push(`OPENCODE_BUN_PATH=${opencodeCfg.bunPath}`);
-    envLines.push(`OPENCODE_SOURCE_PATH=${opencodeCfg.opencodePath}`);
+    envLines.push(`OPENCODE_BINARY_PATH=${opencodeCfg.binaryPath}`);
     envLines.push(`OPENCODE_HOST=${opencodeCfg.host || '127.0.0.1'}`);
     envLines.push(`OPENCODE_BASE_PORT=${opencodeCfg.basePort}`);
     envLines.push(`OPENCODE_PORT_RANGE=${opencodeCfg.portRange}`);
@@ -1992,26 +1982,13 @@ export async function runHostAgent(
 
     // OpenCode 引擎：注入 env vars 供 agent-runner 的 opencode-engine.ts 读取
     if (groupEngine === 'opencode') {
-      // Ensure bun is available — auto-install if missing and bunPath is empty
-      let opencodeCfg = getOpencodeConfig();
-      if (!opencodeCfg.enabled || !opencodeCfg.opencodePath) {
+      const opencodeCfg = getOpencodeConfig();
+      if (!opencodeCfg.enabled || !opencodeCfg.binaryPath) {
         return hostModeSetupError(
-          'OpenCode 引擎未启用或 opencodePath 为空。请在 设置 → OpenCode 引擎 中配置。',
+          'OpenCode 引擎未启用或 binaryPath 为空。请在 设置 → OpenCode 引擎 中配置 opencode 二进制路径。',
         );
       }
-      if (!opencodeCfg.bunPath) {
-        try {
-          const { bunPath } = await ensureBunInstalled();
-          opencodeCfg = saveOpencodeConfig({ bunPath });
-          logger.info({ bunPath }, 'OpenCode: bun auto-installed');
-        } catch (err) {
-          return hostModeSetupError(
-            `Bun 运行时未安装且自动下载失败：${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
-      hostEnv['OPENCODE_BUN_PATH'] = opencodeCfg.bunPath;
-      hostEnv['OPENCODE_SOURCE_PATH'] = opencodeCfg.opencodePath;
+      hostEnv['OPENCODE_BINARY_PATH'] = opencodeCfg.binaryPath;
       hostEnv['OPENCODE_HOST'] = opencodeCfg.host || '127.0.0.1';
       hostEnv['OPENCODE_BASE_PORT'] = String(opencodeCfg.basePort);
       hostEnv['OPENCODE_PORT_RANGE'] = String(opencodeCfg.portRange);
