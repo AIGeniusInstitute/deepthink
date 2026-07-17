@@ -4451,3 +4451,26 @@ export function toPublicOpencodeConfig(cfg: OpencodeConfig): PublicOpencodeConfi
     }),
   };
 }
+
+/**
+ * PUT /api/config/opencode 保存时解析 provider 列表：
+ * 公开 GET 响应不返回 apiKey，前端回存时 apiKey 缺省/被遮蔽（****）的
+ * provider 按 id 从 current 恢复原值；仍无 apiKey 的 provider（未填完的新条
+ * 目）被丢弃——与 sanitizeOpencodeProviders 的行为一致。
+ */
+export function resolveOpencodeProvidersForSave(
+  input: Array<{ id: string; name: string; apiKey?: string; baseURL: string; models: string[] }>,
+  current: OpencodeProvider[],
+): OpencodeProvider[] {
+  const currentById = new Map(current.map((p) => [p.id, p.apiKey]));
+  return input
+    .map((p) => {
+      const masked = !p.apiKey || p.apiKey.startsWith('****');
+      if (masked) {
+        const existing = currentById.get(p.id);
+        if (existing) return { ...p, apiKey: existing };
+      }
+      return p;
+    })
+    .filter((p): p is OpencodeProvider => typeof p.apiKey === 'string' && p.apiKey.length > 0);
+}

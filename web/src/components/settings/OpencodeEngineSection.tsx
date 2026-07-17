@@ -12,7 +12,8 @@ import { getErrorMessage } from './types';
 interface OpencodeProvider {
   id: string;
   name: string;
-  apiKey: string;
+  /** GET /api/config/opencode 公开响应中不返回 apiKey，仅为本地编辑态存在 */
+  apiKey?: string;
   baseURL: string;
   models: string[];
   hasApiKey?: boolean;
@@ -335,9 +336,9 @@ export function OpencodeEngineSection() {
                   <Label className="text-xs">API Key</Label>
                   <Input
                     type="password"
-                    value={p.apiKey.startsWith('****') ? '' : p.apiKey}
+                    value={p.apiKey ?? ''}
                     onChange={(e) => updateProvider(i, { apiKey: e.target.value })}
-                    placeholder={p.apiKey.startsWith('****') || p.hasApiKey ? `已保存 (${p.apiKey.startsWith('****') ? p.apiKey : '****'})` : 'sk-...'}
+                    placeholder={p.hasApiKey ? '已保存（留空保留原值）' : 'sk-...'}
                   />
                 </div>
               </div>
