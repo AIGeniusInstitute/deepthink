@@ -70,3 +70,28 @@ export async function resolveDockerEnv(): Promise<NodeJS.ProcessEnv> {
 export function dockerEnvSync(): NodeJS.ProcessEnv {
   return cache ?? process.env;
 }
+
+/**
+ * If a docker spawn failed with a client/daemon API-version mismatch, the
+ * daemon's stderr names the minimum supported version. Returns that version
+ * string, or null if the failure was something else.
+ *
+ *   "client version 1.42 is too old. Minimum supported API version is 1.44"
+ */
+export function extractRequiredApiVersion(stderr: string): string | null {
+  const m = stderr.match(/Minimum supported API version is (\d+\.\d+)/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Pin DOCKER_API_VERSION to a known-good value and replace the cache. Used by
+ * the retry path in SandboxManager.spawnDocker when the initial probe (or a
+ * prior spawn) failed to negotiate: the failing command's own stderr carries
+ * the authoritative version, so we trust it over the `docker ps` probe, which
+ * can transiently report success on a cold Docker Desktop daemon and pollute
+ * the cache with an unpinned env — after which every subsequent sandbox
+ * create fails for the process lifetime.
+ */
+export function pinDockerApiVersion(version: string): void {
+  cache = { ...process.env, DOCKER_API_VERSION: version };
+}
