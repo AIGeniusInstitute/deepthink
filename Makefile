@@ -207,6 +207,12 @@ DOCKER_SRC := container/Dockerfile container/entrypoint.sh $(wildcard container/
 
 _ensure-docker-image: ## (内部) 检测 Docker 镜像是否需要构建/重建
 	@if command -v docker >/dev/null 2>&1; then \
+	  if ! docker version --format '{{.Client.APIVersion}}|{{.Server.APIVersion}}' 2>/dev/null | grep -q '|'; then \
+	    echo "❌ docker CLI 无法与 daemon 通信（常见原因：客户端 API 版本过旧，被 daemon 拒绝）。"; \
+	    echo "   诊断：docker version  —— 若报 'client version X is too old' 即命中此问题"; \
+	    echo "   修复：见 docs/issues/2026-07-18-docker-cli-too-old.md §6.1（用现代 docker CLI 顶掉旧版）"; \
+	    exit 1; \
+	  fi; \
 	  if ! docker image inspect deepthink-agent:latest >/dev/null 2>&1; then \
 	    echo "🐳 Docker 镜像不存在，正在构建..."; \
 	    ./container/build.sh; \
