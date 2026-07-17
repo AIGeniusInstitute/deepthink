@@ -30,6 +30,7 @@ import {
 import type { SandboxExecReq, SandboxExecResult, SandboxSession } from './types.js';
 import { buildDockerRunArgs, validateSecurityArgs } from './security.js';
 import { BrowserController } from './browser.js';
+import { resolveDockerEnv, dockerEnvSync } from './docker-env.js';
 
 const SANDBOX_PREFIX = 'sb-';
 
@@ -237,12 +238,13 @@ export class SandboxManager {
 
     const args = ['exec', '-i', session.containerName, 'sh', '-c', inner];
 
+    const dockerEnv = await this.resolveDockerEnv();
     const result = await new Promise<{
       stdout: string;
       stderr: string;
       exitCode: number | null;
     }>((resolve) => {
-      const proc = spawn('docker', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      const proc = spawn('docker', args, { stdio: ['pipe', 'pipe', 'pipe'], env: dockerEnv });
       let stdout = '';
       let stderr = '';
       const timer = setTimeout(() => {
@@ -459,8 +461,9 @@ export class SandboxManager {
 
     // docker rm -f
     try {
+      const rmEnv = await this.resolveDockerEnv();
       await new Promise<void>((resolve) => {
-        const p = spawn('docker', ['rm', '-f', session.containerName], { stdio: 'ignore' });
+        const p = spawn('docker', ['rm', '-f', session.containerName], { stdio: 'ignore', env: rmEnv });
         p.on('close', () => resolve());
         p.on('error', () => resolve());
       });
@@ -528,7 +531,7 @@ export class SandboxManager {
     const proc = spawn(
       'docker',
       ['exec', '-i', state.session.containerName, 'sh'],
-      { stdio: ['pipe', 'pipe', 'pipe'] },
+      { stdio: ['pipe', 'pipe', 'pipe'], env: dockerEnvSync() },
     );
     proc.stdout.on('data', (b) => {
       this.touch(state);
@@ -635,9 +638,19 @@ export class SandboxManager {
     return { content: buf.slice(0, maxBytes).toString('utf-8'), truncated: true, size: buf.length };
   }
 
+  /**
+   * Env for `docker` child processes. Resolves (and caches) the
+   * DOCKER_API_VERSION override needed when the CLI on $PATH is older than
+   * the daemon. See src/sandbox/docker-env.ts for rationale.
+   */
+  private async resolveDockerEnv(): Promise<NodeJS.ProcessEnv> {
+    return resolveDockerEnv();
+  }
+
   private async spawnDocker(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+    const env = await this.resolveDockerEnv();
     return new Promise((resolve) => {
-      const proc = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      const proc = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'], env });
       let stdout = '';
       let stderr = '';
       proc.stdout.on('data', (b) => { stdout += b.toString(); });

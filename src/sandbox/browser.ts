@@ -20,6 +20,7 @@ import { chromium, type Browser, type Page } from 'playwright-core';
 import { logger } from '../logger.js';
 import { spawn } from 'child_process';
 import { CHROMIUM_DEVTOOLS_PORT } from './config.js';
+import { dockerEnvSync } from './docker-env.js';
 
 const CHROMIUM_FLAGS = [
   '--headless=new',
@@ -220,7 +221,7 @@ export class BrowserController {
       'sh', '-c', cmd,
     ];
     await new Promise<void>((resolve) => {
-      const p = spawn('docker', args, { stdio: 'ignore' });
+      const p = spawn('docker', args, { stdio: 'ignore', env: dockerEnvSync() });
       p.on('close', () => resolve());
       p.on('error', () => resolve());
     });
@@ -234,7 +235,7 @@ export class BrowserController {
           'docker',
           ['exec', '-u', '1000:1000', this.containerName, 'sh', '-c',
            `curl -sf http://${host}:${port}/json/version > /dev/null 2>&1`],
-          { stdio: 'ignore' },
+          { stdio: 'ignore', env: dockerEnvSync() },
         );
         p.on('close', (code) => resolve(code === 0));
         p.on('error', () => resolve(false));
@@ -258,7 +259,7 @@ export class BrowserController {
         ['exec', this.containerName, 'sh', '-c',
          'pkill -f "chromium --headless" 2>/dev/null; '
          + 'pkill -f "cdp-forwarder.js" 2>/dev/null; true'],
-        { stdio: 'ignore' },
+        { stdio: 'ignore', env: dockerEnvSync() },
       );
       p.on('close', () => resolve());
       p.on('error', () => resolve());
