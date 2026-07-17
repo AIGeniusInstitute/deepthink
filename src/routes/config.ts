@@ -3386,6 +3386,7 @@ import {
   getOpencodeConfig,
   saveOpencodeConfig,
   toPublicOpencodeConfig,
+  resolveOpencodeProvidersForSave,
 } from '../runtime-config.js';
 import { CodexConfigSchema, OpencodeConfigSchema } from '../schemas.js';
 import { spawn } from 'child_process';
@@ -3478,24 +3479,13 @@ configRoutes.put('/opencode', authMiddleware, systemConfigMiddleware, async (c) 
   }
   const data = validation.data;
   // password 为 undefined 时不覆盖；空字符串显式清除
-  if (data.password === undefined) {
-    const current = getOpencodeConfig();
-    data.password = current.password;
-  }
-  // providers: if apiKey is empty or matches masked pattern, keep existing
-  if (Array.isArray(data.providers)) {
-    const current = getOpencodeConfig();
-    const currentById = new Map(current.providers.map((p) => [p.id, p.apiKey]));
-    data.providers = data.providers.map((p) => {
-      const masked = !p.apiKey || p.apiKey.startsWith('****');
-      if (masked) {
-        const existing = currentById.get(p.id);
-        if (existing) return { ...p, apiKey: existing };
-      }
-      return p;
-    });
-  }
-  const saved = saveOpencodeConfig(data);
+  const current = getOpencodeConfig();
+  const password = data.password === undefined ? current.password : data.password;
+  // providers: apiKey 缺省/被遮蔽的按 id 从 current 恢复，仍无 key 的丢弃
+  const providers = Array.isArray(data.providers)
+    ? resolveOpencodeProvidersForSave(data.providers, current.providers)
+    : undefined;
+  const saved = saveOpencodeConfig({ ...data, password, providers });
   const actor = (c.get('user') as AuthUser).username;
   logger.info({ actor, enabled: saved.enabled, providerCount: saved.providers.length }, 'OpenCode config updated');
   return c.json(toPublicOpencodeConfig(saved));

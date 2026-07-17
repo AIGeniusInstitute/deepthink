@@ -332,7 +332,8 @@ export const CodexConfigSchema = z.object({
 export const OpencodeProviderSchema = z.object({
   id: z.string().min(1).max(64),
   name: z.string().min(1).max(64),
-  apiKey: z.string().min(1).max(512),
+  // 公开 GET 响应不返回 apiKey；PUT 时空/缺省表示保留原值（见路由 keep-existing 逻辑）
+  apiKey: z.string().min(1).max(512).optional(),
   baseURL: z.string().min(1).max(512),
   models: z.array(z.string().min(1).max(128)).min(1),
 });
