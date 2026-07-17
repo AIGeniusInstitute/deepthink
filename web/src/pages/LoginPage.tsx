@@ -167,7 +167,7 @@ export function LoginPage() {
         </div>
         <div className="flex items-center gap-2">
           <a
-            href="https://github.com/AIGeniusInstitute/deep-think"
+            href="https://github.com/AIGeniusInstitute/deepthink"
             target="_blank"
             rel="noopener noreferrer"
           >

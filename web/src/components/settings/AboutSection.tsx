@@ -11,7 +11,7 @@ export function AboutSection() {
       {/* 项目信息 */}
       <div>
         <h2 className="text-lg font-semibold text-foreground mb-1">DeepThink</h2>
-        <p className="text-sm text-muted-foreground">自托管个人 AI Agent 系统</p>
+        <p className="text-sm text-muted-foreground">企业级自托管自进化的 AI 操作系统</p>
       </div>
 
       {/* 开源地址 & 作者 & 报告问题 */}
@@ -19,18 +19,18 @@ export function AboutSection() {
         <div className="flex items-center gap-3">
           <Github className="w-4 h-4 text-muted-foreground shrink-0" />
           <a
-            href="https://github.com/AIGeniusInstitute/deep-think"
+            href="https://github.com/AIGeniusInstitute/deepthink"
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm text-primary hover:text-primary/80 inline-flex items-center gap-1"
           >
-            AIGeniusInstitute/deep-think
+            AIGeniusInstitute/deepthink
             <ExternalLink className="w-3 h-3" />
           </a>
         </div>
         <div className="flex items-center gap-3">
           <Code2 className="w-4 h-4 text-muted-foreground shrink-0" />
-          <span className="text-sm text-foreground">作者：aigeniusinstitute</span>
+          <span className="text-sm text-foreground">作者：AIGeniusInstitute</span>
         </div>
         <div className="flex items-center gap-3">
           <Bug className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -84,7 +84,7 @@ export function AboutSection() {
               <ExternalLink className="w-3 h-3" />
             </a>
             <p className="mt-1 leading-relaxed">
-              当下最火爆、最流行的个人 Agent 项目。但我认为它的架构存在根本性的缺陷——它自己从头实现了一个 Agent。而 Claude Code 已经是世界上最好的 Agent 了，为什么不站在巨人的肩膀上去构建呢？
+              当下最火爆、最流行的个人 AI OS Agent 项目。但我认为它的架构存在根本性的缺陷——它自己从头实现了一个 Agent。而 Claude Code 已经是世界上最好的 Agent 了，为什么不站在巨人的肩膀上去构建呢？
             </p>
           </div>
         </div>
@@ -99,7 +99,7 @@ export function AboutSection() {
           <h3 className="text-sm font-medium text-foreground">设计哲学</h3>
         </div>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          站在巨人的肩膀上，基于 Claude Code（全世界最好的 Agent）构建。
+          站在巨人的肩膀上，基于 Claude Code / Codex / OpenCode / AtomCode等全世界最好的 Agent 构建。
         </p>
       </div>
 

@@ -940,12 +940,11 @@ Additionally, the `shared/` directory holds cross-project shared type definition
 
 ## Star History
 
-
-<a href="https://www.star-history.com/?type=date&legend=top-left&repos=AIGeniusInstitute%2Fdeep-think">
+<a href="https://www.star-history.com/?repos=AIGeniusInstitute%2Fdeepthink&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deep-think&type=date&theme=dark&legend=top-left&sealed_token=0gNYAW67bWNrFGzx-kxE6i2dToMHwyrb24xZtohvRFcRNNzLVK-3VzinIWDn3Vfl3iTU6FY9TsCVmk9pHF2zB37sJ5TCvSSEOnjvKTkjF46QvTjnrhEfzg" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deep-think&type=date&legend=top-left&sealed_token=0gNYAW67bWNrFGzx-kxE6i2dToMHwyrb24xZtohvRFcRNNzLVK-3VzinIWDn3Vfl3iTU6FY9TsCVmk9pHF2zB37sJ5TCvSSEOnjvKTkjF46QvTjnrhEfzg" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=AIGeniusInstitute/deep-think&type=date&legend=top-left&sealed_token=0gNYAW67bWNrFGzx-kxE6i2dToMHwyrb24xZtohvRFcRNNzLVK-3VzinIWDn3Vfl3iTU6FY9TsCVmk9pHF2zB37sJ5TCvSSEOnjvKTkjF46QvTjnrhEfzg" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deepthink&type=date&theme=dark&legend=top-left&sealed_token=Kb_rsH1-hVdzm5gzWc1Q8gw8Gkk8git2ERXgpXdLySe-gmjtF6nXbMt2U5fpuBtdcXAWNgyh5M0PXxWWGV6SDdZKM3g2Ri_CptYehdLv6p2kSbJB1u0ccA" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deepthink&type=date&legend=top-left&sealed_token=Kb_rsH1-hVdzm5gzWc1Q8gw8Gkk8git2ERXgpXdLySe-gmjtF6nXbMt2U5fpuBtdcXAWNgyh5M0PXxWWGV6SDdZKM3g2Ri_CptYehdLv6p2kSbJB1u0ccA" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=AIGeniusInstitute/deepthink&type=date&legend=top-left&sealed_token=Kb_rsH1-hVdzm5gzWc1Q8gw8Gkk8git2ERXgpXdLySe-gmjtF6nXbMt2U5fpuBtdcXAWNgyh5M0PXxWWGV6SDdZKM3g2Ri_CptYehdLv6p2kSbJB1u0ccA" />
  </picture>
 </a>
 
@@ -989,18 +988,26 @@ Additionally, the `shared/` directory holds cross-project shared type definition
 
 ## About Author
 
-- [AI光剑的博客](https://blog.csdn.net/universsky2015)
+- [AI天才研究院](https://gitcode.com/AIGeniusInstitute)
+
+- [博客](https://blog.csdn.net/universsky2015)
+
+- [Gitcode](https://gitcode.com/AIGeniusInstitute/deepthink)
 
 - [Github](https://jason-chen-2017.github.io/Jason-Chen-2017/)
 
 - [光剑图书馆: 全球免费开放的电子图书馆 World Free eBook](https://universsky.github.io/)
 
 
+
 ---
 
 ## 捐赠
 
-> Donate to AI Genius Institute:
+> The AI Genius Institute is an independent research blog and intellectual laboratory dedicated to deep thinking on artificial general intelligence, cutting-edge technology deconstruction, and cognitive framework construction. We break free from the shackles of fragmented information and reject superficial AI popularization. With rigorous research perspectives, crystal-clear logical analysis, and forward-looking industry insights, we delve deep into the underlying logic of AI, technological iteration, paradigms of thought, and practical applications—building a high-quality, substance-rich, and intellectually deep cognitive hub for creators, developers, researchers, industry practitioners, and AI enthusiasts.
+
+
+Donate to AI Genius Institute:
 
 
 | 微信                                                    | 支付宝                                                  |

@@ -938,11 +938,11 @@ Commit message 使用简体中文，格式：`类型: 描述`
 ## Star 历史
 
 
-<a href="https://www.star-history.com/?type=date&legend=top-left&repos=AIGeniusInstitute%2Fdeep-think">
+<a href="https://www.star-history.com/?repos=AIGeniusInstitute%2Fdeepthink&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deep-think&type=date&theme=dark&legend=top-left&sealed_token=0gNYAW67bWNrFGzx-kxE6i2dToMHwyrb24xZtohvRFcRNNzLVK-3VzinIWDn3Vfl3iTU6FY9TsCVmk9pHF2zB37sJ5TCvSSEOnjvKTkjF46QvTjnrhEfzg" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deep-think&type=date&legend=top-left&sealed_token=0gNYAW67bWNrFGzx-kxE6i2dToMHwyrb24xZtohvRFcRNNzLVK-3VzinIWDn3Vfl3iTU6FY9TsCVmk9pHF2zB37sJ5TCvSSEOnjvKTkjF46QvTjnrhEfzg" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=AIGeniusInstitute/deep-think&type=date&legend=top-left&sealed_token=0gNYAW67bWNrFGzx-kxE6i2dToMHwyrb24xZtohvRFcRNNzLVK-3VzinIWDn3Vfl3iTU6FY9TsCVmk9pHF2zB37sJ5TCvSSEOnjvKTkjF46QvTjnrhEfzg" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deepthink&type=date&theme=dark&legend=top-left&sealed_token=Kb_rsH1-hVdzm5gzWc1Q8gw8Gkk8git2ERXgpXdLySe-gmjtF6nXbMt2U5fpuBtdcXAWNgyh5M0PXxWWGV6SDdZKM3g2Ri_CptYehdLv6p2kSbJB1u0ccA" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deepthink&type=date&legend=top-left&sealed_token=Kb_rsH1-hVdzm5gzWc1Q8gw8Gkk8git2ERXgpXdLySe-gmjtF6nXbMt2U5fpuBtdcXAWNgyh5M0PXxWWGV6SDdZKM3g2Ri_CptYehdLv6p2kSbJB1u0ccA" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=AIGeniusInstitute/deepthink&type=date&legend=top-left&sealed_token=Kb_rsH1-hVdzm5gzWc1Q8gw8Gkk8git2ERXgpXdLySe-gmjtF6nXbMt2U5fpuBtdcXAWNgyh5M0PXxWWGV6SDdZKM3g2Ri_CptYehdLv6p2kSbJB1u0ccA" />
  </picture>
 </a>
 
@@ -986,7 +986,14 @@ Commit message 使用简体中文，格式：`类型: 描述`
 
 ## 关于作者
 
-- [AI光剑的博客](https://blog.csdn.net/universsky2015)
+
+- [AI天才研究院](https://gitcode.com/AIGeniusInstitute)
+
+ 
+
+- [博客](https://blog.csdn.net/universsky2015)
+
+- [Gitcode](https://gitcode.com/AIGeniusInstitute/deepthink)
 
 - [Github](https://jason-chen-2017.github.io/Jason-Chen-2017/)
 
@@ -997,7 +1004,10 @@ Commit message 使用简体中文，格式：`类型: 描述`
 
 ## 捐赠
 
-> Donate to AI Genius Institute:
+> AI天才研究院（AI Genius Institute）是一家专注于通用人工智能深度思考、前沿技术拆解、思维体系构建的独立研究博客与智识实验室。我们跳出碎片化资讯的桎梏，拒绝浅层的AI科普，以严谨的研究视角、通透的逻辑拆解、前瞻的行业洞察，深耕人工智能底层逻辑、技术迭代、思维范式与落地应用，为创作者、开发者、研究者、行业从业者与AI爱好者，打造高质量、纯干货、有深度的AI认知阵地。
+
+
+Donate to AI Genius Institute:
 
 
 | 微信                                                    | 支付宝                                                  |

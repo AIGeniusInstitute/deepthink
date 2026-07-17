@@ -65,7 +65,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AIGeniusInstitute/deep-think.git",
+    "url": "git+https://github.com/AIGeniusInstitute/deepthink.git",
     "directory": "web"
   },
   "author": "aigeniusinstitute"

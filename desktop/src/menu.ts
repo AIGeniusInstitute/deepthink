@@ -128,7 +128,7 @@ export function installMenu(deps: MenuDeps): void {
       submenu: [
         {
           label: '打开项目主页',
-          click: () => shell.openExternal('https://github.com/AIGeniusInstitute/deep-think'),
+          click: () => shell.openExternal('https://github.com/AIGeniusInstitute/deepthink'),
         },
       ],
     },

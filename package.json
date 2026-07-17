@@ -64,11 +64,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AIGeniusInstitute/deep-think.git"
+    "url": "git+https://github.com/AIGeniusInstitute/deepthink.git"
   },
-  "homepage": "https://github.com/AIGeniusInstitute/deep-think#readme",
+  "homepage": "https://github.com/AIGeniusInstitute/deepthink#readme",
   "bugs": {
-    "url": "https://github.com/AIGeniusInstitute/deep-think/issues"
+    "url": "https://github.com/AIGeniusInstitute/deepthink/issues"
   },
   "author": "aigeniusinstitute",
   "keywords": [
