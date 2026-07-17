@@ -14,7 +14,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge" alt="License" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" /></a>
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <a href="https://github.com/AIGeniusInstitute/deep-think/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
+  <a href="https://github.com/AIGeniusInstitute/deepthink/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
 </p>
 
 <p align="center">
@@ -43,14 +43,17 @@ DeepThink, an Open Source Enterprise-grade Autonomous Agent self-evolving superi
 ### Key Features
 
 - **Native Claude Code Powered** — Built on the Claude Agent SDK, with the full Claude Code CLI runtime underneath, inheriting all of its capabilities
+- **Harness & Loop Engineering** — Versioned harness manifests (system prompt / subagents / tools / skills) with snapshot / diff / eval / promote / rollback, plus long-running autonomous task loops with per-iteration review and failure re-injection
+- **Agent-as-a-Service (PaaS)** — Create, version, mount, share, and install DB-backed Agent definitions across tenants, with per-user quotas, admin review, and a publishable template marketplace
 - **Multi-User Isolation** — Per-user workspaces, per-user IM channels, an RBAC permission system, invite-code registration, and audit logs; every user has an independent execution environment
-- **Unified Routing Across Six Channels** — Feishu WebSocket long connection (streaming cards + Reactions), Telegram Bot API, QQ Bot API v2, DingTalk Stream protocol, WeChat iLink Bot API, and the Web interface — all six channels routed uniformly
-- **Multi-Provider Load Balancing** — Supports multiple Claude API providers with three load-balancing strategies (round-robin / weighted / failover), automatic health detection and recovery
+- **Eight-Channel Unified Routing** — Feishu (streaming cards + Reactions), Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, Discord Gateway, WhatsApp (Baileys), and the Web interface — all routed uniformly
+- **Multi-Engine & Multi-Provider** — Pluggable code-agent engines (Claude Code / AtomCode / Codex / OpenCode) and multiple Claude API providers with three load-balancing strategies (round-robin / weighted / failover), automatic health detection and recovery
+- **Sandboxed Code Execution** — Docker + seccomp + cgroups hardened sandbox for Python / Node / shell code execution and Chromium CDP browser automation, exposed to the Agent as MCP tools
 - **Billing & Usage Statistics** — A complete billing system (subscription plans, wallet balance, redemption codes), per-model token usage tracking, and chart visualizations
 - **Mobile PWA** — Deeply optimized for mobile, supports one-tap install to the home screen, fully adapted for iOS / Android
+- **Internationalized** — 29 UI languages with native endonyms and RTL support; the Agent replies in the user's chosen language
 
 > The project draws on the containerized architecture of [OpenClaw](https://github.com/nicepkg/OpenClaw) and incorporates the multi-session collaboration ideas from Claude Code's official [Cowork](https://github.com/anthropics/claude-code/tree/main/packages/cowork): multiple independent Agent sessions work in parallel, each with its own isolated workspace and persistent memory, and results are delivered via IM channels.
-
 ## Core Capabilities
 
 ### Multi-Channel Access
@@ -59,22 +62,25 @@ DeepThink, an Open Source Enterprise-grade Autonomous Agent self-evolving superi
 |------|---------|---------|------|
 | **Feishu** | WebSocket long connection | Streaming cards (typewriter effect) | Native streaming render, multi-card auto-split, image/file downloads to workspace, Reaction feedback, group @mention control |
 | **Telegram** | Bot API (Long Polling) | Markdown → HTML | Long-message auto-chunking (3800 chars), images via Vision (base64), document files auto-downloaded to workspace |
-| **QQ** | WebSocket (Bot API v2) | Plain text | DM + group @Bot, image messages (Vision), pairing-code binding |
+| **QQ** | WebSocket (Bot API v2) | Streaming cards / plain text | DM + group @Bot, streaming typewriter (`stream_messages`), image messages (Vision), pairing-code binding |
 | **DingTalk** | Stream protocol long connection | Markdown cards | AI Card streaming typewriter, message deduplication (LRU 1000 / 30min TTL), image downloads (downloadCode / contentUrl), group @mention filtering |
 | **WeChat** | iLink Bot API (Long Polling) | Plain text (2000 chars) | QR-code scan pairing, CDN image download + AES decryption, typing indicator, auto-reconnect |
+| **Discord** | discord.js Gateway (WebSocket) | Streaming-edit messages | Guild / DM, attachment handling, 2000-char auto-split, ack Reaction, 500ms throttled streaming-edit replies |
+| **WhatsApp** | Baileys (WhatsApp Web protocol) | Markdown → plain text | QR / pairing-code login, multi-file auth state, media (image/video/audio/document) downloads, group participant events |
 | **Web** | WebSocket real-time | Streaming Markdown | Image paste/drag-upload, virtual scrolling, Mermaid chart rendering, image lightbox |
 
-Each user can independently configure their own IM channels (Feishu app credentials, Telegram Bot Token, QQ Bot credentials, DingTalk Client ID/Secret, WeChat iLink Token) without interfering with each other. Messages are uniformly routed: messages from each channel reply to that channel, and messages from the Web reply on the Web.
+Each user can independently configure their own IM channels (Feishu app credentials, Telegram Bot Token, QQ Bot credentials, DingTalk Client ID/Secret, WeChat iLink Token, Discord Bot Token, WhatsApp QR) without interfering with each other. Messages are uniformly routed: messages from each channel reply to that channel, and messages from the Web reply on the Web.
 
 
-### Multi-Provider & Load Balancing
+### Multi-Engine & Multi-Provider
 
-Supports configuring multiple Claude API providers (official Anthropic, various relay services, Coding Plans) for high-availability deployment:
+DeepThink supports pluggable code-agent engines and multiple API providers for high-availability deployment:
 
+- **Pluggable engines** — Select per session between Claude Code, AtomCode, Codex, and OpenCode; the Engines page shows a unified availability dashboard and manages each engine's daemon lifecycle
 - **Three load-balancing strategies** — Round-Robin, Weighted, Failover
 - **Automatic health detection** — Consecutive error tracking (3 errors by default marks unhealthy), 5-minute auto-recovery probing
 - **Per-group provider switching** — The monitoring page lets you specify which provider each workspace uses
-- **OAuth credential support** — Supports Claude Code OAuth Tokens, compatible with all authentication methods
+- **OAuth credential support** — Supports Claude Code OAuth Tokens, compatible with all authentication methods; sticky provider selection avoids cross-OAuth thinking-block signature failures
 - **Active session counts** — Real-time display of concurrent usage per provider
 
 
@@ -89,8 +95,72 @@ Built on the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-t
 - **Script tasks** — Scheduled tasks support both Agent and Script execution types; Script mode directly executes shell commands
 - **Custom working directory** — Each session can configure `customCwd` to point to a different project
 - **Automatic failure recovery** — Exponential-backoff retry (5s → 80s, up to 5 attempts); context-overflow auto-compression with history archiving
+### Harness Engineering
+
+Administrators can snapshot, diff, eval, promote, and roll back the model's **harness** — the full set of system prompt, subagents, tools, and skills — as versioned manifests. Each harness version can be behavior-evaluated with evidence-based judging before promotion, so you can safely evolve an Agent's configuration and instantly roll back a regression.
+
+### Loop Engineering
+
+Long-running autonomous task loops that keep working after you walk away. Six loop modes are supported — `goal`, `loop`, `schedule`, `proactive`, `adaptive`, and `skill_evolution`. Each iteration is reviewed by the SDK and failure reasons are re-injected into the next iteration, closing the self-improvement loop. Loops are driven by slash commands and surface live `loop_start` / `loop_iteration_start` / `loop_iteration_end` / `loop_goal_check` / `loop_review_result` / `loop_end` stream events.
 
 
+### Agent-as-a-Service (PaaS)
+
+A multi-tenant platform for turning Agents into shareable, installable products:
+
+- **DB-backed Agent definitions** — Create and version Agent definitions with snapshots, mounts, collaborators, and shares
+- **Admin review workflow** — Per-user quotas and admin approval before publishing
+- **Install & mount** — Install a shared Agent into your own workspace; mount it into a session on demand
+- **Marketplace** — Admin-publishable template marketplace (agent / mcp / skill / kb templates) with browse, rate / review, report, and one-click install, plus idempotent startup seeding
+
+
+### Knowledge Bases
+
+Per-user knowledge bases that ground the Agent in your own documents:
+
+- **FTS5 full-text search** — Built-in SQLite FTS5 indexing across mounted documents
+- **Vector embeddings** — Optional OpenAI-compatible embedding endpoint for semantic retrieval
+- **Document extraction** — Plain-text extraction from PDF / DOCX / MD / etc. for indexing, plus LibreOffice → PDF preview for Office documents
+- **`kb_search` MCP tool** — Agents query mounted KBs directly at runtime
+
+
+### Sandboxed Code Execution
+
+A hardened sandbox for running untrusted code and driving a browser, exposed to the Agent as MCP tools:
+
+- **Docker + seccomp + cgroups** — Hardened isolation with a seccomp profile and resource limits
+- **Code execution** — `sandbox_run_code` / `sandbox_close` for Python, Node, and shell, in session or single-exec mode
+- **Browser automation** — `sandbox_browser_navigate` / `_click` / `_type` / `_screenshot` / `_evaluate` driving a Chromium CDP target via the in-sandbox forwarder
+
+
+### Claude Code Plugins
+
+First-class support for Claude Code Plugins:
+
+- **Per-user enable/disable** — Each user opts into plugins independently; changes take effect on the next new session (the UI prompts accordingly)
+- **Immutable content-hashed catalog** — Admin scans the host once to build a shared catalog; plugin snapshots are content-addressed and immutable
+- **Dependency preflight** — Best-effort check of `commands/*.md` `allowed-tools` and hook commands before materialization, with a manual override table
+- **Runtime materialization** — Per-user enabled refs are materialized into versioned `--plugin-dir` paths at spawn time
+
+
+### Agent Studio & Agent Definitions
+
+A dual layer for defining custom Agents:
+
+- **Global agents** — Edit `~/.claude/agents/*.md` directly from the Web UI
+- **DB-backed user Agents** — Versioned snapshots, workspace mounts, collaborators, and share links
+- **Host-capability preflight** — Validates that the host has the required tools before an Agent runs
+
+
+### Chat Trace
+
+A DAG visualization of Agent execution — every node (turn / tool / review / goal_check / skill / subagent) is rendered as a navigable graph with user annotations and client-side rerun / continue-from-here, giving full-stack observability into how an Agent reached its answer.
+
+
+### Supervisor & i18n
+
+- **Supervisor SubAgent** — An opt-in per-chat intent parser that pre-triages incoming messages (`clarify` / `delegate` / `auto`) before the main Agent runs, reducing wasted work on ambiguous requests
+- **Internationalization** — 29 UI languages with native endonyms and RTL flags; the chosen language is injected into Agent prompts so replies match the user's language
 ### Multi-Conversation & Agent Definitions
 
 Multiple independent conversations are supported within the same workspace, each with its own context and session:
@@ -103,16 +173,17 @@ Multiple independent conversations are supported within the same workspace, each
 
 ### Real-Time Streaming Experience
 
-The Agent's thinking and execution process is pushed to the frontend in real time, rather than waiting for the final result:
+The Agent's thinking and execution process is pushed to the frontend in real time across **30+ stream-event types** (text, thinking, tool use, hooks, tasks, memory recall, loops, usage, todo, context audit, and more):
 
 - **Thinking process** — Collapsible Extended Thinking panel, streamed character by character
 - **Tool-call tracing** — Tool name, execution duration, nesting depth, input-parameter summary
-- **Call-trail timeline** — The last 30 tool-call records for quick backtracking
+- **Call-trail timeline** — The last tool-call records for quick backtracking
 - **Hook execution status** — PreToolUse / PostToolUse Hook start, progress, and result
+- **Loop events** — Live `loop_iteration_*` and `loop_review_result` events for autonomous loops
 - **Streaming Markdown rendering** — GFM tables, code highlighting, Mermaid charts, image lightbox
 - **Share as image** — Export messages as shareable images
-- **Feishu streaming cards** — Native typewriter effect (70ms/char), three-tier fallback chain (Streaming → CardKit v1 → Legacy), multi-card auto-split (split at ~45 elements), 100K-char single-element support
-- **DingTalk AI Card** — DingTalk native streaming card with real-time typewriter effect
+- **Feishu streaming cards** — Native typewriter effect, three-tier fallback chain (Streaming → CardKit v1 → Legacy), multi-card auto-split, 100K-char single-element support
+- **DingTalk / QQ / Discord streaming** — Native streaming-card / streaming-edit typewriter effects per channel
 
 
 ### Billing System
@@ -143,22 +214,22 @@ A billing system designed for multi-user deployment, supporting flexible billing
 - **Admin view** — Admins can view usage data for all users
 
 
-### 12 MCP Tools
+### 27 MCP Tools
 
-At runtime the Agent can communicate with the main process via the built-in MCP Server:
+At runtime the Agent can communicate with the main process via the built-in MCP Server (22 unconditional + 5 conditional):
 
 | Tool | Description |
 |------|------|
-| `send_message` | Send a message to a user/group immediately while running |
-| `schedule_task` | Create scheduled/recurring/one-time tasks (cron / interval / once) |
-| `list_tasks` | List scheduled tasks |
+| `send_message` / `send_image` / `send_file` | Send a message, image, or file to a user/group immediately while running |
+| `schedule_task` / `list_tasks` / `update_task` | Create scheduled/recurring/one-time tasks (cron / interval / once); list and update them |
 | `pause_task` / `resume_task` / `cancel_task` | Pause, resume, cancel tasks |
 | `register_group` | Register a new group (admin primary workspace only) |
-| `install_skill` | Install a Skill to the workspace (primary workspace only) |
-| `uninstall_skill` | Uninstall an installed Skill (primary workspace only) |
-| `memory_append` | Append time-sensitive memory to `memory/YYYY-MM-DD.md` |
-| `memory_search` | Full-text search across workspace memory files |
-| `memory_get` | Read memory file contents |
+| `install_skill` / `uninstall_skill` / `create_skill` | Install, uninstall, or create a Skill (primary workspace only) |
+| `memory_append` / `memory_search` / `memory_get` | Append, full-text-search, and read workspace memory files |
+| `kb_search` | Search mounted knowledge bases (FTS5 + optional vector embeddings) |
+| `sandbox_run_code` / `sandbox_close` | Run Python / Node / shell code in the hardened sandbox; close a sandbox session |
+| `sandbox_browser_navigate` / `_click` / `_type` / `_screenshot` / `_evaluate` | Drive a Chromium CDP browser inside the sandbox |
+| `discord_get_server_info` / `discord_get_channel_info` / `discord_get_history` | Read Discord server / channel metadata and message history |
 
 
 ### Scheduled Tasks
@@ -166,7 +237,7 @@ At runtime the Agent can communicate with the main process via the built-in MCP 
 - **Three scheduling modes** — Cron expressions / fixed interval / one-time execution
 - **Two execution types** — Agent (launches a full Claude Agent) / Script (directly executes shell commands)
 - **Two context modes** — `group` (executes in a specified session) / `isolated` (independent isolated environment)
-- **Notification channels** — On task completion, notify a specified IM channel (Feishu / Telegram / QQ / DingTalk / WeChat)
+- **Notification channels** — On task completion, notify a specified IM channel (Feishu / Telegram / QQ / DingTalk / WeChat / Discord)
 - **Full execution logs** — Duration, status, result, all managed via the Web interface
 
 
@@ -179,8 +250,6 @@ The Agent autonomously maintains persistent cross-session memory:
 - **Date memory** — `memory/YYYY-MM-DD.md`, for time-sensitive information
 - **Conversation archive** — PreCompact Hook automatically archives to `conversations/` before context compression
 - **Full-text search** — Online editing + search from the Web interface
-
-
 ### Workspace-Level Configuration
 
 Each workspace can independently configure its own runtime environment:
@@ -189,6 +258,7 @@ Each workspace can independently configure its own runtime environment:
 - **Per-workspace Skills** — Install specific Skills for a workspace, enabled on demand
 - **Per-workspace environment variables** — Group-level environment-variable overrides, higher priority than global config
 - **Shared workspace members** — Multiple users can join the same workspace to collaborate
+- **Cross-group ACL** — A pure authorization function governs inter-group IPC routing (folder / user / bound-IM rules) so non-home Agents can safely message bound channels
 
 
 ### IM Binding System
@@ -232,7 +302,7 @@ A Progressive Web App optimized for mobile, installable to the home screen from 
 
 - **Full file browser** — Tree-view directory structure, file-type icons
 - **File operations** — Upload (50MB limit, drag-and-drop supported) / download / delete / create directory
-- **File preview** — Online text-file viewing, image preview + lightbox, Markdown rendering
+- **File preview** — Online text-file viewing, image preview + lightbox, Markdown rendering, Office-document → PDF preview
 - **Security** — Path-traversal protection + system-path protection
 
 ### Security & Multi-User
@@ -249,8 +319,8 @@ A Progressive Web App optimized for mobile, installable to the home screen from 
 | **Terminal permissions** | Users can access the Web terminal of their own container (not supported in host mode) |
 | **Login protection** | 5 failures lock for 15 minutes, bcrypt 12 rounds, HMAC Cookie, 30-day session validity |
 | **Session management** | View and delete active login sessions; supports multi-device management |
+| **CORS / WS defense** | Configurable allowed origins; WebSocket upgrade rejects non-allowlisted origins with 403 (CSWSH defense) |
 | **PWA** | One-tap install to the phone home screen, deeply optimized for mobile, use the AI Agent anytime, anywhere |
-
 ## Quick Start
 
 ### Prerequisites
@@ -264,20 +334,22 @@ Before you begin, ensure the following dependencies are installed:
   - Linux: See [NodeSource](https://github.com/nodesource/distributions) or use `nvm`
   - Windows: [Download from the official site](https://nodejs.org)
 
-- **[Docker](https://www.docker.com/)** — Runs Agents in container mode (required for member users; admin host-only mode can skip this)
+- **[Docker](https://www.docker.com/)** — Runs Agents in container mode and the code-execution sandbox (required for member users; admin host-only mode can skip this)
   - macOS: [OrbStack](https://orbstack.dev) recommended (lighter), or [Docker Desktop](https://www.docker.com/products/docker-desktop/)
   - Linux: `curl -fsSL https://get.docker.com | sh`
   - Windows: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
 - **Claude API Key** — Official Anthropic or compatible relay services (various Coding Plans); configure it in the Web interface after launch
 
-**Optional**
+**Optional** (only if you want the corresponding IM channel)
 
-- Feishu enterprise self-built app credentials — Only needed for Feishu integration; create at the [Feishu Open Platform](https://open.feishu.cn)
-- Telegram Bot Token — Only needed for Telegram integration; obtain via [@BotFather](https://t.me/BotFather)
-- QQ Bot credentials — Only needed for QQ integration; create at the [QQ Open Platform](https://q.qq.com/qqbot/openclaw/index.html)
-- DingTalk Bot credentials — Only needed for DingTalk integration; create at the [DingTalk Open Platform](https://open.dingtalk.com)
-- WeChat iLink Bot Token — Only needed for WeChat integration
+- Feishu enterprise self-built app credentials — create at the [Feishu Open Platform](https://open.feishu.cn)
+- Telegram Bot Token — obtain via [@BotFather](https://t.me/BotFather)
+- QQ Bot credentials — create at the [QQ Open Platform](https://q.qq.com/qqbot/openclaw/index.html)
+- DingTalk Bot credentials — create at the [DingTalk Open Platform](https://open.dingtalk.com)
+- WeChat iLink Bot Token
+- Discord Bot Token — create at the [Discord Developer Portal](https://discord.com/developers/applications)
+- WhatsApp account — scan a QR code on first launch (Baileys protocol)
 
 > The Claude Code CLI does not need to be installed manually — the Claude Agent SDK bundled as a project dependency already includes the full CLI runtime, and it is installed automatically on the first `make start`.
 
@@ -300,7 +372,7 @@ Follow the setup wizard to complete initialization:
 
 1. **Create an admin** — Customize username and password (no default account)
 2. **Configure Claude API** — Fill in the API key and model (relay services supported; multiple providers configurable)
-3. **Configure IM channels** (optional) — Feishu / Telegram / QQ / DingTalk / WeChat
+3. **Configure IM channels** (optional) — Feishu / Telegram / QQ / DingTalk / WeChat / Discord / WhatsApp
 4. **Start chatting** — Send a message directly from the Web chat page
 
 > All configuration is done via the Web interface, with no config files required. API keys are stored AES-256-GCM encrypted.
@@ -313,6 +385,9 @@ The admin user defaults to host mode (no Docker needed) and works out of the box
 ```bash
 # Build the container image
 ./container/build.sh
+
+# (Optional) Build the hardened sandbox image for code execution + browser automation
+make sandbox-build
 ```
 
 A container-mode primary workspace (`home-{userId}`) is created automatically when a new user registers — no extra configuration needed.
@@ -323,38 +398,12 @@ A container-mode primary workspace (`home-{userId}`) is created automatically wh
 2. Under the app's "Event Subscriptions", add: `im.message.receive_v1` (receive messages)
 3. Under the app's "Permission Management", enable the following permissions:
    - `cardkit:card:write` (create and update cards)
-   - `im:chat` (get and update group information)
-   - `im:chat:read` (get group information)
-   - `im:chat:readonly` (read group information as the app)
+   - `im:chat` / `im:chat:read` / `im:chat:readonly` (group information)
    - `im:message` (send messages)
    - `im:message.group_at_msg:readonly` (receive group @ messages)
    - `im:message.group_msg` (receive all group messages) — **sensitive permission**, requires admin approval. Without it, only @-Bot messages are processed in groups
    - `im:message.p2p_msg:readonly` (receive private-chat messages)
    - `im:resource` (get and upload image/file resources)
-
-   <details>
-   <summary>Permissions JSON (can be imported directly into the Feishu Open Platform)</summary>
-
-   ```json
-   {
-     "scopes": {
-       "tenant": [
-         "cardkit:card:write",
-         "im:chat",
-         "im:chat:read",
-         "im:chat:readonly",
-         "im:message",
-         "im:message.group_at_msg:readonly",
-         "im:message.group_msg",
-         "im:message.p2p_msg:readonly",
-         "im:resource"
-       ],
-       "user": []
-     }
-   }
-   ```
-
-   </details>
 
 4. Publish the app version and wait for approval
 5. In the DeepThink Web interface, under "Settings → IM Channels → Feishu", fill in the App ID and App Secret
@@ -382,7 +431,7 @@ Each user can independently configure Feishu app credentials in their personal s
 4. In the DeepThink Web interface, under "Settings → IM Channels → QQ", fill in the App ID and App Secret
 5. **Pairing**: Generate a pairing code on the settings page, then send `/pair <pairing-code>` to the Bot in QQ to complete binding
 
-> QQ Bot uses the official API v2 protocol, supporting C2C private chats and group @-Bot messages. In groups, the Bot only receives @-Bot messages.
+> QQ Bot uses the official API v2 protocol, supporting C2C private chats and group @-Bot messages. In groups, the Bot only receives @-Bot messages. Supports streaming typewriter replies in C2C chats.
 
 
 ### Configuring DingTalk Integration
@@ -403,12 +452,30 @@ Each user can independently configure Feishu app credentials in their personal s
 3. Click "Scan to Pair" to generate a QR code
 4. Scan the QR code with WeChat to complete binding
 
-> WeChat messages are limited to 2000 characters; excess content is automatically chunked.
+> WeChat messages are limited to 2000 characters; excess content is automatically chunked. Images from the WeChat CDN are downloaded and AES-decrypted before being passed to the Agent.
 
 
+### Configuring Discord Integration
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and create an application
+2. Under the "Bot" tab, create a bot and copy its **Token**
+3. Under "OAuth2 → URL Generator", select the `bot` and (optionally) `applications.commands` scopes, pick the required permissions (Send Messages, Read Message History, Attach Files), and open the generated URL to invite the bot to your server
+4. In the DeepThink Web interface, under "Settings → IM Channels → Discord", fill in the Bot Token
+
+> Discord supports both guild (server) channels and DMs. Long messages are auto-split at 2000 chars; replies use a 500ms-throttled streaming-edit typewriter effect, and an ack Reaction is added when the Agent starts working.
+
+
+### Configuring WhatsApp Integration
+
+1. In the DeepThink Web interface, under "Settings → IM Channels → WhatsApp", enable the WhatsApp channel
+2. Click "Generate QR Code"
+3. Scan the QR code with WhatsApp on your phone (Settings → Linked Devices)
+4. Wait for the connection to establish
+
+> WhatsApp integration uses the community-maintained Baileys library (WhatsApp Web protocol). Login state is persisted with multi-file auth, so you only scan the QR on first launch. Media (image / video / audio / document) messages are downloaded to the workspace. See [`docs/channels/whatsapp.md`](docs/channels/whatsapp.md) for details and risk notes.
 ### IM Slash Commands
 
-In Feishu / Telegram / QQ / DingTalk / WeChat, messages starting with `/` are intercepted as slash commands (unknown commands fall back to being treated as normal messages):
+In Feishu / Telegram / QQ / DingTalk / WeChat / Discord / WhatsApp, messages starting with `/` are intercepted as slash commands (unknown commands fall back to being treated as normal messages):
 
 | Command | Alias | Purpose |
 |------|------|------|
@@ -440,17 +507,16 @@ The container image is based on `node:22-slim` and ships with the following tool
 |------|------|
 | AI / Agent | Claude Code CLI, Claude Agent SDK, MCP SDK |
 | Browser automation | Chromium, agent-browser |
-| Programming languages | Node.js 22, Python 3, uv / uvx |
+| Programming languages | Node.js 22, Python 3 (pip / venv), Go |
 | Build toolchain | build-essential, cmake, pkg-config |
 | Text search | ripgrep (`rg`), fd-find (`fd`) |
 | Multimedia processing | ffmpeg, ImageMagick, Ghostscript, Graphviz |
 | Document conversion | Pandoc, poppler-utils (PDF tools) |
 | Database clients | SQLite3, MySQL Client, PostgreSQL Client, Redis Tools |
-| Network tools | curl, wget, openssh-client, dnsutils |
+| Network tools | curl, wget, openssh-client, dnsutils, iputils-ping, lsof |
 | Feishu CLI | feishu-cli (prebuilt binary + Skills) |
 | Shell | Zsh + Oh My Zsh (ys theme) |
-| Others | git, jq, tree, shellcheck, zip/unzip |
-
+| Others | git, jq, tree, file, shellcheck, zip/unzip, rsync, bc, patch |
 ## Technical Architecture
 
 ### Architecture Diagram
@@ -468,6 +534,8 @@ flowchart TD
         QQ("QQ<br/>(Bot API v2)")
         DingTalk("钉钉<br/>(Stream 长连接)")
         WeChat("微信<br/>(iLink Bot API)")
+        Discord("Discord<br/>(Gateway WS)")
+        WhatsApp("WhatsApp<br/>(Baileys)")
         Web("Web 界面<br/>(React 19 SPA)")
     end
 
@@ -478,21 +546,25 @@ flowchart TD
         WS["WebSocket Server<br/>(流式推送 + 终端)"]
         Auth["认证 & RBAC<br/>(bcrypt + HMAC Cookie)"]
         Config["配置管理<br/>(AES-256-GCM 加密)"]
-        ProviderPool["提供商池<br/>(Round-Robin / Weighted / Failover)"]
+        ProviderPool["提供商池 / 引擎<br/>(Claude/AtomCode/Codex/OpenCode)"]
         Billing["计费引擎<br/>(Plan + Wallet + Quota)"]
+        Harness["Harness / Loop<br/>(版本化 + 自主循环)"]
+        PaaS["PaaS / Marketplace<br/>(Agent 即服务)"]
     end
 
     subgraph 执行层
         Host["宿主机进程<br/>(Claude Code CLI)"]
         Container["Docker 容器<br/>(agent-runner)"]
+        Sandbox["沙箱<br/>(代码执行 + 浏览器)"]
     end
 
     subgraph Agent["Agent 运行时"]
         SDK["Claude Agent SDK<br/>(query 循环)"]
-        MCP["MCP Server<br/>(12 个工具)"]
-        Stream["流式事件<br/>(14 种类型)"]
+        MCP["MCP Server<br/>(27 个工具)"]
+        Stream["流式事件<br/>(30+ 种类型)"]
     end
 
+    KB[("知识库<br/>(FTS5 + 向量)")]
     DB[("SQLite<br/>(WAL 模式)")]
     IPC["IPC 文件通道<br/>(原子读写)"]
     Memory["记忆系统<br/>(CLAUDE.md + memory/)"]
@@ -502,19 +574,26 @@ flowchart TD
     QQ --> Router
     DingTalk --> Router
     WeChat --> Router
+    Discord --> Router
+    WhatsApp --> Router
     Web --> Router
 
     Router --> Queue
     Queue --> ProviderPool
     ProviderPool --> Host
     ProviderPool --> Container
+    ProviderPool --> Sandbox
     Scheduler --> Queue
     Billing --> Queue
+    Harness --> ProviderPool
+    PaaS --> ProviderPool
 
     Host --> SDK
     Container --> SDK
+    Sandbox --> SDK
     SDK --> MCP
     SDK --> Stream
+    SDK --> KB
 
     MCP --> IPC
     IPC --> Router
@@ -527,17 +606,16 @@ flowchart TD
     Billing --> DB
     SDK --> Memory
 
-    class Feishu,Telegram,QQ,DingTalk,WeChat,Web fe
-    class Router,Queue,Scheduler,WS,Auth,Config,ProviderPool,Billing svc
-    class DB db
-    class Host,Container faas
+    class Feishu,Telegram,QQ,DingTalk,WeChat,Discord,WhatsApp,Web fe
+    class Router,Queue,Scheduler,WS,Auth,Config,ProviderPool,Billing,Harness,PaaS svc
+    class DB,KB db
+    class Host,Container,Sandbox faas
     class SDK,MCP,Stream faas
     class IPC cfg
     class Memory cfg
 ```
 
-**Data flow**: Messages enter the main process from the access layer (6 channels), are deduplicated and routed, then dispatched to the concurrency queue. The queue selects an API key via the provider pool and starts a host process or Docker container. The agent-runner inside the container calls the Claude Agent SDK's `query()` function. Streaming events (14 types: thinking, text, tool calls, etc.) are passed back to the main process via the stdout marker protocol, then broadcast to Web clients via WebSocket or replied to each channel via IM APIs. The MCP Server provides 12 tools over a file-based IPC channel, enabling bidirectional communication between the Agent and the main process. The billing engine checks quota and balance before each request.
-
+**Data flow**: Messages enter the main process from the access layer (8 channels), are deduplicated and routed, then dispatched to the concurrency queue. The queue selects an API key / engine via the provider pool and starts a host process, Docker container, or sandbox. The agent-runner inside the container calls the Claude Agent SDK's `query()` function. Streaming events (30+ types: thinking, text, tool calls, hooks, tasks, memory recall, loops, usage, etc.) are passed back to the main process via the stdout marker protocol, then broadcast to Web clients via WebSocket or replied to each channel via IM APIs. The MCP Server provides 27 tools over a file-based IPC channel, enabling bidirectional communication between the Agent and the main process. The billing engine checks quota and balance before each request. The Harness/Loop layer snapshots and evolves the Agent's configuration and drives autonomous task loops.
 ### Tech Stack
 
 | Layer | Technologies |
@@ -545,9 +623,13 @@ flowchart TD
 | **Backend** | Node.js 22 · TypeScript 5.9 · Hono · better-sqlite3 (WAL) · ws · node-pty · Pino · Zod 4 |
 | **Frontend** | React 19 · Vite 6 · Zustand 5 · Tailwind CSS 4 · shadcn/ui · Radix UI · Lucide Icons · react-markdown · mermaid · recharts · @dnd-kit · xterm.js · @tanstack/react-virtual · PWA |
 | **Agent** | Claude Agent SDK · Claude Code CLI · MCP SDK · IPC file channels |
-| **Container** | Docker (node:22-slim) · Chromium · agent-browser · Python · 40+ preinstalled tools |
-| **Security** | bcrypt (12 rounds) · AES-256-GCM · HMAC Cookie · RBAC · path-traversal protection · mount whitelist |
-| **IM integrations** | @larksuiteoapi/node-sdk (Feishu) · grammY (Telegram) · QQ Bot API v2 · dingtalk-stream (DingTalk) · iLink Bot API (WeChat) |
+| **Engines** | Claude Code · AtomCode · Codex · OpenCode (pluggable, daemon-managed) |
+| **PaaS** | DB-backed Agent definitions · template marketplace · per-user quotas · admin review |
+| **Harness / Loop** | Versioned harness manifests · autonomous task loops · per-iteration SDK review |
+| **Sandbox** | Docker + seccomp + cgroups · Chromium CDP browser automation |
+| **Container** | Docker (node:22-slim) · Chromium · agent-browser · Python · Go · 40+ preinstalled tools |
+| **Security** | bcrypt (12 rounds) · AES-256-GCM · HMAC Cookie · RBAC · path-traversal protection · mount whitelist · cross-group ACL |
+| **IM integrations** | @larksuiteoapi/node-sdk (Feishu) · grammY (Telegram) · QQ Bot API v2 · dingtalk-stream (DingTalk) · iLink Bot API (WeChat) · discord.js (Discord) · Baileys (WhatsApp) |
 
 ### Directory Structure
 
@@ -558,49 +640,66 @@ deepthink/
 ├── src/                          # Backend source
 │   ├── index.ts                  #   Entry: message polling, IPC listening, container lifecycle
 │   ├── web.ts                    #   Hono app, WebSocket, static files
-│   ├── routes/                   #   17 route modules (auth / groups / files / config / monitor /
+│   ├── routes/                   #   28 route modules (auth / groups / files / config / monitor /
 │   │                             #   memory / tasks / skills / admin / browse / agents /
-│   │                             #   mcp-servers / billing / bug-report / usage /
-│   │                             #   workspace-config / agent-definitions)
+│   │                             #   mcp-servers / plugins / usage / billing / bug-report /
+│   │                             #   chat-trace / harness / loops / sandbox /
+│   │                             #   agent-definitions / workspace-config / paas-admin /
+│   │                             #   paas-agents / paas-embedding / paas-knowledge-bases /
+│   │                             #   paas-marketplace / paas-share)
 │   ├── feishu.ts                 #   Feishu connection factory (WebSocket long connection)
-│   ├── feishu-streaming-card.ts  #   Feishu streaming card (typewriter effect + three-tier fallback)
+│   ├── feishu-streaming-card.ts  #   Feishu streaming card (typewriter + three-tier fallback)
 │   ├── telegram.ts               #   Telegram connection factory (Bot API)
 │   ├── qq.ts                     #   QQ connection factory (Bot API v2 WebSocket)
-│   ├── dingtalk.ts               #   DingTalk connection factory (Stream protocol long connection)
+│   ├── qq-streaming-card.ts      #   QQ streaming card (stream_messages typewriter)
+│   ├── dingtalk.ts               #   DingTalk connection factory (Stream protocol)
 │   ├── dingtalk-streaming-card.ts#   DingTalk AI Card streaming controller
 │   ├── wechat.ts                 #   WeChat connection factory (iLink Bot API)
-│   ├── im-manager.ts             #   IM connection pool (per-user five-channel connection management)
-│   ├── im-downloader.ts          #   IM file download utility (saves to workspace downloads/)
+│   ├── whatsapp.ts               #   WhatsApp connection factory (Baileys)
+│   ├── discord.ts                #   Discord connection factory (discord.js Gateway)
+│   ├── discord-streaming-edit.ts #   Discord streaming-edit controller
+│   ├── im-manager.ts             #   IM connection pool (per-user seven-channel management)
+│   ├── im-safety/                #   IM safety primitives (processing lock + stale detector)
 │   ├── container-runner.ts       #   Docker / host process management
 │   ├── group-queue.ts            #   Concurrency control queue
 │   ├── provider-pool.ts          #   Multi-provider load balancing
+│   ├── atomcode-daemon-manager.ts#   Pluggable engine daemon lifecycle
+│   ├── harness-*.ts              #   Harness Engineering (registry / eval / meta-loop)
+│   ├── loop-orchestrator.ts      #   Loop Engineering orchestrator
+│   ├── supervisor.ts             #   Supervisor SubAgent (intent triage)
+│   ├── plugin-*.ts               #   Claude Code Plugins (catalog / importer / materializer)
+│   ├── embedding.ts              #   KB vector embeddings
+│   ├── cross-group-acl.ts        #   Cross-group IPC authorization
+│   ├── office-converter.ts       #   Office → PDF preview + text extraction
+│   ├── i18n-languages.ts        #   29-language i18n
 │   ├── billing.ts                #   Billing engine (plans, wallet, quota)
 │   ├── runtime-config.ts         #   AES-256-GCM encrypted config
 │   ├── task-scheduler.ts         #   Scheduled-task scheduler
 │   ├── script-runner.ts          #   Script-task executor
 │   ├── file-manager.ts           #   File security (path-traversal protection)
 │   ├── mount-security.ts         #   Mount whitelist / blacklist
-│   └── db.ts                     #   SQLite data layer (Schema v1→v33)
+│   └── db.ts                     #   SQLite data layer (Schema v1→v51)
 │
 ├── web/                          # Frontend (React + Vite)
 │   └── src/
-│       ├── pages/                #   17 pages
+│       ├── pages/                #   26 pages
 │       ├── components/           #   UI components (chat / settings / billing / monitor / ...)
-│       ├── stores/               #   14 Zustand stores
+│       ├── stores/               #   21 Zustand stores
 │       └── api/client.ts         #   Unified API client
 │
 ├── container/                    # Agent container
 │   ├── Dockerfile                #   Container image definition
 │   ├── build.sh                  #   Build script
+│   ├── sandbox/                  #   Hardened sandbox image (code exec + browser)
 │   ├── agent-runner/             #   In-container execution engine
 │   │   └── src/
 │   │       ├── index.ts          #     Agent main loop + streaming events
-│   │       └── mcp-tools.ts      #     12 MCP tools
+│   │       └── mcp-tools.ts       #     27 MCP tools
 │   └── skills/                   #   Project-level Skills
 │
 ├── shared/                       # Cross-project shared type definitions
-│   ├── stream-event.ts           #   StreamEvent type single source of truth (14 event types)
-│   ├── channel-prefixes.ts       #   IM channel prefix mapping (5 channels)
+│   ├── stream-event.ts           #   StreamEvent type single source of truth (30+ types)
+│   ├── channel-prefixes.ts       #   IM channel prefix mapping (7 IM channels)
 │   └── image-detector.ts         #   Image MIME detection
 │
 ├── scripts/                      # Build helper scripts
@@ -612,10 +711,12 @@ deepthink/
 │   ├── mount-allowlist.json      #   Container mount whitelist
 │   └── global-claude-md.template.md # Global CLAUDE.md template
 │
+├── desktop/                      # Desktop Electron shell (macOS / Windows / Linux)
+│
 ├── data/                         # Runtime data (auto-created at startup)
 │   ├── db/messages.db            #   SQLite database (WAL mode)
 │   ├── groups/{folder}/          #   Session working directory (Agent read/write)
-│   │   ├── downloads/{channel}/  #     IM file downloads (feishu/telegram/qq/dingtalk, by date subdirectory)
+│   │   ├── downloads/{channel}/  #     IM file downloads (by date subdirectory)
 │   │   └── CLAUDE.md             #     Session-private memory
 │   ├── groups/user-global/{id}/  #   User global memory directory
 │   ├── sessions/{folder}/.claude/#   Claude session persistence
@@ -626,7 +727,6 @@ deepthink/
 │
 └── Makefile                      # Common commands
 ```
-
 ### Development Guide
 
 #### First-Time Install
@@ -664,21 +764,28 @@ make typecheck-agent-runner  # agent-runner only
 make format           # Format code with Prettier
 make format-check     # Check formatting only (for CI, no file modifications)
 make test             # Run constraint tests (vitest; required before/after refactoring)
-make sync-types       # Sync shared/ type definitions to each subproject (stream-event.ts, image-detector.ts)
+make sync-types       # Sync shared/ type definitions to each subproject (stream-event.ts, image-detector.ts, channel-prefixes.ts)
 make clean            # Clean all build artifacts (dist/, web/dist/, container/agent-runner/dist/)
 ```
 
 > After modifying `shared/stream-event.ts`, you must run `make sync-types` to sync to the three subprojects, otherwise types will be inconsistent. `make build` and `make typecheck` trigger the sync automatically.
-
 #### Production Deployment
 
 ```bash
 make start            # One-tap launch for production (foreground blocking, logs to terminal)
 make update-sdk       # Manually update the Claude Agent SDK in agent-runner + main service to the latest version
 make ensure-latest-sdk  # Auto-check before startup whether the SDK has a new version (update if so, skip otherwise; built into make start)
+make sandbox-build    # Build the hardened sandbox image deepthink-sandbox:latest (code execution + browser automation)
 ```
 
 For background running: `make start > /tmp/deepthink.log 2>&1 &`, then use `make logs` to stream logs, `make status` for process status, and `make stop` to stop the service.
+
+#### Admin Account Management
+
+```bash
+make admin-create     # Create an admin account (USERNAME=xxx [PASSWORD=xxx]; omit PASSWORD for interactive input)
+make admin-passwd      # Change an admin's password (USERNAME=xxx [PASSWORD=xxx]; clears all of that account's old login sessions)
+```
 
 #### Data Management
 
@@ -686,6 +793,7 @@ For background running: `make start > /tmp/deepthink.log 2>&1 &`, then use `make
 make reset-init       # Reset to first-install state (clears database, config, workspaces, memory, sessions, IPC, logs)
 make backup           # Back up runtime data to deepthink-backup-{date}.tar.gz
 make restore          # Restore from the latest backup (or make restore FILE=xxx.tar.gz to specify a file)
+make migrate-data     # Migrate an in-repo legacy ./data directory out to the external DATA_DIR
 ```
 
 > `make reset-init` clears the entire `data/` directory — use only for testing the setup wizard or starting completely fresh. Use with caution in production.
@@ -697,6 +805,7 @@ Package DeepThink as a standalone executable app (macOS `.dmg` / Windows `.exe` 
 ```bash
 make desktop-build      # Compile the desktop Electron shell (includes build + sync-types + npm install)
 make desktop-fetch-node # Fetch the Node.js binary for the current platform into desktop/dev-resources/node (required before first packaging)
+make desktop-rebuild-natives # Recompile native modules (better-sqlite3 etc.) against the bundled Node ABI to avoid runtime ABI mismatch
 make desktop-dev        # Desktop dev mode: launch the Electron shell loading the local backend
 make desktop-pack-mac   # Package macOS .dmg (arm64 + x64, must run on macOS)
 make desktop-pack-win   # Package Windows .exe (must run on a Windows runner)
@@ -730,37 +839,11 @@ make release VERSION=v1.0.0
 make release-delete VERSION=v1.0.0
 ```
 
-`make release` behavior:
-- Checks that the `gh` CLI is installed and authenticated
-- Checks that the corresponding tag exists locally
-- Checks that `desktop/release/` contains artifacts
-- If `docs/release-notes/v1.0.0.md` exists, uses it as release notes; otherwise uses `--generate-notes` to auto-generate from commit history
-- Uploads all files under `desktop/release/` as release assets
-- Marks the release as `--latest` (affects `electron-updater` update checks)
-
 **Option 2: GitHub Actions fully automated (`.github/workflows/release.yml`)**
 
-Triggered automatically when a `v*` tag is pushed; three platforms build in parallel and a Release is auto-created:
+Triggered automatically when a `v*` tag is pushed; three platforms build in parallel and a Release is auto-created. You can also trigger it manually via `workflow_dispatch` on the GitHub repo's Actions page. To customize release notes, write the content to `docs/release-notes/v1.0.0.md` before pushing the tag.
 
-```bash
-# 1. Create and push a tag (workflow triggers automatically)
-git tag -a v1.0.0 -m "Release v1.0.0"
-git push origin v1.0.0
-
-# 2. Watch the build progress on the GitHub Actions page
-#    https://github.com/AIGeniusInstitute/deep-think/actions
-
-# 3. The Release is published automatically when the build completes; assets include:
-#    - macOS: DeepThink-1.0.0-arm64.dmg / DeepThink-1.0.0.dmg + .blockmap
-#    - Windows: DeepThink-Setup-1.0.0.exe + .blockmap
-#    - Linux: DeepThink-1.0.0.AppImage / .deb
-```
-
-You can also trigger it manually via `workflow_dispatch` on the GitHub repo's Actions page (passing the `version` parameter, matching an existing tag).
-
-> The workflow uses `softprops/action-gh-release@v2` with `generate_release_notes: true` to auto-generate release notes from commits. To customize, write the content to `docs/release-notes/v1.0.0.md` before pushing the tag — manual `make release` will prefer that file (the Actions workflow currently uses auto-generation).
-
-#### Help
+#### Help & Ports
 
 ```bash
 make help    # List all available make commands with descriptions
@@ -780,24 +863,7 @@ WEB_PORT=8080 make start
 # Open http://localhost:8080
 ```
 
-**Dev mode** (`make dev`): The frontend Vite dev server (`5173`) and backend (`9898`) run separately; access `5173` during development.
-
-Change the backend port:
-
-```bash
-# Backend on 8080 (via env var)
-WEB_PORT=8080 make dev-backend
-
-# The frontend must update its proxy target, otherwise API requests go to the default 9898
-VITE_API_PROXY_TARGET=http://127.0.0.1:8080 VITE_WS_PROXY_TARGET=ws://127.0.0.1:8080 make dev-web
-```
-
-Change the frontend port via Vite CLI arguments:
-
-```bash
-cd web && npx vite --port 3001
-```
-
+**Dev mode** (`make dev`): The frontend Vite dev server (`5173`) and backend (`9898`) run separately; access `5173` during development. To point the frontend proxy at a non-default backend, set `VITE_API_PROXY_TARGET` and `VITE_WS_PROXY_TARGET`.
 ### Environment Variables
 
 The following are optional overrides. We recommend using the Web setup wizard to configure the Claude API and IM credentials (encrypted storage).
@@ -808,13 +874,20 @@ The following are optional overrides. We recommend using the Web setup wizard to
 | `ASSISTANT_NAME` | `DeepThink` | Assistant display name |
 | `CONTAINER_IMAGE` | `deepthink-agent:latest` | Agent container image |
 | `CONTAINER_TIMEOUT` | `1800000` (30min) | Container hard timeout (overridable via Web settings) |
+| `CONTAINER_MAX_OUTPUT_SIZE` | `10485760` (10MB) | Max output size per run (overridable via Web settings) |
 | `IDLE_TIMEOUT` | `1800000` (30min) | Container idle keepalive (overridable via Web settings) |
 | `MAX_CONCURRENT_CONTAINERS` | `20` | Max concurrent containers (overridable via Web settings) |
 | `MAX_CONCURRENT_HOST_PROCESSES` | `5` | Host-process concurrency cap (overridable via Web settings) |
+| `MAX_FILE_SIZE_MB` | `50` | File-size limit (MB) shared by Web uploads and IM downloads (overridable via Web settings) |
+| `MAX_LOGIN_ATTEMPTS` | `5` | Failed-login lockout threshold (overridable via Web settings) |
+| `LOGIN_LOCKOUT_MINUTES` | `15` | Lockout duration in minutes (overridable via Web settings) |
+| `AUTO_COMPACT_WINDOW` | `0` (disabled) | SDK auto-compaction trigger point in tokens; 0 = off (overridable via Web settings) |
+| `TASK_BACKFILL_GRACE_MS` | `300000` (5min) | Late-tolerance window for scheduled tasks after restart (overridable via Web settings) |
 | `TRUST_PROXY` | `false` | Trust the `X-Forwarded-For` header from reverse proxies |
+| `CORS_ALLOWED_ORIGINS` | empty (localhost only) | Allowed origins for public-domain access; required for WebSocket upgrade defense (CSWSH). Comma-separated domains or `*` |
 | `TZ` | System timezone | Timezone for scheduled tasks |
 
-> More runtime parameters (container timeout, concurrency limits, login protection, billing settings, etc.) can be configured under "Settings → System Settings" in the Web interface — no environment variables needed.
+> More runtime parameters (container timeout, concurrency limits, login protection, billing settings, etc.) can be configured under "Settings → System Settings" in the Web interface — no environment variables needed. `CORS_ALLOWED_ORIGINS` can be written to the project-root `.env` (auto-loaded by `src/load-env.ts` on startup).
 
 ### Admin Password Recovery
 
@@ -830,7 +903,6 @@ make reset-init
 # Or manually:
 rm -rf data store groups
 ```
-
 ## Contributions
 
 Issues and Pull Requests are welcome!
@@ -855,13 +927,14 @@ Commit messages use Simplified Chinese, in the format: `type: description`
 
 ### Project Structure
 
-The project contains three independent Node.js projects, each with its own `package.json` and `tsconfig.json`:
+The project contains four independent Node.js projects, each with its own `package.json` and `tsconfig.json`:
 
 | Project | Directory | Purpose |
 |------|------|------|
-| Main service | `/` (root) | Backend service (17 route modules) |
-| Web frontend | `web/` | React SPA (17 pages, 14 stores) |
+| Main service | `/` (root) | Backend service (28 route modules) |
+| Web frontend | `web/` | React SPA (26 pages, 21 stores) |
 | Agent Runner | `container/agent-runner/` | In-container / on-host execution engine |
+| Desktop shell | `desktop/` | Electron packaging for macOS / Windows / Linux |
 
 Additionally, the `shared/` directory holds cross-project shared type definitions (StreamEvent, Channel Prefixes, Image Detector), synced to each subproject at build time via `make sync-types`.
 
@@ -933,3 +1006,4 @@ Additionally, the `shared/` directory holds cross-project shared type definition
 | 微信                                                    | 支付宝                                                  |
 | ------------------------------------------------------- | ------------------------------------------------------- |
 | <img src="static/wechat.jpeg" width="300" height="350"> | <img src="static/alipay.jpeg" width="300" height="350"> |
+

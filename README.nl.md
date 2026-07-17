@@ -14,7 +14,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge" alt="License" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" /></a>
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <a href="https://github.com/AIGeniusInstitute/deep-think/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
+  <a href="https://github.com/AIGeniusInstitute/deepthink/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
 </p>
 
 ---
@@ -38,12 +38,16 @@ DeepThink, een enterprise-grade platform voor zelfevoluerende superintelligentie
 
 ### Belangrijkste kenmerken
 
-- **Native Claude Code-engine** — gebouwd op Claude Agent SDK, interne runtime is de volledige Claude Code CLI, erft alle mogelijkheden
+- **Native Claude Code-engine** — gebouwd op de Claude Agent SDK, met de volledige Claude Code CLI-runtime eronder, erft al diens mogelijkheden
+- **Harness- & Loop Engineering** — versiebeheerde harness-manifesten (system prompt / subagents / tools / skills) met snapshot / diff / eval / promote / rollback, plus langlopende autonome taak-loops met per-iteratie-review en falings-herinjectie
+- **Agent-as-a-Service (PaaS)** — DB-backed Agent-definities aanmaken, versioneren, mounten, delen en installeren over tenants, met per-gebruiker quota's, admin-review en een publiceerbare template-marketplace
 - **Multi-user isolatie** — per-gebruiker workspace, per-gebruiker IM-kanalen, RBAC-rechtenysteem, uitnodigingscode-registratie, auditlog
-- **Zes-kanaal routing** — Feishu WebSocket, Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, webinterface
-- **Multi-provider load balancing** — meerdere Claude API-providers, drie strategieën (round-robin / weighted / failover) met automatische health-check
+- **Acht-kanaal uniforme routing** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp en de webinterface — allemaal uniform gerouteerd
+- **Multi-engine & multi-provider** — pluggable code-agent-engines (Claude Code / AtomCode / Codex / OpenCode) en meerdere Claude API-providers met drie load-balancing-strategieën (round-robin / weighted / failover), automatische health-detectie
+- **Sandboxed code-executie** — Docker + seccomp + cgroups-verhardte sandbox voor Python / Node / shell-code-executie en Chromium CDP-browserautomatisering
 - **Billing en gebruikstatistieken** — volledig billing-systeem (abonnement, wallet, inwisselcodes), per-model token-tracking met grafieken
-- **Mobiele PWA** — mobielvriendelijk, installatie op thuisscherm met één klik, zowel iOS als Android
+- **Mobiele PWA** — diep geoptimaliseerd voor mobiel, installatie op thuisscherm met één tik, iOS / Android aangepast
+- **Geïnternationaliseerd** — 29 UI-talen met native endoniemen en RTL-onsteun; de Agent antwoordt in de door de gebruiker gekozen taal
 
 ## Snel aan de slag
 
@@ -51,7 +55,7 @@ DeepThink, een enterprise-grade platform voor zelfevoluerende superintelligentie
 
 **Vereist**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (voor container-modus; niet nodig voor admin host-modus), Claude API-sleutel (officiële Anthropic of compatibele relay-service).
 
-**Optioneel**: Feishu enterprise-app-referenties, Telegram Bot Token, QQ Bot-referenties, DingTalk-referenties, WeChat iLink-token — alleen als IM-integratie nodig is.
+**Optioneel**: Feishu enterprise-app-referenties, Telegram Bot Token, QQ Bot-referenties, DingTalk-referenties, WeChat iLink-token, Discord Bot Token, WhatsApp (QR-scan bij eerste opstart) — alleen als IM-integratie nodig is.
 
 > Claude Code CLI hoeft niet handmatig te worden geïnstalleerd — de projectafhankelijkheid Claude Agent SDK bevat de volledige CLI-runtime en wordt automatisch geïnstalleerd bij de eerste `make start`.
 
@@ -59,7 +63,7 @@ DeepThink, een enterprise-grade platform voor zelfevoluerende superintelligentie
 
 ```bash
 # 1. Repository klonen
-git clone https://github.com/AIGeniusInstitute/deep-think.git
+git clone https://github.com/AIGeniusInstitute/deepthink.git
 cd deepthink
 
 # 2. Opstarten met één commando (eerste keer installeert afhankelijkheden + compileert)
@@ -86,13 +90,14 @@ Na registratie van een nieuwe gebruiker wordt de hoofd-workspace in container-mo
 </p>
 
 
-DeepThink bestaat uit drie onafhankelijke Node.js-projecten:
+DeepThink bestaat uit vier onafhankelijke Node.js-projecten:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): berichtenrouter (2s polling + ontdubbeling), gelijktijdige wachtrij (maximaal 20 containers + 5 host-processen), taakplanner (cron / interval / once), WebSocket-server voor real-time streaming en terminal, bcrypt + HMAC Cookie-authenticatie, RBAC, AES-256-GCM-versleutelde configuratie. Gegevens in SQLite (WAL-modus, schema v1→v33).
-- **Frontend** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, react-markdown, mermaid, recharts, xterm.js, mobiele PWA.
-- **Agent Runner** (`container/agent-runner/`): uitvoerings-engine in Docker-container of als host-proces. Roept `query()` van Claude Agent SDK aan, emitteert 14 soorten StreamEvent en biedt 12 MCP-tools aan het ouderproces via bestands-IPC met atomische schrijfoperaties.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): berichtenrouter (2s polling + ontdubbeling), gelijktijdige wachtrij (maximaal 20 containers + 5 host-processen), taakplanner (cron / interval / once), WebSocket-server voor real-time streaming en terminal, bcrypt + HMAC Cookie-authenticatie, RBAC, AES-256-GCM-versleutelde configuratie. SQLite-persistentie (WAL-modus, schema v1→v51). Omvat ook de Harness / Loop Engineering-, Agent-as-a-Service (PaaS)-, Sandbox- en Claude Code Plugins-lagen.
+- **Frontend** (`web/`): React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA, met react-markdown, mermaid, recharts, xterm.js en een mobiele PWA.
+- **Agent Runner** (`container/agent-runner/`): de executie-engine die in een Docker-container of als host-proces draait; roept `query()` van de Claude Agent SDK aan, emitteert 30+ soorten StreamEvent via stdout, en biedt 27 MCP-tools aan het hoofdproces via bestands-IPC met atomische schrijfoperaties.
+- **Desktop** (`desktop/`): een Electron-shell die een standalone app verpakt voor macOS / Windows / Linux.
 
-Zes IM-kanalen komen de router binnen, worden ontdubbeld en in de wachtrij geplaatst, via ProviderPool wordt een API-sleutel gekozen en een container of host-proces gestart. Streaming-events gaan via WebSocket naar web-clients of via IM-API terug naar de kanalen.
+De acht IM-kanalen (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, web) komen de router binnen, worden ontdubbeld en in de wachtrij geplaatst; via de provider-pool wordt een API-sleutel / engine gekozen en een container, host-proces of sandbox gestart. Streaming-events worden via WebSocket naar web-clients gestuurd of via IM-API's naar elk kanaal teruggestuurd.
 
 ## Volledige documentatie
 

@@ -14,7 +14,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge" alt="License" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" /></a>
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <a href="https://github.com/AIGeniusInstitute/deep-think/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
+  <a href="https://github.com/AIGeniusInstitute/deepthink/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
 </p>
 
 ---
@@ -39,11 +39,15 @@ DeepThink, একটি এন্টারপ্রাইজ-গ্রেড স
 ### মূল বৈশিষ্ট্য
 
 - **স্থানীয়ভাবে Claude Code চালিত** — Claude Agent SDK-র উপর ভিত্তি, অন্তর্নিহিত রানটাইম সম্পূর্ণ Claude Code CLI, সব ক্ষমতা উত্তরাধিকারে পায়
+- **Harness ও Loop Engineering** — ভার্সনড হার্নেস ম্যানিফেস্ট (সিস্টেম প্রম্পট / সাবএজেন্ট / টুল / স্কিল) স্ন্যাপশট / ডিফ / ইভ্যাল / প্রমোট / রোলব্যাক সহ, এবং প্রতি-ইটারেশন রিভিউ ও ব্যর্থতা পুনঃইনজেকশনসহ দীর্ঘকালীন স্বায়ত্ত টাস্ক লুপ
+- **Agent-as-a-Service (PaaS)** — DB-ব্যাকড Agent সংজ্ঞা তৈরি, ভার্সন, মাউন্ট, শেয়ার ও ইনস্টল, প্রতি-ইউজার কোটা, অ্যাডমিন রিভিউ, এবং প্রকাশযোগ্য টেমপ্লেট মার্কেটপ্লেস সহ
 - **মাল্টি-ইউজার আইসোলেশন** — প্রতি-ইউজার ওয়ার্কস্পেস, প্রতি-ইউজার IM চ্যানেল, RBAC অনুমতি ব্যবস্থা, আমন্ত্রণ কোড নিবন্ধন, অডিট লগ
-- **ছয় চ্যানেলের একীভূত রাউটিং** — Feishu WebSocket, Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, Web ইন্টারফেস
-- **মাল্টি-প্রোভাইডার লোড ব্যালেন্সিং** — একাধিক Claude API প্রোভাইডার, তিনটি কৌশল (round-robin / weighted / failover), স্বয়ংক্রিয় হেলথ চেক
+- **আট চ্যানেলের একীভূত রাউটিং** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, এবং Web ইন্টারফেস — সবই অভিন্নভাবে রাউট হয়
+- **মাল্টি-ইঞ্জিন ও মাল্টি-প্রোভাইডার** — প্লাগেবল কোড-এজেন্ট ইঞ্জিন (Claude Code / AtomCode / Codex / OpenCode) এবং একাধিক Claude API প্রোভাইডার তিনটি লোড-ব্যালেন্সিং কৌশল সহ (round-robin / weighted / failover), স্বয়ংক্রিয় হেলথ ডিটেকশন
+- **স্যান্ডবক্সড কোড এক্সিকিউশন** — Python / Node / shell কোড এক্সিকিউশন ও Chromium CDP ব্রাউজার অটোমেশনের জন্য Docker + seccomp + cgroups হার্ডেনড স্যান্ডবক্স
 - **বিলিং ও ব্যবহার পরিসংখ্যা** — সম্পূর্ণ বিলিং সিস্টেম (সাবস্ক্রিপশন প্ল্যান, ওয়ালেট ব্যালেন্স, রিডিম কোড), প্রতি-মডেল টোকেন ট্র্যাকিং ও চার্ট ভিজ্যুয়ালাইজেশন
-- **মোবাইল PWA** — মোবাইলের জন্য গভীরভাবে অপ্টিমাইজড, ডেস্কটপে এক-ক্লিক ইনস্টল, iOS / Android উভয়ই অভিযোজিত
+- **মোবাইল PWA** — মোবাইলের জন্য গভীরভাবে অপ্টিমাইজড, হোম স্ক্রিনে এক-ট্যাপ ইনস্টল, iOS / Android উভয়ই অভিযোজিত
+- **ইন্টারন্যাশনালাইজড** — ২৯টি UI ভাষা নেটিভ এন্ডোনিম ও RTL সমর্থন সহ; Agent ব্যবহারকারীর নির্বাচিত ভাষায় উত্তর দেয়
 
 ## দ্রুত শুরু
 
@@ -51,7 +55,7 @@ DeepThink, একটি এন্টারপ্রাইজ-গ্রেড স
 
 **বাধ্যতামূলক**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (কন্টেইনার মোডের জন্য; admin শুধু হোস্ট মোডে এটি প্রয়োজন করে না), এবং Claude API কী (Anthropic অফিসিয়াল বা সামঞ্জস্যপূর্ণ রিলে পরিষেবা)।
 
-**ঐচ্ছিক**: Feishu এন্টারপ্রাইজ অ্যাপ ক্রেডেনশিয়াল, Telegram Bot Token, QQ Bot ক্রেডেনশিয়াল, DingTalk ক্রেডেনশিয়াল, WeChat iLink টোকেন — শুধু যদি আপনি IM ইন্টিগ্রেশন চান।
+**ঐচ্ছিক**: Feishu এন্টারপ্রাইজ অ্যাপ ক্রেডেনশিয়াল, Telegram Bot Token, QQ Bot ক্রেডেনশিয়াল, DingTalk ক্রেডেনশিয়াল, WeChat iLink টোকেন, Discord Bot Token, WhatsApp (প্রথম চালুকালে QR স্ক্যান) — শুধু যদি আপনি IM ইন্টিগ্রেশন চান।
 
 > Claude Code CLI ম্যানুয়ালি ইনস্টল করার প্রয়োজন নেই — প্রোজেক্টের Claude Agent SDK নির্ভরতায় সম্পূর্ণ CLI রানটাইম অন্তর্ভুক্ত, `make start` প্রথমবার চালানোর সময় স্বয়ংক্রিয়ভাবে ইনস্টল হয়।
 
@@ -59,7 +63,7 @@ DeepThink, একটি এন্টারপ্রাইজ-গ্রেড স
 
 ```bash
 # 1. রিপোজিটরি ক্লোন করুন
-git clone https://github.com/AIGeniusInstitute/deep-think.git
+git clone https://github.com/AIGeniusInstitute/deepthink.git
 cd deepthink
 
 # 2. এক-কমান্ড শুরু (প্রথমবার নির্ভরতা ইনস্টল + কম্পাইল)
@@ -86,13 +90,14 @@ admin ব্যবহারকারী ডিফল্টভাবে হোস
 </p>
 
 
-DeepThink তিনটি স্বাধীন Node.js প্রোজেক্ট নিয়ে গঠিত:
+DeepThink চারটি স্বাধীন Node.js প্রোজেক্ট নিয়ে গঠিত:
 
-- **ব্যাকএন্ড** (Node.js 22 + TypeScript 5.9 + Hono): প্রধান পরিষেবা যাতে মেসেজ রাউটার (2s পোলিং + ডিডুপ), কনকারেন্সি কিউ (সর্বোচ্চ 20 কন্টেইনার + 5 হোস্ট প্রসেস), টাস্ক শিডিউলার (cron / interval / once), রিয়েল-টাইম স্ট্রিমিং ও টার্মিনালের জন্য WebSocket সার্ভার, bcrypt + HMAC Cookie অথেন্টিকেশন, RBAC, এবং AES-256-GCM এনক্রিপ্টেড কনফিগ ম্যানেজমেন্ট অন্তর্ভুক্ত। ডেটা SQLite-এ (WAL মোড, স্কিমা v1→v33)।
-- **ফ্রন্টএন্ড** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, react-markdown, mermaid, recharts, xterm.js এবং মোবাইল PWA সহ।
-- **Agent Runner** (`container/agent-runner/`): এক্সিকিউশন ইঞ্জিন যা Docker কন্টেইনার বা হোস্ট প্রসেস হিসেবে চলে; Claude Agent SDK-এর `query()` ইনভোক করে, 14 ধরনের StreamEvent নির্গত করে, এবং অ্যাটমিক রাইটিং সহ ফাইল-ভিত্তিক IPC চ্যানেলের মাধ্যমে 12টি MCP টুল সরবরাহ করে।
+- **ব্যাকএন্ড** (Node.js 22 + TypeScript 5.9 + Hono): প্রধান পরিষেবা যাতে মেসেজ রাউটার (2s পোলিং + ডিডুপ), কনকারেন্সি কিউ (সর্বোচ্চ 20 কন্টেইনার + 5 হোস্ট প্রসেস), টাস্ক শিডিউলার (cron / interval / once), রিয়েল-টাইম স্ট্রিমিং ও টার্মিনালের জন্য WebSocket সার্ভার, bcrypt + HMAC Cookie অথেন্টিকেশন, RBAC, এবং AES-256-GCM এনক্রিপ্টেড কনফিগ ম্যানেজমেন্ট অন্তর্ভুক্ত। SQLite পারসিস্টেন্স (WAL মোড, স্কিমা v1→v51)। এতে Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox, এবং Claude Code Plugins লেয়ারও অন্তর্ভুক্ত।
+- **ফ্রন্টএন্ড** (`web/`): React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA, react-markdown, mermaid, recharts, xterm.js ও মোবাইল PWA সহ।
+- **Agent Runner** (`container/agent-runner/`): এক্সিকিউশন ইঞ্জিন যা Docker কন্টেইনার বা হোস্ট প্রসেস হিসেবে চলে; Claude Agent SDK-এর `query()` ইনভোক করে, stdout-এ 30+ ধরনের StreamEvent নির্গত করে, এবং অ্যাটমিক রাইটিং সহ ফাইল-ভিত্তিক IPC চ্যানেলের মাধ্যমে মূল প্রসেসে 27টি MCP টুল সরবরাহ করে।
+- **ডেস্কটপ** (`desktop/`): একটি Electron শেল যা macOS / Windows / Linux-এর জন্য স্ট্যান্ডঅ্যালোন অ্যাপ প্যাকেজ করে।
 
-ছয়টি IM চ্যানেল (Feishu, Telegram, QQ, DingTalk, WeChat, Web) রাউটারে প্রবেশ করে, ডিডুপ্লিকেট ও কিউতে রাউট হয়, যা ProviderPool-এর মাধ্যমে API কী নির্বাচন করে কন্টেইনার বা হোস্ট প্রসেস শুরু করে। স্ট্রিমিং ইভেন্টগুলি WebSocket দ্বারা Web ক্লায়েন্টে বা IM API-এর মাধ্যমে প্রতিটি চ্যানেলে ফেরত পাঠানো হয়।
+আটটি IM চ্যানেল (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) রাউটারে প্রবেশ করে, ডিডুপ্লিকেট ও কিউতে রাউট হয়, যা প্রোভাইডার পুলের মাধ্যমে একটি API কী / ইঞ্জিন নির্বাচন করে কন্টেইনার, হোস্ট প্রসেস বা স্যান্ডবক্স শুরু করে। স্ট্রিমিং ইভেন্টগুলি WebSocket দ্বারা Web ক্লায়েন্টে সম্প্রচারিত হয় বা IM API-এর মাধ্যমে প্রতিটি চ্যানেলে উত্তর দেওয়া হয়।
 
 ## সম্পূর্ণ ডকুমেন্টেশন
 

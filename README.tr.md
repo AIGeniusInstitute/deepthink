@@ -14,7 +14,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge" alt="License" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" /></a>
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <a href="https://github.com/AIGeniusInstitute/deep-think/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
+  <a href="https://github.com/AIGeniusInstitute/deepthink/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
 </p>
 
 ---
@@ -38,12 +38,16 @@ DeepThink, kurumsal düzeyde özerk Agent kendi-evrilen süper-zeka platformu; H
 
 ### Ana özellikler
 
-- **Yerel Claude Code motoru** — Claude Agent SDK tabanlı, iç runtime tam Claude Code CLI, tüm yetenekleri miras alır
-- **Çok kullanıcılı izolasyon** — kullanıcı başına workspace, kullanıcı başına IM kanalları, RBAC yetki sistemi, davet kodu kaydı, denetim günlüğü
-- **Altı kanal yönlendirme** — Feishu WebSocket, Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, web arayüzü
-- **Çok-sağlayıcı yük dengeleme** — birden fazla Claude API sağlayıcısı, üç strateji (round-robin / weighted / failover) otomatik sağlık kontrolü ile
-- **Faturalama ve kullanım istatistikleri** — tam faturalama sistemi (abonelik, cüzdan, kullanım kodları), model başına token takibi grafiklerle
-- **Mobil PWA** — mobil için optimize, tek tıkla ana ekrana kurulum, hem iOS hem Android desteği
+- **Yerel Claude Code tabanlı** — Claude Agent SDK üzerine inşa edilmiştir, altında tam Claude Code CLI runtime'ı yer alır ve tüm yeteneklerini miras alır
+- **Harness & Loop Engineering** — Sürümlü harness manifestleri (sistem promptu / sub-agent'lar / araçlar / yetenekler) ile snapshot / diff / eval / promote / geri alma; ayrıca her yinelemede inceleme ve hata enjeksiyonu içeren uzun süreli özerk görev döngüleri
+- **Agent-as-a-Service (PaaS)** — Veritabanı destekli Agent tanımlarını kiracılar arasında oluşturma, sürümlendirme, mount etme, paylaşma ve kurma; kullanıcı başına kota, admin incelemesi ve yayınlanabilir şablon pazarı
+- **Çok kullanıcılı izolasyon** — Kullanıcı başına workspace, kullanıcı başına IM kanalları, RBAC yetki sistemi, davet kodu kaydı ve denetim günlükleri
+- **Sekiz kanal birleşik yönlendirme** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp ve web arayüzü — hepsi tek tip yönlendirilir
+- **Çok motorlu ve çok sağlayıcılı** — Takılabilir kod-agent motorları (Claude Code / AtomCode / Codex / OpenCode) ve üç yük dengeleme stratejili (round-robin / weighted / failover) birden fazla Claude API sağlayıcısı, otomatik sağlık algılama
+- **Korumalı alanda kod yürütme** — Python / Node / shell kod yürütme ve Chromium CDP tarayıcı otomasyonu için Docker + seccomp + cgroups ile sertleştirilmiş sandbox
+- **Faturalama ve kullanım istatistikleri** — Tam faturalama sistemi (abonelik planları, cüzdan bakiyesi, kullanım kodları), model başına token kullanım takibi ve grafik görselleştirmeleri
+- **Mobil PWA** — Mobil için derinlemesine optimize, ana ekrana tek dokunuşla kurulum, iOS / Android uyumlu
+- **Uluslararası** — 29 UI dili, doğağınızla yazım ve RTL desteği; Agent kullanıcının seçtiği dilde yanıt verir
 
 ## Hızlı Başlangıç
 
@@ -51,7 +55,7 @@ DeepThink, kurumsal düzeyde özerk Agent kendi-evrilen süper-zeka platformu; H
 
 **Zorunlu**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (container modu için; admin host modu için gerekli değil), Claude API anahtarı (resmi Anthropic veya uyumlu relay servisi).
 
-**İsteğe bağlı**: Feishu kurumsal uygulama kimlik bilgileri, Telegram Bot Token, QQ Bot kimlik bilgileri, DingTalk kimlik bilgileri, WeChat iLink token — yalnızca IM entegrasyonu gerekliyse.
+**İsteğe bağlı**: Feishu kurumsal uygulama kimlik bilgileri, Telegram Bot Token, QQ Bot kimlik bilgileri, DingTalk kimlik bilgileri, WeChat iLink token, Discord Bot Token, WhatsApp (ilk başlatmada QR tarama) — yalnızca IM entegrasyonu gerekliyse.
 
 > Claude Code CLI'ı manuel olarak kurmanız gerekmez — projenin Claude Agent SDK bağımlılığı tam CLI runtime'ını içerir ve ilk `make start`'ta otomatik kurulur.
 
@@ -59,7 +63,7 @@ DeepThink, kurumsal düzeyde özerk Agent kendi-evrilen süper-zeka platformu; H
 
 ```bash
 # 1. Repoyu klonla
-git clone https://github.com/AIGeniusInstitute/deep-think.git
+git clone https://github.com/AIGeniusInstitute/deepthink.git
 cd deepthink
 
 # 2. Tek komutla başlat (ilk seferde bağımlılıkları kurar + derler)
@@ -86,13 +90,14 @@ Yeni kullanıcı kaydından sonra, container modunun ana workspace'i (`home-{use
 </p>
 
 
-DeepThink üç bağımsız Node.js projesinden oluşur:
+DeepThink dört bağımsız Node.js projesinden oluşur:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): mesaj yönlendirici (2s polling + yinelenenleri kaldırma), eşzamanlı kuyruk (en fazla 20 container + 5 host süreci), görev zamanlayıcı (cron / interval / once), gerçek zamanlı akış ve terminal için WebSocket sunucusu, bcrypt + HMAC Cookie kimlik doğrulama, RBAC, AES-256-GCM şifreli yapılandırma. Veriler SQLite (WAL modu, şema v1→v33).
-- **Frontend** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, react-markdown, mermaid, recharts, xterm.js, mobil PWA.
-- **Agent Runner** (`container/agent-runner/`): Docker container'ında veya host süreci olarak çalışan yürütme motoru. Claude Agent SDK'nın `query()` fonksiyonunu çağırır, 14 tür StreamEvent yayar ve atomik yazılı dosya IPC üzerinden 12 MCP aracını üst sürece sağlar.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): mesaj yönlendirici (2s polling + yinelenenleri kaldırma), eşzamanlı kuyruk (en fazla 20 container + 5 host süreci), görev zamanlayıcı (cron / interval / once), gerçek zamanlı akış ve terminal için WebSocket sunucusu, bcrypt + HMAC Cookie kimlik doğrulama, RBAC ve AES-256-GCM şifreli yapılandırma yönetimi. SQLite kalıcılığı (WAL modu, şema v1→v51). Ayrıca Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox ve Claude Code Plugins katmanlarını içerir.
+- **Frontend** (`web/`): React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA, react-markdown, mermaid, recharts, xterm.js ve mobil PWA.
+- **Agent Runner** (`container/agent-runner/`): Docker container'ında veya host süreci olarak çalışan yürütme motoru; Claude Agent SDK'nın `query()` fonksiyonunu çağırır, stdout üzerinden 30+ StreamEvent türü yayar ve atomik yazımlı dosya tabanlı IPC kanalları üzerinden üst sürece 27 MCP aracını sunar.
+- **Desktop** (`desktop/`): macOS / Windows / Linux için tek başına çalışabilen uygulamayı paketleyen Electron kabuğu.
 
-Altı IM kanalı yönlendiriciye girer, yinelenenlerden arındırılır ve kuyruğa alınır, ProviderPool API anahtarını seçer ve container veya host sürecini başlatır. Akış olayları WebSocket ile web istemcilerine veya IM API ile kanallara geri gönderilir.
+Sekiz IM kanalı (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) yönlendiriciye girer, yinelenenlerden arındırılır ve kuyruğa alınır; kuyruk ProviderPool üzerinden bir API anahtarı / motor seçer ve bir container, host süreci veya sandbox başlatır. Akış olayları WebSocket ile web istemcilerine veya IM API'leri ile her kanala geri yanıtlanır.
 
 ## Tam Dokümantasyon
 

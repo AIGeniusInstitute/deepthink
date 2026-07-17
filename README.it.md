@@ -14,7 +14,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge" alt="License" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" /></a>
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <a href="https://github.com/AIGeniusInstitute/deep-think/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
+  <a href="https://github.com/AIGeniusInstitute/deepthink/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
 </p>
 
 ---
@@ -38,12 +38,16 @@ DeepThink, una piattaforma di auto-evoluzione della superintelligenza Agent auto
 
 ### Caratteristiche principali
 
-- **Motore Claude Code nativo** — basato su Claude Agent SDK, runtime interno è la CLI completa di Claude Code, eredita tutte le capacità
+- **Motore Claude Code nativo** — basato su Claude Agent SDK, con il runtime CLI completo di Claude Code sottostante, eredita tutte le sue capacità
+- **Harness & Loop Engineering** — manifest di harness versionati (system prompt / subagents / tools / skills) con snapshot / diff / eval / promote / rollback, più loop di task autonomi a lungo termine con revisione per-iterazione e re-injection dei fallimenti
+- **Agent-as-a-Service (PaaS)** — definizioni di Agent DB-backed: creazione, versionamento, mount, condivisione e installazione tra tenant, con quote per utente, revisione admin e marketplace di template pubblicabili
 - **Isolamento multi-utente** — workspace per utente, canali IM per utente, sistema di permessi RBAC, registrazione con codice invito, log di audit
-- **Routing su sei canali** — Feishu WebSocket, Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, interfaccia web
-- **Bilanciamento del carico multi-provider** — più provider Claude API, tre strategie (round-robin / weighted / failover) con health check automatico
+- **Routing unificato su otto canali** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp e interfaccia web, tutti instradati in modo uniforme
+- **Multi-Engine e Multi-Provider** — motori pluggabili di code-agent (Claude Code / AtomCode / Codex / OpenCode) e più provider Claude API con tre strategie di load balancing (round-robin / weighted / failover), health detection automatico
+- **Esecuzione di codice sandboxed** — sandbox indurita Docker + seccomp + cgroups per esecuzione di codice Python / Node / shell e automazione browser Chromium CDP
 - **Billing e statistiche di utilizzo** — billing completo (abbonamento, wallet, codici di riscossione), tracciamento dei token per modello con grafici
 - **PWA mobile** — ottimizzata per mobile, installazione sulla schermata home con un clic, sia iOS che Android
+- **Internazionalizzata** — 29 lingue UI con endonimi nativi e supporto RTL; l'Agent risponde nella lingua scelta dall'utente
 
 ## Avvio rapido
 
@@ -51,7 +55,7 @@ DeepThink, una piattaforma di auto-evoluzione della superintelligenza Agent auto
 
 **Obbligatori**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (per la modalità container; non necessario per la modalità host dell'admin), chiave Claude API (Anthropic ufficiale o servizio relay compatibile).
 
-**Opzionali**: credenziali dell'app enterprise Feishu, Telegram Bot Token, credenziali QQ Bot, credenziali DingTalk, token WeChat iLink — solo se serve l'integrazione IM.
+**Opzionali**: credenziali dell'app enterprise Feishu, Telegram Bot Token, credenziali QQ Bot, credenziali DingTalk, token WeChat iLink, Discord Bot Token, WhatsApp (scansione QR al primo avvio) — solo se serve l'integrazione IM.
 
 > Non è necessario installare manualmente la CLI di Claude Code — la dipendenza del progetto da Claude Agent SDK include il runtime CLI completo, installato automaticamente al primo `make start`.
 
@@ -59,7 +63,7 @@ DeepThink, una piattaforma di auto-evoluzione della superintelligenza Agent auto
 
 ```bash
 # 1. Clona il repository
-git clone https://github.com/AIGeniusInstitute/deep-think.git
+git clone https://github.com/AIGeniusInstitute/deepthink.git
 cd deepthink
 
 # 2. Avvio con un solo comando (alla prima esecuzione installa dipendenze + compila)
@@ -86,13 +90,14 @@ Dopo la registrazione di un nuovo utente, il workspace principale in modalità c
 </p>
 
 
-DeepThink è composto da tre progetti Node.js indipendenti:
+DeepThink è composto da quattro progetti Node.js indipendenti:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): router dei messaggi (polling 2s + deduplicazione), coda concorrente (massimo 20 container + 5 processi host), pianificatore di task (cron / interval / once), server WebSocket per streaming in tempo reale e terminale, autenticazione bcrypt + HMAC Cookie, RBAC, gestione configurazione crittografata AES-256-GCM. Dati in SQLite (modalità WAL, schema v1→v33).
-- **Frontend** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, react-markdown, mermaid, recharts, xterm.js, PWA mobile.
-- **Agent Runner** (`container/agent-runner/`): motore di esecuzione in container Docker o come processo host. Chiama `query()` di Claude Agent SDK, emette 14 tipi di StreamEvent e offre 12 strumenti MCP al processo padre tramite IPC su file con scritture atomiche.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): router dei messaggi (polling 2s + deduplicazione), coda concorrente (massimo 20 container + 5 processi host), pianificatore di task (cron / interval / once), server WebSocket per streaming in tempo reale e terminale, autenticazione bcrypt + HMAC Cookie, RBAC, gestione configurazione crittografata AES-256-GCM. Persistenza in SQLite (modalità WAL, schema v1→v51). Include anche i layer Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox e Claude Code Plugins.
+- **Frontend** (`web/`): React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA, con react-markdown, mermaid, recharts, xterm.js, PWA mobile.
+- **Agent Runner** (`container/agent-runner/`): motore di esecuzione in container Docker o come processo host; chiama `query()` di Claude Agent SDK, emette oltre 30 tipi di StreamEvent via stdout e offre 27 strumenti MCP al processo padre su canali IPC basati su file con scritture atomiche.
+- **Desktop** (`desktop/`): shell Electron che packages un'app standalone per macOS / Windows / Linux.
 
-I sei canali IM entrano nel router, vengono deduplicati e accodati, il ProviderPool seleziona la chiave API e avvia il container o il processo host. Gli eventi di streaming tornano ai client web via WebSocket o ai canali via IM API.
+Gli otto canali IM (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) entrano nel router, vengono deduplicati e instradati alla coda, che seleziona una chiave API / engine tramite il provider pool e avvia un container, un processo host o un sandbox. Gli eventi di streaming sono trasmessi via WebSocket ai client web o risposti via IM API a ciascun canale.
 
 ## Documentazione completa
 

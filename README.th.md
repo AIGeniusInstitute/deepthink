@@ -14,7 +14,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge" alt="License" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" /></a>
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <a href="https://github.com/AIGeniusInstitute/deep-think/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
+  <a href="https://github.com/AIGeniusInstitute/deepthink/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
 </p>
 
 ---
@@ -38,12 +38,16 @@ DeepThink, แพลตฟอร์มสุดยอดปัญญาประ
 
 ### คุณสมบัติเด่น
 
-- **เอนจิน Claude Code แบบ native** — บน Claude Agent SDK, runtime ภายในคือ Claude Code CLI แบบเต็ม สืบทอดความสามารถทั้งหมด
-- **การแยกผู้ใช้หลายคน** — workspace ต่อผู้ใช้, ช่อง IM ต่อผู้ใช้, ระบบสิทธิ์ RBAC, การลงทะเบียนด้วยรหัสเชิญ, audit log
-- **routing หกช่อง** — Feishu WebSocket, Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, อินเทอร์เฟซเว็บ
-- **load balancing หลาย provider** — ผู้ให้บริการ Claude API หลายราย, สามกลยุทธ์ (round-robin / weighted / failover) พร้อม health check อัตโนมัติ
+- **เอนจิน Claude Code แบบ native** — สร้างบน Claude Agent SDK, runtime ภายในคือ Claude Code CLI แบบเต็ม สืบทอดความสามารถทังหมด
+- **Harness & Loop Engineering** — harness manifests แบบมีเวอร์ชัน (system prompt / subagents / tools / skills) พร้อม snapshot / diff / eval / promote / rollback และลูปงานอิสระระยะยาวที่มีการ review ต่อรอบและ re-inject ความล้มเหลว
+- **Agent-as-a-Service (PaaS)** — สร้าง, กำหนดเวอร์ชัน, mount, แชร์ และติดตั้งนิยาม Agent ที่เก็บใน DB ข้าม tenant พร้อมโควตาต่อผู้ใช้, การตรวจสอบของ admin และตลาดแม่แบบที่เผยแพร่ได้
+- **การแยกผู้ใช้หลายคน** — workspace ต่อผู้ใช้, ช่อง IM ต่อผู้ใช้, ระบบสิทธิ์ RBAC, การลงทะเบียนด้วยรหัสเชิญ และ audit log
+- **routing แปดช่องแบบรวม** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp และอินเทอร์เฟซเว็บ — ทังหมด route แบบเหมือนกัน
+- **หลายเอนจินและหลาย provider** — เอนจิน code-agent แบบปลั๊กอิน (Claude Code / AtomCode / Codex / OpenCode) และผู้ใหบริการ Claude API หลายรายพร้อมสามกลยุทธ์ load balancing (round-robin / weighted / failover) และ health check อัตโนมัติ
+- **การรันโค้ดในแซนด์บอ็กซ์** — แซนด์บอ็กซ์ที่ hardening ด้วย Docker + seccomp + cgroups สำหรับรันโค้ด Python / Node / shell และอัตโนมัติเบราว์เซอร์ด้วย Chromium CDP
 - **billing และสถิติการใช้งาน** — ระบบ billing ครบ (สมัครรับสมาชิก, กระเป๋าเงิน, รหัสแลกรางวัล), ติดตาม token ต่อโมเดลพร้อมกราฟ
-- **PWA มือถือ** — ปรับให้เหมาะกับมือถือ, ติดตั้งหน้าจอหลักคลิกเดียว, รองรับทั้ง iOS และ Android
+- **PWA มือถือ** — ปรับให้เหมาะกับมือถืออย่างลึกซึ้ง, ติดตั้งหน้าจอหลักคลิกเดียว, รองรับ iOS / Android
+- **หลายภาษา** — 29 ภาษาสำหรับ UI พร้อม endonym ดั้งเดิมและรองรับ RTL; Agent ตอบกลับในภาษาที่ผู้ใช้เลือก
 
 ## เริ่มต้นอย่างรวดเร็ว
 
@@ -51,7 +55,7 @@ DeepThink, แพลตฟอร์มสุดยอดปัญญาประ
 
 **จำเป็น**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (สำหรับโหมด container; ไม่จำเป็นสำหรับโหมด host ของ admin), คีย์ Claude API (Anthropic ทางการหรือบริการ relay ที่เข้ากันได้)
 
-**ไม่บังคับ**: ข้อมูลประจำตัวแอป enterprise Feishu, Telegram Bot Token, ข้อมูลประจำตัว QQ Bot, ข้อมูลประจำตัว DingTalk, โทเค็น WeChat iLink — เฉพาะเมื่อต้องการเชื่อมต่อ IM
+**ไม่บังคับ**: ข้อมูลประจำตัวแอป enterprise Feishu, Telegram Bot Token, ข้อมูลประจำตัว QQ Bot, ข้อมูลประจำตัว DingTalk, โทเค็น WeChat iLink, Discord Bot Token, WhatsApp (สแกน QR ครั้งแรกที่เปิดใช้งาน) — เฉพาะเมื่อต้องการเชื่อมต่อ IM
 
 > ไม่ต้องติดตั้ง Claude Code CLI ด้วยตนเอง — การขึ้นต่อของโปรเจก Claude Agent SDK มี CLI runtime แบบเต็ม และติดตั้งอัตโนมัติที่ `make start` ครั้งแรก
 
@@ -59,7 +63,7 @@ DeepThink, แพลตฟอร์มสุดยอดปัญญาประ
 
 ```bash
 # 1. clone repository
-git clone https://github.com/AIGeniusInstitute/deep-think.git
+git clone https://github.com/AIGeniusInstitute/deepthink.git
 cd deepthink
 
 # 2. เริ่มด้วยคำสั่งเดียว (ครั้งแรกติดตั้ง dependencies + compile)
@@ -86,13 +90,14 @@ make start
 </p>
 
 
-DeepThink ประกอบด้วยสามโปรเจก Node.js อิสระ:
+DeepThink ประกอบด้วยสี่โปรเจก Node.js อิสระ:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): message router (polling 2s + ตัดซ้ำ), concurrent queue (สูงสุด 20 container + 5 โปรเซส host), task scheduler (cron / interval / once), เซิร์ฟเวอร์ WebSocket สำหรับ streaming เรียลไทม์และเทอร์มินัล, การยืนยันตัว bcrypt + HMAC Cookie, RBAC, config เข้ารหัส AES-256-GCM. ข้อมูลใน SQLite (โหมด WAL, schema v1→v33)
-- **Frontend** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, react-markdown, mermaid, recharts, xterm.js, PWA มือถือ
-- **Agent Runner** (`container/agent-runner/`): engine ปฏิบัติการใน Docker container หรือเป็นโปรเซส host. เรียก `query()` ของ Claude Agent SDK, emit 14 ประเภท StreamEvent และมอบเครื่องมือ MCP 12 ตัวให้โปรเซสแม่ผ่าน file IPC แบบเขียน atomic
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): เซิร์ฟเวอร์หลักที่มี message router (polling 2s + ตัดซ้ำ), concurrent queue (สูงสุด 20 container + 5 โปรเซส host), task scheduler (cron / interval / once), เซิร์ฟเวอร์ WebSocket สำหรับ streaming เรียลไทม์และเทอร์มินัล, การยืนยันตัว bcrypt + HMAC Cookie, RBAC และการจัดการ config เข้ารหัส AES-256-GCM. ข้อมูลใน SQLite (โหมด WAL, schema v1→v51). ยังรวมชั้น Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox และ Claude Code Plugins
+- **Frontend** (`web/`): React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA พร้อม react-markdown, mermaid, recharts, xterm.js และ PWA มือถือ
+- **Agent Runner** (`container/agent-runner/`): engine ปฏิบัติการที่รันใน Docker container หรือเป็นโปรเซส host; เรียก `query()` ของ Claude Agent SDK, emit กว่า 30 ประเภท StreamEvent ผ่าน stdout และมอบเครื่องมือ MCP 27 ตัวให้โปรเซสแม่ผ่าน file IPC แบบเขียน atomic
+- **Desktop** (`desktop/`): Electron shell ที่บรรจุแอปแบบสแตนด์อะโลนสำหรับ macOS / Windows / Linux
 
-ช่อง IM หกช่องเข้าสู่ router, ถูกตัดซ้ำและจัดคิว, ProviderPool เลือกคีย์ API และเริ่ม container หรือโปรเซส host. สตรีมมิ่ง event ส่งไปยัง web clients ผ่าน WebSocket หรือกลับไปยังช่องผ่าน IM API
+ช่อง IM แปดช่อง (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) เข้าสู่ router, ถูกตัดซ้ำและ route เข้าคิว ซึ่งเลือกคีย์ API / engine ผ่าน provider pool แล้วเริ่ม container, โปรเซส host หรือแซนด์บอ็กซ์. สตรีมมิ่ง event ส่งไปยัง web clients ผ่าน WebSocket หรือกลับไปยังแต่ละช่องผ่าน IM API
 
 ## เอกสารฉบับสมบูรณ์
 

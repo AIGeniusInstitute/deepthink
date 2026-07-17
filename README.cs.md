@@ -14,7 +14,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge" alt="License" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" /></a>
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <a href="https://github.com/AIGeniusInstitute/deep-think/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
+  <a href="https://github.com/AIGeniusInstitute/deepthink/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
 </p>
 
 ---
@@ -38,12 +38,16 @@ DeepThink, platforma pro samo-vyvíjející se superinteligenci autonomního Age
 
 ### Klíčové vlastnosti
 
-- **Nativní Claude Code jádro** — postaveno na Claude Agent SDK, interní runtime je plný Claude Code CLI, dědí všechny schopnosti
+- **Nativní Claude Code jádro** — postaveno na Claude Agent SDK, pod palubou je plný Claude Code CLI runtime, dědí všechny jeho schopnosti
+- **Harness & Loop Engineering** — verzované harness manifesty (system prompt / subagenti / nástroje / skills) se snapshot / diff / eval / promote / rollback, plus dlouho běžící autonomní smyčky úloh s revizí po každé iteraci a reinjekcí selhání
+- **Agent-as-a-Service (PaaS)** — vytváření, verzování, mountování, sdílení a instalace DB-backed Agent definic napříč tenanty, s per-user kvótami, schválením adminem a publikovatelným tržištěm šablon
 - **Izolace více uživatelů** — uživatelské workspaces, per-user IM kanály, RBAC oprávnění, registrace přes pozvánkové kódy, audit log
-- **Šestikanálové směrování** — Feishu WebSocket, Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, webové rozhraní
-- **Load balancing napříč providery** — více Claude API providerů, tři strategie (round-robin / weighted / failover) s automatickým health checkem
+- **Osmikanálové sjednocené směrování** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp a webové rozhraní — vše směrováno jednotně
+- **Multi-Engine a Multi-Provider** — plug-in code-agent enginy (Claude Code / AtomCode / Codex / OpenCode) a více Claude API providerů se třemi strategiemi load balancingu (round-robin / weighted / failover) s automatickým health checkem
+- **Sandboxed spuštění kódu** — Docker + seccomp + cgroups ztučněný sandbox pro spouštění Python / Node / shell kódu a Chromium CDP browser automatizaci
 - **Billing a statistiky využití** — kompletní billing (subscription, wallet, redemption kódy), sledování tokenů dle modelu s grafy
-- **Mobilní PWA** — optimalizováno pro mobil, instalace na domovskou obrazovku jedním klikem, iOS i Android
+- **Mobilní PWA** — hluboce optimalizováno pro mobil, instalace na domovskou obrazovku jedním klikem, iOS i Android
+- **Internationalizováno** — 29 UI jazyků s nativními endonymy a podporou RTL; Agent odpovídá v jazyce, který si uživatel zvolí
 
 ## Rychlý start
 
@@ -51,7 +55,7 @@ DeepThink, platforma pro samo-vyvíjející se superinteligenci autonomního Age
 
 **Povinné**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (pro kontejnerový režim; pro admin host režim není nutný), Claude API klíč (oficiální Anthropic nebo kompatibilní relay služba).
 
-**Volitelné**: přihlašovací údaje Feishu Enterprise aplikace, Telegram Bot Token, QQ Bot údaje, DingTalk údaje, WeChat iLink token — jen když potřebujete IM napojení.
+**Volitelné**: přihlašovací údaje Feishu Enterprise aplikace, Telegram Bot Token, QQ Bot údaje, DingTalk údaje, WeChat iLink token, Discord Bot Token, WhatsApp (QR scan při prvním spuštění) — jen když potřebujete IM napojení.
 
 > Claude Code CLI není nutné instalovat ručně — projektová závislost na Claude Agent SDK obsahuje kompletní CLI runtime, který se při prvním `make start` automaticky nainstaluje.
 
@@ -59,7 +63,7 @@ DeepThink, platforma pro samo-vyvíjející se superinteligenci autonomního Age
 
 ```bash
 # 1. Klonovat repozitář
-git clone https://github.com/AIGeniusInstitute/deep-think.git
+git clone https://github.com/AIGeniusInstitute/deepthink.git
 cd deepthink
 
 # 2. Spuštění jedním příkazem (při prvním spuštění instalace závislostí + kompilace)
@@ -86,13 +90,14 @@ Po registraci nového uživatele se automaticky vytvoří jeho hlavní workspace
 </p>
 
 
-DeepThink se skládá ze tří nezávislých Node.js projektů:
+DeepThink se skládá ze čtyř nezávislých Node.js projektů:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): směrovač zpráv (2s polling + deduplikace), konkurenční fronta (až 20 kontejnerů + 5 host procesů), plánovač úloh (cron / interval / once), WebSocket server pro real-time streaming a terminál, bcrypt + HMAC Cookie auth, RBAC, AES-256-GCM šifrovaná konfigurace. Data v SQLite (WAL režim, schema v1→v33).
-- **Frontend** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, react-markdown, mermaid, recharts, xterm.js, mobilní PWA.
-- **Agent Runner** (`container/agent-runner/`): provozní engine běžící v Docker kontejneru nebo jako host proces. Volá `query()` z Claude Agent SDK, emituje 14 typů StreamEvent a přes souborový IPC s atomickým zápisem poskytuje 12 MCP nástrojů rodičovskému procesu.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): hlavní služba se směrovačem zpráv (2s polling + deduplikace), konkurenční frontou (až 20 kontejnerů + 5 host procesů), plánovačem úloh (cron / interval / once), WebSocket serverem pro real-time streaming a terminál, bcrypt + HMAC Cookie auth, RBAC a AES-256-GCM šifrovanou správou konfigurace. Perzistence v SQLite (WAL režim, schema v1→v51). Zahrnuje také vrstvy Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox a Claude Code Plugins.
+- **Frontend** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4, s react-markdown, mermaid, recharts, xterm.js a mobilní PWA.
+- **Agent Runner** (`container/agent-runner/`): provozní engine běžící v Docker kontejneru nebo jako host proces. Volá `query()` z Claude Agent SDK, emituje 30+ typů StreamEvent přes stdout a přes souborové IPC kanály s atomickým zápisem poskytuje 27 MCP nástrojů rodičovskému procesu.
+- **Desktop** (`desktop/`): Electron shell balící standalone aplikaci pro macOS / Windows / Linux.
 
-Šest IM kanálů vstupuje do směrovače, probíhá deduplikací, zařazuje se do fronty, přes ProviderPool se vybere API klíč a spustí se kontejner nebo host proces. Streamovací události se posílají přes WebSocket webovým klientům nebo přes IM API zpět do kanálů.
+Osm IM kanálů (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) vstupuje do směrovače, probíhá deduplikací, zařazuje se do fronty, která přes ProviderPool vybere API klíč / engine a spustí kontejner, host proces nebo sandbox. Streamovací události se vysílají přes WebSocket webovým klientům nebo se odpovídají přes IM API do jednotlivých kanálů.
 
 ## Úplná dokumentace
 

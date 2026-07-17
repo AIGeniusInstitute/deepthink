@@ -14,7 +14,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge" alt="License" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" /></a>
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <a href="https://github.com/AIGeniusInstitute/deep-think/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
+  <a href="https://github.com/AIGeniusInstitute/deepthink/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
 </p>
 
 ---
@@ -38,12 +38,16 @@ DeepThink, nền tảng siêu trí tuệ tự tiến hóa Agent tự chủ cấp
 
 ### Tính năng chính
 
-- **Engine Claude Code gốc** — dựa trên Claude Agent SDK, runtime nội bộ là toàn bộ Claude Code CLI, kế thừa mọi năng lực
-- **Cách ly đa người dùng** — workspace mỗi người, kênh IM mỗi người, hệ thống quyền RBAC, đăng ký bằng mã mời, nhật ký kiểm toán
-- **Định tuyến sáu kênh** — Feishu WebSocket, Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, giao diện web
-- **Cân bằng tải đa provider** — nhiều nhà cung cấp Claude API, ba chiến lược (round-robin / weighted / failover) với health check tự động
-- **Billing và thống kê sử dụng** — billing đầy đủ (đăng ký, ví, mã đổi thưởng), theo dõi token theo mô hình với biểu đồ
-- **PWA di động** — tối ưu cho di động, cài đặt màn hình chính một chạm, hỗ trợ cả iOS và Android
+- **Engine Claude Code gốc** — Xây trên Claude Agent SDK, runtime bên dưới là toàn bộ Claude Code CLI, kế thừa mọi năng lực
+- **Harness & Loop Engineering** — Manifest harness có versioning (system prompt / subagents / tools / skills) với snapshot / diff / eval / promote / rollback, cùng vòng lặp tác vụ tự chủ dài hạn có review từng vòng và re-inject khi thất bại
+- **Agent-as-a-Service (PaaS)** — Tạo, version, mount, chia sẻ và cài đặt các định nghĩa Agent lưu DB giữa các tenant, với quota per-user, review admin, và marketplace template có thể publish
+- **Cách ly đa người dùng** — Workspace per-user, kênh IM per-user, hệ thống quyền RBAC, đăng ký bằng mã mời, nhật ký kiểm toán
+- **Định tuyến tám kênh thống nhất** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, và giao diện web — đều được định tuyến đồng nhất
+- **Đa engine & đa provider** — Engine agent mã pluggable (Claude Code / AtomCode / Codex / OpenCode) và nhiều provider Claude API với ba chiến lược cân bằng tải (round-robin / weighted / failover), health check tự động
+- **Thực thi mã trong sandbox** — Sandbox Docker + seccomp + cgroups tăng cứng cho thực thi mã Python / Node / shell và tự động hóa trình duyệt Chromium CDP
+- **Billing và thống kê sử dụng** — Hệ thống billing đầy đủ (gói đăng ký, số dư ví, mã đổi thưởng), theo dõi token theo mô hình với biểu đồ trực quan
+- **PWA di động** — Tối ưu sâu cho di động, cài đặt màn hình chính một chạm, tương thích iOS / Android
+- **Quốc tế hóa** — 29 ngôn ngữ UI với endonym bản địa và hỗ trợ RTL; Agent trả lời theo ngôn ngữ người dùng chọn
 
 ## Bắt đầu nhanh
 
@@ -51,7 +55,7 @@ DeepThink, nền tảng siêu trí tuệ tự tiến hóa Agent tự chủ cấp
 
 **Bắt buộc**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (cho chế độ container; không cần cho chế độ host của admin), khóa Claude API (Anthropic chính thức hoặc dịch vụ relay tương thích).
 
-**Tùy chọn**: thông tin xác thực ứng dụng doanh nghiệp Feishu, Telegram Bot Token, thông tin QQ Bot, thông tin DingTalk, token WeChat iLink — chỉ khi cần tích hợp IM.
+**Tùy chọn**: thông tin xác thực ứng dụng doanh nghiệp Feishu, Telegram Bot Token, thông tin QQ Bot, thông tin DingTalk, token WeChat iLink, Discord Bot Token, WhatsApp (quét QR ở lần khởi động đầu tiên) — chỉ khi cần tích hợp IM.
 
 > Không cần cài Claude Code CLI thủ công — phụ thuộc Claude Agent SDK của dự án đã bao gồm toàn bộ CLI runtime, được cài tự động ở lần `make start` đầu tiên.
 
@@ -59,7 +63,7 @@ DeepThink, nền tảng siêu trí tuệ tự tiến hóa Agent tự chủ cấp
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/AIGeniusInstitute/deep-think.git
+git clone https://github.com/AIGeniusInstitute/deepthink.git
 cd deepthink
 
 # 2. Khởi động bằng một lệnh (lần đầu cài phụ thuộc + biên dịch)
@@ -86,13 +90,14 @@ Sau khi đăng ký người dùng mới, workspace chính ở chế độ contai
 </p>
 
 
-DeepThink gồm ba dự án Node.js độc lập:
+DeepThink gồm bốn dự án Node.js độc lập:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): bộ định tuyến tin nhắn (polling 2s + khử trùng), hàng đợi đồng thời (tối đa 20 container + 5 quy trình host), bộ lập lịch tác vụ (cron / interval / once), máy chủ WebSocket cho streaming thời gian thực và terminal, xác thực bcrypt + HMAC Cookie, RBAC, cấu hình mã hóa AES-256-GCM. Dữ liệu trong SQLite (chế độ WAL, schema v1→v33).
-- **Frontend** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, react-markdown, mermaid, recharts, xterm.js, PWA di động.
-- **Agent Runner** (`container/agent-runner/`): engine thực thi trong Docker container hoặc dưới dạng quy trình host. Gọi `query()` của Claude Agent SDK, phát 14 loại StreamEvent và cung cấp 12 công cụ MCP cho quy trình cha qua IPC tệp với ghi nguyên tử.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): service chính với bộ định tuyến tin nhắn (polling 2s + khử trùng), hàng đợi đồng thời (tối đa 20 container + 5 quy trình host), bộ lập lịch tác vụ (cron / interval / once), máy chủ WebSocket cho streaming thời gian thực và terminal, xác thực bcrypt + HMAC Cookie, RBAC, quản lý cấu hình mã hóa AES-256-GCM. Dữ liệu trong SQLite (chế độ WAL, schema v1→v51). Còn bao gồm các tầng Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox, và Claude Code Plugins.
+- **Frontend** (`web/`): React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA, với react-markdown, mermaid, recharts, xterm.js, và PWA di động.
+- **Agent Runner** (`container/agent-runner/`): engine thực thi chạy trong Docker container hoặc dưới dạng quy trình host. Gọi `query()` của Claude Agent SDK, phát hơn 30 loại StreamEvent qua stdout, và cung cấp 27 công cụ MCP cho quy trình cha qua kênh IPC tệp với ghi nguyên tử.
+- **Desktop** (`desktop/`): vỏ Electron đóng gói ứng dụng standalone cho macOS / Windows / Linux.
 
-Sáu kênh IM đi vào router, được khử trùng và xếp hàng, ProviderPool chọn khóa API và khởi động container hoặc quy trình host. Sự kiện streaming được gửi đến web clients qua WebSocket hoặc quay lại các kênh qua IM API.
+Tám kênh IM (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) đi vào router, được khử trùng và đưa vào hàng đợi, nơi ProviderPool chọn khóa API / engine và khởi động container, quy trình host, hoặc sandbox. Sự kiện streaming được phát tới Web clients qua WebSocket hoặc trả lời qua IM API tới từng kênh.
 
 ## Tài liệu đầy đủ
 

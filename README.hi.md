@@ -14,7 +14,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge" alt="License" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" /></a>
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <a href="https://github.com/AIGeniusInstitute/deep-think/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
+  <a href="https://github.com/AIGeniusInstitute/deepthink/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
 </p>
 
 ---
@@ -38,12 +38,16 @@ DeepThink, एक एंटरप्राइज़-ग्रेड स्वा
 
 ### प्रमुख विशेषताएँ
 
-- **नेटिव Claude Code संचालित** — Claude Agent SDK पर आधारित, अंतर्निहित रनटाइम पूर्ण Claude Code CLI है, सभी क्षमताओं का विरासत में पाता है
-- **मल्टी-यूज़र आइसोलेशन** — प्रति-यूज़र वर्कस्पेस, प्रति-यूज़र IM चैनल, RBAC अनुमति प्रणाली, आमंत्रण कोड पंजीकरण, ऑडिट लॉग
-- **छह चैनलों का एकीकृत रूटिंग** — Feishu WebSocket लंबी कनेक्शन, Telegram Bot API, QQ Bot API v2, DingTalk Stream प्रोटोकॉल, WeChat iLink Bot API, Web इंटरफ़ेस
-- **मल्टी-प्रोवाइडर लोड बैलेंसिंग** — कई Claude API प्रोवाइडर, तीन रणनीतियाँ (round-robin / weighted / failover), स्वचालित हेल्थ चेक और रिकवरी
-- **बिलिंग और उपयोग आँकड़े** — पूर्ण बिलिंग सिस्टम (सब्सक्रिप्शन योजना, वॉलेट बैलेंस, रिडीम कोड), प्रति-मॉडल टोकन उपयोग ट्रैकिंग और चार्ट विज़ुअलाइज़ेशन
-- **मोबाइल PWA** — मोबाइल के लिए गहराई से अनुकूलित, डेस्कटॉप पर एक-क्लिक इंस्टॉल, iOS / Android दोनों अनुकूलित
+- **नेटिव Claude Code संचालित** — Claude Agent SDK पर निर्मित, अंतर्निहित रूप से पूर्ण Claude Code CLI रनटाइम, सभी क्षमताओं का विरासत में पाता है
+- **Harness & Loop Engineering** — वर्शन्ड हार्नेस मैनिफेस्ट्स (system prompt / subagents / tools / skills) जिनमें snapshot / diff / eval / promote / rollback, साथ ही लंबे समय तक चलने वाले स्वायत्त कार्य लूप जिनमें प्रति-पुनरावृत्ति समीक्षा और विफलता पुनः-इंजेक्शन शामिल है
+- **Agent-as-a-Service (PaaS)** — DB-backed Agent परिभाषाओं को क्रिएट, वर्शन, माउंट, शेयर और इंस्टॉल करें टैनेंट्स के परे, प्रति-यूज़र कोटा, एडमिन समीक्षा, और प्रकाशित करने योग्य टेम्पलेट मार्केटप्लेस के साथ
+- **मल्टी-यूज़र आइसोलेशन** — प्रति-यूज़र वर्कस्पेस, प्रति-यूज़र IM चैनल, RBAC अनुमति प्रणाली, आमंत्रण-कोड पंजीकरण, और ऑडिट लॉग
+- **आठ-चैनल एकीकृत रूटिंग** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, और Web इंटरफ़ेस — सभी एक समान रूट होते हैं
+- **मल्टी-इंजन और मल्टी-प्रोवाइडर** — प्लग करने योग्य कोड-एजेंट इंजन (Claude Code / AtomCode / Codex / OpenCode) और कई Claude API प्रोवाइडर तीन लोड-बैलेंसिंग रणनीतियों के साथ (round-robin / weighted / failover), स्वचालित हेल्थ डिटेक्शन
+- **सैंडबॉक्स्ड कोड निष्पादन** — Python / Node / शेल कोड निष्पादन और Chromium CDP ब्राउज़र ऑटोमेशन के लिए Docker + seccomp + cgroups हार्डन्ड सैंडबॉक्स
+- **बिलिंग और उपयोग आँकड़े** — पूर्ण बिलिंग सिस्टम (सब्सक्रिप्शन योजना, वॉलेट बैलेंस, रिडीम कोड), प्रति-मॉडल टोकन उपयोग ट्रैकिंग, और चार्ट विज़ुअलाइज़ेशन
+- **मोबाइल PWA** — मोबाइल के लिए गहराई से अनुकूलित, होम स्क्रीन पर एक-टैप इंस्टॉल, iOS / Android अनुकूलित
+- **अंतर्राष्ट्रीयकृत** — 29 UI भाषाएँ नेटिव एंडोनिम्स और RTL समर्थन के साथ; Agent उपयोगकर्ता की चुनी हुई भाषा में उत्तर देता है
 
 ## त्वरित शुरुआत
 
@@ -51,7 +55,7 @@ DeepThink, एक एंटरप्राइज़-ग्रेड स्वा
 
 **अनिवार्य**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (कंटेनर मोड के लिए; admin केवल होस्ट मोड में इसकी आवश्यकता नहीं), और Claude API कुंजी (Anthropic आधिकारिक या संगत रिले सेवा)।
 
-**वैकल्पिक**: Feishu एंटरप्राइज़ ऐप क्रेडेंशियल, Telegram Bot Token, QQ Bot क्रेडेंशियल, DingTalk Bot क्रेडेंशियल, WeChat iLink Bot Token — केवल यदि आप IM एकीकरण चाहते हैं।
+**वैकल्पिक**: Feishu एंटरप्राइज़ ऐप क्रेडेंशियल, Telegram Bot Token, QQ Bot क्रेडेंशियल, DingTalk Bot क्रेडेंशियल, WeChat iLink Bot Token, Discord Bot Token, WhatsApp (पहली बार लॉन्च पर QR स्कैन) — केवल यदि आप IM एकीकरण चाहते हैं।
 
 > Claude Code CLI को मैन्युअल रूप से इंस्टॉल करने की आवश्यकता नहीं है — प्रोजेक्ट की Claude Agent SDK निर्भरता में पूर्ण CLI रनटाइम पहले से शामिल है, `make start` पहली बार चलाने पर स्वचालित रूप से इंस्टॉल हो जाता है।
 
@@ -59,7 +63,7 @@ DeepThink, एक एंटरप्राइज़-ग्रेड स्वा
 
 ```bash
 # 1. रिपॉजिटरी क्लोन करें
-git clone https://github.com/AIGeniusInstitute/deep-think.git
+git clone https://github.com/AIGeniusInstitute/deepthink.git
 cd deepthink
 
 # 2. एक-कमांड शुरुआत (पहली बार निर्भरता इंस्टॉल + संकलन)
@@ -86,13 +90,14 @@ admin यूज़र डिफ़ॉल्ट रूप से होस्ट 
 </p>
 
 
-DeepThink तीन स्वतंत्र Node.js प्रोजेक्ट्स से बना है:
+DeepThink चार स्वतंत्र Node.js प्रोजेक्ट्स से बना है:
 
-- **बैकएंड** (Node.js 22 + TypeScript 5.9 + Hono): मुख्य सेवा जिसमें मैसेज राउटर (2s पोलिंग + डिडुपे), कॉन्करेंसी क्यू (अधिकतम 20 कंटेनर + 5 होस्ट प्रक्रियाएँ), टास्क शेड्यूलर (cron / interval / once), रियल-टाइम स्ट्रीमिंग और टर्मिनल के लिए WebSocket सर्वर, bcrypt + HMAC Cookie प्रमाणीकरण, RBAC, और AES-256-GCM एन्क्रिप्टेड कॉन्फ़िग प्रबंधन शामिल हैं। SQLite (WAL मोड, स्कीमा v1→v33) में डेटा रहता है।
-- **फ्रंटएंड** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, react-markdown, mermaid, recharts, xterm.js और मोबाइल PWA के साथ।
-- **Agent Runner** (`container/agent-runner/`): निष्पादन इंजन जो Docker कंटेनर या होस्ट प्रक्रिया के रूप में चलता है; Claude Agent SDK के `query()` को इनवोक करता है, 14 प्रकार के StreamEvent उत्सर्जित करता है, और परमाणु लेखन वाले फ़ाइल-आधारित IPC चैनलों के माध्यम से 12 MCP टूल्स प्रदान करता है।
+- **बैकएंड** (Node.js 22 + TypeScript 5.9 + Hono): मुख्य सेवा जिसमें मैसेज राउटर (2s पोलिंग + डिडुपे), कॉन्करेंसी क्यू (अधिकतम 20 कंटेनर + 5 होस्ट प्रक्रियाएँ), टास्क शेड्यूलर (cron / interval / once), रियल-टाइम स्ट्रीमिंग और टर्मिनल के लिए WebSocket सर्वर, bcrypt + HMAC Cookie प्रमाणीकरण, RBAC, और AES-256-GCM एन्क्रिप्टेड कॉन्फ़िग प्रबंधन शामिल हैं। SQLite परसिस्टेंस (WAL मोड, स्कीमा v1→v51)। इसमें Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox, और Claude Code Plugins लेयर भी शामिल हैं।
+- **फ्रंटएंड** (`web/`): React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA, react-markdown, mermaid, recharts, xterm.js, और मोबाइल PWA के साथ।
+- **Agent Runner** (`container/agent-runner/`): निष्पादन इंजन जो Docker कंटेनर या होस्ट प्रक्रिया के रूप में चलता है; Claude Agent SDK के `query()` को इनवोक करता है, stdout द्वारा 30+ StreamEvent प्रकार उत्सर्जित करता है, और परमाणु लेखन वाले फ़ाइल-आधारित IPC चैनलों के माध्यम से मुख्य प्रक्रिया को 27 MCP टूल्स एक्सपोज़ करता है।
+- **डेस्कटॉप** (`desktop/`): एक Electron शैल जो macOS / Windows / Linux के लिए स्टैंडअलोन ऐप पैकेज करता है।
 
-छह IM चैनल (Feishu, Telegram, QQ, DingTalk, WeChat, Web) राउटर में प्रवेश करते हैं, डिडुप्लिकेट और रूट होते हैं क्यू में, जो ProviderPool के माध्यम से API कुंजी चुनती है और कंटेनर या होस्ट प्रक्रिया शुरू करती है। स्ट्रीमिंग इवेंट्स WebSocket द्वारा Web क्लाइंट को या IM API के माध्यम से प्रत्येक चैनल पर वापस भेजे जाते हैं।
+आठ IM चैनल (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) राउटर में प्रवेश करते हैं, डिडुप्लिकेट होकर क्यू में रूट होते हैं, जो प्रोवाइडर पूल के माध्यम से एक API कुंजी / इंजन चुनती है और एक कंटेनर, होस्ट प्रक्रिया, या सैंडबॉक्स शुरू करती है। स्ट्रीमिंग इवेंट्स WebSocket द्वारा Web क्लाइंट्स को ब्रॉडकास्ट या प्रत्येक चैनल पर IM API के माध्यम से वापस भेजे जाते हैं।
 
 ## पूर्ण दस्तावेज़ीकरण
 

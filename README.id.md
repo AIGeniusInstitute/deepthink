@@ -14,7 +14,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge" alt="License" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" /></a>
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <a href="https://github.com/AIGeniusInstitute/deep-think/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
+  <a href="https://github.com/AIGeniusInstitute/deepthink/stargazers"><img src="https://img.shields.io/github/stars/AIGeniusInstitute/deep-think?style=for-the-badge&color=f5a623" alt="GitHub Stars" /></a>
 </p>
 
 ---
@@ -39,11 +39,15 @@ DeepThink, platform evolusi-diri superinteligensi Agent otonom kelas enterprise,
 ### Fitur utama
 
 - **Ditenagai Claude Code native** — Berbasis Claude Agent SDK, runtime di bawahnya adalah CLI Claude Code lengkap, mewarisi semua kapabilitasnya
+- **Harness & Loop Engineering** — Manifes harness berversi (system prompt / subagents / tools / skills) dengan snapshot / diff / eval / promote / rollback, plus loop tugas otonom berjalan lama dengan tinjauan per iterasi dan reinjeksi kegagalan
+- **Agent-as-a-Service (PaaS)** — Buat, versi, mount, bagikan, dan pasang definisi Agent berbasis DB lintas tenant, dengan kuota per pengguna, tinjauan admin, dan marketplace template yang dapat dipublikasikan
 - **Isolasi multi-pengguna** — Workspace per pengguna, kanal IM per pengguna, sistem izin RBAC, pendaftaran kode undangan, log audit
-- **Routing terpadu enam kanal** — Feishu WebSocket, Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, antarmuka Web
-- **Load balancing multi-provider** — beberapa provider Claude API, tiga strategi (round-robin / weighted / failover) dengan health check otomatis
+- **Routing terpadu delapan kanal** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, dan antarmuka Web — semuanya dirutekan seragam
+- **Multi-engine & multi-provider** — Engine code-agent pluggable (Claude Code / AtomCode / Codex / OpenCode) dan beberapa provider Claude API dengan tiga strategi load balancing (round-robin / weighted / failover) dengan deteksi kesehatan otomatis
+- **Eksekusi kode sandboxed** — Sandbox Docker + seccomp + cgroups untuk eksekusi kode Python / Node / shell dan otomatisasi browser Chromium CDP
 - **Billing dan statistik penggunaan** — sistem billing lengkap (paket langganan, dompet, kode penukaran), pelacakan token per model dengan grafik
-- **PWA mobile** — dioptimalkan mendalam untuk mobile, instalasi satu klik ke desktop, iOS / Android disesuaikan
+- **PWA mobile** — Dioptimalkan mendalam untuk mobile, instalasi satu ketuk ke layar utama, iOS / Android disesuaikan
+- **Internasionalisasi** — 29 bahasa UI dengan endonim asli dan dukungan RTL; Agent membalas dalam bahasa yang dipilih pengguna
 
 ## Mulai cepat
 
@@ -51,7 +55,7 @@ DeepThink, platform evolusi-diri superinteligensi Agent otonom kelas enterprise,
 
 **Wajib**: [Node.js](https://nodejs.org) >= 20, [Docker](https://www.docker.com/) (untuk mode kontainer; admin di mode host tidak membutuhkannya), dan kunci Claude API (Anthropic resmi atau layanan relay yang kompatibel).
 
-**Opsional**: kredensial aplikasi enterprise Feishu, Telegram Bot Token, kredensial QQ Bot, kredensial DingTalk, token WeChat iLink — hanya jika Anda menginginkan integrasi IM.
+**Opsional**: kredensial aplikasi enterprise Feishu, Telegram Bot Token, kredensial QQ Bot, kredensial DingTalk, token WeChat iLink, Discord Bot Token, WhatsApp (pindai QR saat peluncuran pertama) — hanya jika Anda menginginkan integrasi IM.
 
 > Claude Code CLI tidak perlu dipasang manual — dependensi Claude Agent SDK proyek sudah menyertakan runtime CLI lengkap, otomatis dipasang saat pertama kali menjalankan `make start`.
 
@@ -59,7 +63,7 @@ DeepThink, platform evolusi-diri superinteligensi Agent otonom kelas enterprise,
 
 ```bash
 # 1. Klon repositori
-git clone https://github.com/AIGeniusInstitute/deep-think.git
+git clone https://github.com/AIGeniusInstitute/deepthink.git
 cd deepthink
 
 # 2. Mulai satu perintah (memasang dependensi dan mengompilasi pertama kali)
@@ -86,13 +90,14 @@ Setelah pendaftaran, setiap pengguna baru otomatis mendapatkan workspace utama d
 </p>
 
 
-DeepThink terdiri dari tiga proyek Node.js independen:
+DeepThink terdiri dari empat proyek Node.js independen:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): layanan utama dengan router pesan (polling 2s + dedup), antrean konkurensi (hingga 20 kontainer + 5 proses host), penjadwal tugas (cron / interval / once), server WebSocket untuk streaming real-time dan terminal, autentikasi bcrypt + HMAC Cookie, RBAC, dan manajemen konfigurasi terenkripsi AES-256-GCM. Data di SQLite (mode WAL, skema v1→v33).
-- **Frontend** (`web/`): SPA React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 + shadcn/ui, dengan react-markdown, mermaid, recharts, xterm.js, dan PWA mobile.
-- **Agent Runner** (`container/agent-runner/`): mesin eksekusi yang berjalan di dalam kontainer Docker atau sebagai proses host; memanggil `query()` dari Claude Agent SDK, memancarkan 14 jenis StreamEvent, dan menyediakan 12 alat MCP ke proses utama melalui kanal IPC berbasis file dengan penulisan atomik.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): layanan utama dengan router pesan (polling 2s + dedup), antrean konkurensi (hingga 20 kontainer + 5 proses host), penjadwal tugas (cron / interval / once), server WebSocket untuk streaming real-time dan terminal, autentikasi bcrypt + HMAC Cookie, RBAC, dan manajemen konfigurasi terenkripsi AES-256-GCM. Persistensi SQLite (mode WAL, skema v1→v51). Termasuk juga lapisan Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox, dan Claude Code Plugins.
+- **Frontend** (`web/`): SPA React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4, dengan react-markdown, mermaid, recharts, xterm.js, dan PWA mobile.
+- **Agent Runner** (`container/agent-runner/`): mesin eksekusi yang berjalan di dalam kontainer Docker atau sebagai proses host; memanggil `query()` dari Claude Agent SDK, memancarkan 30+ jenis StreamEvent via stdout, dan menyediakan 27 alat MCP ke proses utama melalui kanal IPC berbasis file dengan penulisan atomik.
+- **Desktop** (`desktop/`): shell Electron yang memaketkan aplikasi standalone untuk macOS / Windows / Linux.
 
-Enam kanal IM (Feishu, Telegram, QQ, DingTalk, WeChat, Web) masuk ke router, dideduplikasi dan dirutekan ke antrean, yang melalui ProviderPool memilih kunci API dan memulai kontainer atau proses host. Event streaming disiarkan melalui WebSocket ke klien Web atau dikirim balik melalui API IM ke setiap kanal.
+Delapan kanal IM (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) masuk ke router, dideduplikasi dan dirutekan ke antrean, yang melalui provider pool memilih kunci API / engine dan memulai kontainer, proses host, atau sandbox. Event streaming disiarkan melalui WebSocket ke klien Web atau dibalas via API IM ke setiap kanal.
 
 ## Dokumentasi lengkap
 
