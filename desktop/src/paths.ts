@@ -24,6 +24,7 @@ function userDataRoot(): string {
 export const appDataDir = userDataRoot();
 export const dataDir = path.join(appDataDir, 'data');
 export const logDir = path.join(appDataDir, 'logs');
+export const backupsDir = path.join(appDataDir, 'backups');
 
 export const isPackaged = app.isPackaged;
 
@@ -104,7 +105,7 @@ function resolveSystemNode(): string | null {
 }
 
 export function ensureDirs(): void {
-  for (const dir of [appDataDir, dataDir, logDir]) {
+  for (const dir of [appDataDir, dataDir, logDir, backupsDir]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }

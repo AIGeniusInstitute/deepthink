@@ -10364,6 +10364,32 @@ function migrateDataDirectories(): void {
 }
 
 /**
+ * Warn (non-blocking) when the legacy repo-relative data/ directory still
+ * holds data but the new DATA_DIR (defaults to ~/.deepthink/data) is empty.
+ * This happens after upgrading: the default DATA_DIR moved out of the repo
+ * so the repo can be deleted / re-cloned without losing config. We never
+ * auto-migrate (large copy, risk of clobbering); we just tell the operator
+ * to run `make migrate-data`.
+ */
+function warnOnLegacyRepoData(): void {
+  // Only relevant when DATA_DIR is the default user-home location, i.e. not
+  // explicitly overridden by env (desktop app / custom deploys manage their
+  // own data dir and won't have a repo-relative ./data to migrate from).
+  if (process.env.DEEPTHINK_DATA_DIR) return;
+  const projectRoot = process.cwd();
+  const legacyDataDir = path.join(projectRoot, 'data');
+  const legacyDb = path.join(legacyDataDir, 'db', 'messages.db');
+  if (!fs.existsSync(legacyDb)) return;
+  // New DATA_DIR has data already → nothing to migrate.
+  const newDb = path.join(DATA_DIR, 'db', 'messages.db');
+  if (fs.existsSync(newDb)) return;
+  logger.warn(
+    { legacyDataDir, newDataDir: DATA_DIR },
+    '检测到旧数据目录（仓库内 ./data）仍有数据，但新数据目录为空。新数据目录已默认改为用户目录 ~/.deepthink/data，仓库目录可删除/重拉而不丢配置。请运行 `make migrate-data` 迁移旧数据，或 `make backup`(旧) 后 `make restore`(新)。',
+  );
+}
+
+/**
  * One-shot migration: copy shared global CLAUDE.md → first admin's user-global dir.
  * Creates user-global directories for all existing users.
  * Idempotent via flag file.
@@ -10449,6 +10475,7 @@ function migrateGlobalMemoryToPerUser(): void {
 
 async function main(): Promise<void> {
   migrateDataDirectories();
+  warnOnLegacyRepoData();
   initDatabase();
   logger.info('Database initialized');
 

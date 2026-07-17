@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import crypto from 'crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -26,9 +27,13 @@ export const HARNESS_EVAL_CASES_SRC_DIR = path.resolve(
   'harness',
   'eval-cases',
 );
+// Data directory: defaults to the user's home (~/.deepthink/data) so that the
+// repo directory can be deleted / re-cloned without losing runtime config.
+// Override with DEEPTHINK_DATA_DIR env (desktop app sets this to its userData
+// dir; deployments may pin a custom path).
 export const DATA_DIR = process.env.DEEPTHINK_DATA_DIR
   ? path.resolve(process.env.DEEPTHINK_DATA_DIR)
-  : path.resolve(PROJECT_ROOT, 'data');
+  : path.resolve(os.homedir(), '.deepthink', 'data');
 export const STORE_DIR = path.join(DATA_DIR, 'db');
 export const GROUPS_DIR = path.join(DATA_DIR, 'groups');
 export const MAIN_GROUP_FOLDER = 'main';

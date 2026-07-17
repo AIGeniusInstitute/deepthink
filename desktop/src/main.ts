@@ -37,7 +37,7 @@ if (!app.requestSingleInstanceLock()) {
 app.whenReady().then(async () => {
   debug('app ready');
   ensureDirs();
-  installMenu();
+  installMenu({ dataDir, backend, getMainWindow: () => mainWindow });
   createTray({ onShow: showMainWindow, onQuit: () => app.quit(), onRestart: restartBackend, dataDir, logDir });
 
   const splash = createSplash();
@@ -61,7 +61,7 @@ app.whenReady().then(async () => {
   }
 
   destroySplash();
-  initUpdater();
+  initUpdater({ dataDir, backend });
   debug('main window ready');
 });
 
