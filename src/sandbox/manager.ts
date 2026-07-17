@@ -30,7 +30,12 @@ import {
 import type { SandboxExecReq, SandboxExecResult, SandboxSession } from './types.js';
 import { buildDockerRunArgs, validateSecurityArgs } from './security.js';
 import { BrowserController } from './browser.js';
-import { resolveDockerEnv, dockerEnvSync } from './docker-env.js';
+import {
+  resolveDockerEnv,
+  dockerEnvSync,
+  extractRequiredApiVersion,
+  pinDockerApiVersion,
+} from './docker-env.js';
 
 const SANDBOX_PREFIX = 'sb-';
 
@@ -649,6 +654,28 @@ export class SandboxManager {
 
   private async spawnDocker(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
     const env = await this.resolveDockerEnv();
+    const result = await this._runDocker(args, env);
+    if (result.ok) return result;
+
+    // The `docker ps` probe can transiently report success on a cold Docker
+    // Desktop daemon, leaving the cache pinned to an unpinned env. If a
+    // subsequent spawn fails with the client/daemon version-mismatch message,
+    // the daemon's own stderr names the minimum supported version — trust it,
+    // pin, and retry once. Without this, a single cold-start flake poisons the
+    // cache and every later sandbox create fails for the process lifetime.
+    const required = extractRequiredApiVersion(result.stderr);
+    if (required && !env.DOCKER_API_VERSION) {
+      logger.warn(
+        { pinned: required },
+        'Docker API version mismatch on spawn; pinning DOCKER_API_VERSION and retrying',
+      );
+      pinDockerApiVersion(required);
+      return this._runDocker(args, await this.resolveDockerEnv());
+    }
+    return result;
+  }
+
+  private _runDocker(args: string[], env: NodeJS.ProcessEnv): Promise<{ ok: boolean; stdout: string; stderr: string }> {
     return new Promise((resolve) => {
       const proc = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'], env });
       let stdout = '';
