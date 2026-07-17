@@ -566,7 +566,7 @@ REPO_DIR      := $(HOME)/deepthink
 .PHONY: uninstall stop purge-deb purge-appimage purge-config verify dry-run
 
 ## 完整卸载：停止进程 -> 卸载 deb -> 清理系统残留 -> 清理配置 -> 清理 AppImage -> 校验
-uninstall: stop purge-deb purge-residual purge-config purge-appimage verify
+uninstall: stop purge-deb verify
 
 ## 停止运行中的 DeepThink 进程（排除当前 shell，避免误杀）
 stop:
