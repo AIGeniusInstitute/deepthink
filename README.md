@@ -964,11 +964,11 @@ Additionally, the `shared/` directory holds cross-project shared type definition
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=AIGeniusInstitute%2Fdeepthink&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=AIGeniusInstitute%2Fdeepthink&type=timeline&logscale=&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deepthink&type=date&theme=dark&legend=top-left&sealed_token=Kb_rsH1-hVdzm5gzWc1Q8gw8Gkk8git2ERXgpXdLySe-gmjtF6nXbMt2U5fpuBtdcXAWNgyh5M0PXxWWGV6SDdZKM3g2Ri_CptYehdLv6p2kSbJB1u0ccA" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deepthink&type=date&legend=top-left&sealed_token=Kb_rsH1-hVdzm5gzWc1Q8gw8Gkk8git2ERXgpXdLySe-gmjtF6nXbMt2U5fpuBtdcXAWNgyh5M0PXxWWGV6SDdZKM3g2Ri_CptYehdLv6p2kSbJB1u0ccA" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=AIGeniusInstitute/deepthink&type=date&legend=top-left&sealed_token=Kb_rsH1-hVdzm5gzWc1Q8gw8Gkk8git2ERXgpXdLySe-gmjtF6nXbMt2U5fpuBtdcXAWNgyh5M0PXxWWGV6SDdZKM3g2Ri_CptYehdLv6p2kSbJB1u0ccA" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deepthink&type=timeline&theme=dark&logscale&legend=top-left&sealed_token=y_bjrbvLjoYtxk11EJ9ZFlIZvYc-4-gic2JJOV7sbiCp4yl86pjY3JI27i1djHKQn5hauajrtyNYSxWGK-x1z_YWleCN_MOAqkWNIPu2EBsKXS6ALOu6oA" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=AIGeniusInstitute/deepthink&type=timeline&logscale&legend=top-left&sealed_token=y_bjrbvLjoYtxk11EJ9ZFlIZvYc-4-gic2JJOV7sbiCp4yl86pjY3JI27i1djHKQn5hauajrtyNYSxWGK-x1z_YWleCN_MOAqkWNIPu2EBsKXS6ALOu6oA" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=AIGeniusInstitute/deepthink&type=timeline&logscale&legend=top-left&sealed_token=y_bjrbvLjoYtxk11EJ9ZFlIZvYc-4-gic2JJOV7sbiCp4yl86pjY3JI27i1djHKQn5hauajrtyNYSxWGK-x1z_YWleCN_MOAqkWNIPu2EBsKXS6ALOu6oA" />
  </picture>
 </a>
 

@@ -188,7 +188,7 @@ export function LoginPage() {
             <div className="text-center lg:text-left">
               <div className="landing-badge">
                 <Sparkles className="size-3.5" />
-                <span>Powered By AI Genius Institute & AI光剑.</span>
+                <span>Powered By AI Genius Institute & 光剑AI.</span>
               </div>
 
               <h1 className="mt-4 lg:mt-6 text-3xl sm:text-4xl lg:text-6xl font-bold text-foreground tracking-tight leading-[1.1]">
