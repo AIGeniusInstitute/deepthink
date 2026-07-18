@@ -226,7 +226,10 @@ async function writeCodexConfig(
     lines.push(`[mcp_servers.deepthink]`);
     lines.push(`command = "node"`);
     lines.push(`args = ["${mcpBridgePath.replace(/"/g, '\\"')}"]`);
-    // env_vars: pass DT_* context to the bridge subprocess explicitly
+    // env_vars: pass DT_* context to the bridge subprocess explicitly.
+    // codex expects `mcp_servers.*.env_vars` to be a TOML sequence (array)
+    // of "KEY=VALUE" strings — an inline table is rejected with
+    // "invalid type: map, expected a sequence" and codex exits 1 at startup.
     const envVars: Record<string, string> = {};
     for (const k of [
       'DT_CHAT_JID', 'DT_GROUP_FOLDER', 'DT_IS_HOME', 'DT_IS_ADMIN_HOME',
@@ -238,9 +241,9 @@ async function writeCodexConfig(
       }
     }
     const envVarsToml = Object.entries(envVars)
-      .map(([k, v]) => `${k} = "${String(v).replace(/"/g, '\\"')}"`)
+      .map(([k, v]) => `"${k}=${String(v).replace(/"/g, '\\"')}"`)
       .join(', ');
-    lines.push(`env_vars = { ${envVarsToml} }`);
+    lines.push(`env_vars = [ ${envVarsToml} ]`);
   } else {
     log(`mcp-bridge.js not found at ${mcpBridgePath}, skipping MCP bridge config`);
   }
