@@ -1961,7 +1961,14 @@ export async function runHostAgent(
       }
       hostEnv['CODEX_BINARY_PATH'] = codexCfg.binaryPath;
       hostEnv['CODEX_DEFAULT_MODEL'] = codexCfg.defaultModel;
-      hostEnv['CODEX_WORKING_DIR'] = codexCfg.workingDir || groupDir;
+      // Host 模式下 workingDir 必须是真实宿主机路径。codexCfg.workingDir 默认值
+      // '/workspace/group' 是容器内挂载路径，宿主机不存在该目录 → spawn ENOENT
+      // （Node 在 cwd 缺失时抛 spawn <cmd> ENOENT，错误名是命令但实际缺失的是 cwd）。
+      // 仅当配置值在宿主机真实存在时采纳，否则回退到 groupDir（主机模式 group 工作目录）。
+      hostEnv['CODEX_WORKING_DIR'] =
+        codexCfg.workingDir && fs.existsSync(codexCfg.workingDir)
+          ? codexCfg.workingDir
+          : groupDir;
       // Inject providers JSON for codex-engine to write into temporary config.toml
       hostEnv['CODEX_PROVIDERS_JSON'] = JSON.stringify(codexCfg.providers);
       // MCP bridge context — propagated to the bridge subprocess via generated config.toml
@@ -1995,7 +2002,10 @@ export async function runHostAgent(
       hostEnv['OPENCODE_PASSWORD'] = opencodeCfg.password;
       hostEnv['OPENCODE_PROVIDER_ID'] = opencodeCfg.providerID;
       hostEnv['OPENCODE_MODEL_ID'] = opencodeCfg.modelID;
-      hostEnv['OPENCODE_WORKING_DIR'] = opencodeCfg.workingDir || groupDir;
+      hostEnv['OPENCODE_WORKING_DIR'] =
+        opencodeCfg.workingDir && fs.existsSync(opencodeCfg.workingDir)
+          ? opencodeCfg.workingDir
+          : groupDir;
       // Inject providers JSON for opencode-engine to write into temporary opencode.jsonc
       hostEnv['OPENCODE_PROVIDERS_JSON'] = JSON.stringify(opencodeCfg.providers);
       // MCP bridge context
