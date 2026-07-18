@@ -66,6 +66,9 @@ import {
   setAtomcodeSessionId,
   setCodexThreadId,
   setOpencodeSessionId,
+  getAtomcodeSessionId,
+  getCodexThreadId,
+  getOpencodeSessionId,
   deleteSession,
   storeMessageDirect,
   updateLatestMessageTokenUsage,
@@ -7364,6 +7367,30 @@ async function handleDiscordIpcRequest(
 }
 
 /**
+ * Resolve the persisted session ID for a conversation agent, reading the
+ * engine-specific column. OpenCode/Codex/AtomCode store their session IDs in
+ * dedicated columns (opencode_session_id / codex_thread_id /
+ * atomcode_session_id); only the Claude SDK path uses the shared session_id
+ * column. Reading the wrong column previously left non-Claude engines with an
+ * always-undefined session → treated as fresh every turn.
+ */
+function resolveAgentSessionId(
+  group: { folder: string; engine?: string | null },
+  agentId: string,
+): string | undefined {
+  if (group.engine === 'opencode') {
+    return getOpencodeSessionId(group.folder, agentId) || undefined;
+  }
+  if (group.engine === 'codex') {
+    return getCodexThreadId(group.folder, agentId) || undefined;
+  }
+  if (group.engine === 'atomcode') {
+    return getAtomcodeSessionId(group.folder, agentId) || undefined;
+  }
+  return getSession(group.folder, agentId) || undefined;
+}
+
+/**
  * Process messages for a user-created conversation agent.
  * Similar to processGroupMessages but uses agent-specific session/IPC and virtual JID.
  * The agent process stays alive for idleTimeout, cycling idle→running.
@@ -7539,7 +7566,14 @@ async function processAgentConversation(
   // session was cleared by provider/model switching, inject persisted DeepThink
   // chat history so the new model does not mistake the fresh SDK session for
   // an empty conversation.
-  const sessionId = getSession(effectiveGroup.folder, agentId) || undefined;
+  //
+  // Each non-Claude engine persists its session ID in a dedicated column
+  // (opencode_session_id / codex_thread_id / atomcode_session_id), not the
+  // shared session_id column. Reading the wrong column left sessionId
+  // always-undefined for these engines → the agent was treated as a fresh
+  // session every turn → history was re-injected every turn and the runner
+  // recreated the engine session each turn, losing all context.
+  const sessionId = resolveAgentSessionId(effectiveGroup, agentId);
   let currentAgentSessionId = sessionId;
   let prompt = formatMessages(missedMessages, false);
   // Inject history when the SDK session is fresh, or when a proactive provider

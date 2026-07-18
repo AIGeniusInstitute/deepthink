@@ -499,13 +499,31 @@ async function runOneTurn(
       return;
     }
     try {
+      // Track which messages are user-authored so we can drop their parts
+      // below. OpenCode emits `message.part.updated` for the USER's prompt
+      // text too (the very part we POSTed via /session/:id/message), and a
+      // part carries no role field — only its parent message (surfaced via
+      // `message.updated`) does. Without this filter the user's input —
+      // including any injected <system_context> block — gets accumulated
+      // into fullText and echoed back as the agent's reply.
+      const userMessageIds = new Set<string>();
       for await (const ev of parseSseStream(res)) {
         if (done) break;
         const type = ev.type;
         const props = ev.properties ?? {};
+        if (type === 'message.updated') {
+          const info = (props as { info?: { id?: string; role?: string } }).info;
+          if (info?.id && info.role === 'user') {
+            userMessageIds.add(info.id);
+          }
+          continue;
+        }
         if (type === 'message.part.updated') {
-          const part = (props as { part?: { type?: string; text?: string; state?: { status?: string }; tool?: string } }).part;
+          const part = (props as { part?: { type?: string; text?: string; messageID?: string; state?: { status?: string }; tool?: string } }).part;
           if (!part) continue;
+          // Skip parts belonging to a user message — they are the prompt we
+          // sent, not the assistant's reply.
+          if (part.messageID && userMessageIds.has(part.messageID)) continue;
           if (part.type === 'text' && part.text) {
             fullText += part.text;
             emitStream(writeOutput, {
