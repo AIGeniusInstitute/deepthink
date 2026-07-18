@@ -396,7 +396,26 @@ async function runOneTurn(
       }
       case 'item.completed': {
         if (!ev.item) break;
-        if (ev.item.type === 'command_execution') {
+        // Some codex/model combos (e.g. qwen3.7-max via DashScope responses API)
+        // only emit the agent_message as item.completed — never item.started/
+        // item.updated — so without this branch the final text is lost and the
+        // turn ends with "(Codex 返回空回复)". Reuse the lastItemText delta
+        // tracker so models that DO stream via item.updated don't double-emit.
+        if (ev.item.type === 'agent_message' && ev.item.text) {
+          const itemId = ev.item.id ?? '_anon';
+          const prev = lastItemText[itemId] ?? '';
+          const full = ev.item.text;
+          const delta = full.startsWith(prev) ? full.slice(prev.length) : full;
+          lastItemText[itemId] = full;
+          if (delta) {
+            fullText += delta;
+            emitStream(writeOutput, {
+              eventType: 'text_delta',
+              agentScope: 'main',
+              text: delta,
+            }, currentSessionId, turnId);
+          }
+        } else if (ev.item.type === 'command_execution') {
           emitStream(writeOutput, {
             eventType: 'tool_use_end',
             agentScope: 'main',
