@@ -22,9 +22,11 @@
 
 ---
 
+
 <p align="center">
-  <img src="static/deep-think-intro.gif" alt="DeepThink Intro" width="800" />
+  <img src="static/deepthink-v1.0.6.gif" alt="DeepThink Intro" width="800" />
 </p>
+
 
 
 ## DeepThink 是什么
