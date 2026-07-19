@@ -15,7 +15,7 @@
   - [x] F4 Browser Use Agent：browser-agent 循环（截图→视觉 LLM→动作→执行→WS 广播）+ 前端面板 + /browser/agent 路由
 - [x] 4. 测试与修复循环
 - [x] 5. 测试报告
-- [ ] 6. 合并 main + push（进行中）
+- [x] 6. 合并 main + push
 
 ## 编码期修复的真实 bug
 
