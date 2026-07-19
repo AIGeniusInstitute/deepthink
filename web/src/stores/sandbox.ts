@@ -2,17 +2,27 @@ import { create } from 'zustand';
 import { sandboxApi, type SandboxSession } from '../api/sandbox';
 import { wsManager } from '../api/ws';
 
+export interface AgentStep {
+  runId: string;
+  step: number;
+  thought: string;
+  action: { type: string; [k: string]: unknown };
+  result: string;
+  screenshot?: string;
+}
+
 interface SandboxStore {
   sessions: SandboxSession[];
   activeSessionId: string | null;
   browserFrame: string | null;
-  // Per-session frame index — supports multiple sessions (chat + sandbox page
-  // simultaneously) without overwriting each other's frame.
   browserFrames: Record<string, string>;
-  // Track which sessions we've already subscribed to avoid double-subscribe.
   subscribedSessions: Set<string>;
   loading: boolean;
   error: string | null;
+  // Browser Use Agent state, per session
+  agentSteps: Record<string, AgentStep[]>;
+  agentRunning: Record<string, boolean>;
+  agentSummary: Record<string, string | null>;
 
   loadSessions: () => Promise<void>;
   create: (opts: { language?: 'python' | 'node' | 'sh'; browserEnabled?: boolean }) => Promise<SandboxSession | null>;
@@ -25,12 +35,11 @@ interface SandboxStore {
   subscribeBrowser: (sessionId: string, url?: string) => void;
   unsubscribeBrowser: (sessionId: string) => void;
   setBrowserFrame: (dataUrl: string | null) => void;
-  // New: per-session frame setter, used by chat inline panel
   setBrowserFrameForSession: (sessionId: string, dataUrl: string) => void;
   getBrowserFrame: (sessionId: string) => string | null;
   isSubscribed: (sessionId: string) => boolean;
-  // New: focus a session (switch active + wire frame from index)
   focusSession: (sessionId: string) => void;
+  clearAgent: (sessionId: string) => void;
   wireWsHandlers: () => (() => void) | void;
 }
 
@@ -42,6 +51,9 @@ export const useSandboxStore = create<SandboxStore>((set, get) => ({
   subscribedSessions: new Set<string>(),
   loading: false,
   error: null,
+  agentSteps: {},
+  agentRunning: {},
+  agentSummary: {},
 
   loadSessions: async () => {
     set({ loading: true, error: null });
@@ -144,6 +156,12 @@ export const useSandboxStore = create<SandboxStore>((set, get) => ({
     browserFrame: st.browserFrames[sessionId] ?? null,
   })),
 
+  clearAgent: (sessionId) => set((st) => ({
+    agentSteps: { ...st.agentSteps, [sessionId]: [] },
+    agentSummary: { ...st.agentSummary, [sessionId]: null },
+    agentRunning: { ...st.agentRunning, [sessionId]: false },
+  })),
+
   wireWsHandlers: () => {
     const offs: Array<(() => void) | undefined> = [];
     offs.push(wsManager.on('sandbox_browser_frame', (data) => {
@@ -167,6 +185,33 @@ export const useSandboxStore = create<SandboxStore>((set, get) => ({
     }));
     offs.push(wsManager.on('sandbox_error', (data) => {
       console.error('[sandbox]', data?.error);
+    }));
+    offs.push(wsManager.on('sandbox_browser_agent_step', (data) => {
+      const sid = data?.sessionId;
+      if (!sid) return;
+      const step: AgentStep = {
+        runId: data.runId,
+        step: data.step,
+        thought: data.thought ?? '',
+        action: data.action ?? { type: 'unknown' },
+        result: data.result ?? '',
+        screenshot: data.screenshot,
+      };
+      set((st) => ({
+        agentSteps: { ...st.agentSteps, [sid]: [...(st.agentSteps[sid] ?? []), step] },
+        agentRunning: { ...st.agentRunning, [sid]: true },
+      }));
+    }));
+    offs.push(wsManager.on('sandbox_browser_agent_done', (data) => {
+      const sid = data?.sessionId;
+      if (!sid) return;
+      set((st) => ({
+        agentRunning: { ...st.agentRunning, [sid]: false },
+        agentSummary: {
+          ...st.agentSummary,
+          [sid]: `[${data.status}] ${data.summary ?? ''}`,
+        },
+      }));
     }));
     return () => offs.forEach((off) => off?.());
   },

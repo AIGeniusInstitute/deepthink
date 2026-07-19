@@ -2098,6 +2098,22 @@ export function broadcastToWebClients(chatJid: string, text: string): void {
   );
 }
 
+/**
+ * Broadcast a Browser Use Agent event (step / done) to the sandbox session
+ * owner's web clients. Used by the sandbox browser-agent loop to stream
+ * real-time progress to the /sandbox UI.
+ */
+export function broadcastSandboxAgentEvent(
+  userId: string,
+  payload: Record<string, unknown>,
+): void {
+  safeBroadcast(
+    payload as WsMessageOut,
+    false,
+    new Set([userId]),
+  );
+}
+
 export function broadcastNewMessage(
   chatJid: string,
   msg: NewMessage & { is_from_me?: boolean },

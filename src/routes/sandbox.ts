@@ -9,6 +9,7 @@ import path from 'node:path';
 import type { Variables } from '../web-context.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { getSandboxManager } from '../sandbox/index.js';
+import { runBrowserAgent } from '../sandbox/browser-agent.js';
 import type { SandboxLanguage } from '../sandbox/config.js';
 import { logger } from '../logger.js';
 import { getSandboxSessionId } from '../db.js';
@@ -148,23 +149,143 @@ router.post('/sessions/:id/browser/navigate', authMiddleware, async (c) => {
 });
 
 // POST /api/sandbox/sessions/:id/browser/click
+// 支持两种模式：selector 选择器点击，或 {x,y} 坐标点击（用于前端帧交互转发）。
 router.post('/sessions/:id/browser/click', authMiddleware, async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: '未登录' }, 401);
   const id = c.req.param('id');
-  const body = await c.req.json().catch(() => ({})) as { selector: string };
-  if (!body.selector) return c.json({ error: 'selector 必填' }, 400);
+  const body = await c.req.json().catch(() => ({})) as {
+    selector?: string;
+    x?: number;
+    y?: number;
+  };
   const session = getSandboxManager().get(id);
   if (!session) return c.json({ error: '沙箱不存在' }, 404);
   if (session.userId !== user.id) return c.json({ error: 'Forbidden' }, 403);
   try {
     const browser = await getSandboxManager().getBrowser(id);
     if (!browser) return c.json({ error: '浏览器未启动' }, 400);
-    await browser.click(body.selector);
+    if (body.x != null && body.y != null) {
+      await browser.clickAt(Number(body.x), Number(body.y));
+    } else if (body.selector) {
+      await browser.click(body.selector);
+    } else {
+      return c.json({ error: 'selector 或 x/y 必填' }, 400);
+    }
     return c.json({ ok: true });
   } catch (e: any) {
     return c.json({ error: e.message ?? '点击失败' }, 400);
   }
+});
+
+// POST /api/sandbox/sessions/:id/browser/scroll — 滚动 {deltaX, deltaY}
+router.post('/sessions/:id/browser/scroll', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: '未登录' }, 401);
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => ({})) as { deltaX?: number; deltaY?: number };
+  const session = getSandboxManager().get(id);
+  if (!session) return c.json({ error: '沙箱不存在' }, 404);
+  if (session.userId !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  try {
+    const browser = await getSandboxManager().getBrowser(id);
+    if (!browser) return c.json({ error: '浏览器未启动' }, 400);
+    await browser.scroll(Number(body.deltaX ?? 0), Number(body.deltaY ?? 0));
+    return c.json({ ok: true });
+  } catch (e: any) {
+    return c.json({ error: e.message ?? '滚动失败' }, 400);
+  }
+});
+
+// POST /api/sandbox/sessions/:id/browser/press — 按键 {key}
+router.post('/sessions/:id/browser/press', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: '未登录' }, 401);
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => ({})) as { key?: string };
+  if (!body.key) return c.json({ error: 'key 必填' }, 400);
+  const session = getSandboxManager().get(id);
+  if (!session) return c.json({ error: '沙箱不存在' }, 404);
+  if (session.userId !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  try {
+    const browser = await getSandboxManager().getBrowser(id);
+    if (!browser) return c.json({ error: '浏览器未启动' }, 400);
+    await browser.pressKey(body.key);
+    return c.json({ ok: true });
+  } catch (e: any) {
+    return c.json({ error: e.message ?? '按键失败' }, 400);
+  }
+});
+
+// ─── Browser Use Agent ──────────────────────────────────────────
+// 模块级 run 跟踪，用于 stop。
+const agentRuns = new Map<string, { runId: string; isStopped: () => boolean; stop: () => void }>();
+
+function newRunId(): string {
+  return `ba_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// POST /api/sandbox/sessions/:id/browser/agent — 启动自然语言浏览器 Agent
+router.post('/sessions/:id/browser/agent', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: '未登录' }, 401);
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => ({})) as {
+    goal?: string;
+    maxSteps?: number;
+    initialUrl?: string;
+  };
+  if (!body.goal || !body.goal.trim()) {
+    return c.json({ error: 'goal 必填' }, 400);
+  }
+  const session = getSandboxManager().get(id);
+  if (!session) return c.json({ error: '沙箱不存在' }, 404);
+  if (session.userId !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  try {
+    const browser = await getSandboxManager().getBrowser(id);
+    if (!browser) return c.json({ error: '浏览器未启动' }, 400);
+
+    // 若已有运行中的 Agent，先停止
+    const prev = agentRuns.get(id);
+    if (prev) prev.stop();
+
+    const runId = newRunId();
+    let stopped = false;
+    const isStopped = () => stopped;
+    const stop = () => { stopped = true; };
+    agentRuns.set(id, { runId, isStopped, stop });
+
+    runBrowserAgent({
+      sessionId: id,
+      userId: user.id,
+      goal: body.goal.trim(),
+      browser,
+      runId,
+      maxSteps: body.maxSteps,
+      initialUrl: body.initialUrl,
+      isStopped,
+    });
+
+    return c.json({ ok: true, runId });
+  } catch (e: any) {
+    return c.json({ error: e.message ?? '启动 Agent 失败' }, 400);
+  }
+});
+
+// POST /api/sandbox/sessions/:id/browser/agent/stop
+router.post('/sessions/:id/browser/agent/stop', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: '未登录' }, 401);
+  const id = c.req.param('id');
+  const session = getSandboxManager().get(id);
+  if (!session) return c.json({ error: '沙箱不存在' }, 404);
+  if (session.userId !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  const run = agentRuns.get(id);
+  if (run) {
+    run.stop();
+    agentRuns.delete(id);
+  }
+  return c.json({ ok: true });
 });
 
 // POST /api/sandbox/sessions/:id/browser/type

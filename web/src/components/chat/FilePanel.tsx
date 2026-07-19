@@ -48,6 +48,8 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { FileUploadZone } from './FileUploadZone';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { CodeEditor } from '../files/CodeEditor';
+import { OfficeFileOverlay } from '../files/OfficeFileOverlay';
 
 interface FilePanelProps {
   groupJid: string;
@@ -188,7 +190,11 @@ type PreviewState =
   | { kind: 'video'; file: FileEntry }
   | { kind: 'audio'; file: FileEntry }
   | { kind: 'html'; file: FileEntry }
-  | { kind: 'text'; file: FileEntry };
+  | { kind: 'text'; file: FileEntry }
+  | { kind: 'code'; file: FileEntry }
+  | { kind: 'docx'; file: FileEntry }
+  | { kind: 'xlsx'; file: FileEntry }
+  | { kind: 'pptx'; file: FileEntry };
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
@@ -916,6 +922,14 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
         setPreview({ kind: 'markdown', file: item });
       } else if (ext === 'html' || ext === 'htm') {
         setPreview({ kind: 'html', file: item });
+      } else if (CODE_EXTENSIONS.has(ext)) {
+        setPreview({ kind: 'code', file: item });
+      } else if (ext === 'docx') {
+        setPreview({ kind: 'docx', file: item });
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        setPreview({ kind: 'xlsx', file: item });
+      } else if (ext === 'pptx' || ext === 'ppt') {
+        setPreview({ kind: 'pptx', file: item });
       } else {
         setPreview({ kind: 'text', file: item });
       }
@@ -1168,7 +1182,18 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setPreview({ kind: 'edit', file: item });
+                            const ext = getFileExt(item.name);
+                            if (CODE_EXTENSIONS.has(ext)) {
+                              setPreview({ kind: 'code', file: item });
+                            } else if (ext === 'docx') {
+                              setPreview({ kind: 'docx', file: item });
+                            } else if (ext === 'xlsx' || ext === 'xls') {
+                              setPreview({ kind: 'xlsx', file: item });
+                            } else if (ext === 'pptx' || ext === 'ppt') {
+                              setPreview({ kind: 'pptx', file: item });
+                            } else {
+                              setPreview({ kind: 'edit', file: item });
+                            }
                           }}
                           className="p-2.5 rounded hover:bg-brand-100 text-muted-foreground hover:text-primary transition-colors cursor-pointer"
                           title="编辑"
@@ -1313,6 +1338,18 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
       )}
       {preview?.kind === 'text' && (
         <GenericTextPreview groupJid={groupJid} file={preview.file} onClose={() => setPreview(null)} />
+      )}
+      {preview?.kind === 'code' && (
+        <CodeEditor groupJid={groupJid} file={preview.file} onClose={() => setPreview(null)} editable />
+      )}
+      {preview?.kind === 'docx' && (
+        <OfficeFileOverlay groupJid={groupJid} file={preview.file} kind="docx" onClose={() => setPreview(null)} />
+      )}
+      {preview?.kind === 'xlsx' && (
+        <OfficeFileOverlay groupJid={groupJid} file={preview.file} kind="xlsx" onClose={() => setPreview(null)} />
+      )}
+      {preview?.kind === 'pptx' && (
+        <OfficeFileOverlay groupJid={groupJid} file={preview.file} kind="pptx" onClose={() => setPreview(null)} />
       )}
     </div>
   );

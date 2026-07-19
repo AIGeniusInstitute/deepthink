@@ -114,6 +114,8 @@ export default defineConfig(({ command }) => {
             // navigateFallbackDenylist 排除非 SPA 路由（API、WebSocket）。
             navigateFallback: `${APP_BASE}index.html`,
             navigateFallbackDenylist: [/^\/api\//, /^\/ws/],
+            // Monaco / Office 编辑器使主 chunk 超过默认 2MiB，调高 precache 上限。
+            maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
             manifestTransforms: [async (entries) => ({
               manifest: entries.filter((entry) => !isMermaidRuntimeChunk(entry.url)),
               warnings: [],

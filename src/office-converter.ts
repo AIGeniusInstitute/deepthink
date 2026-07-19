@@ -116,6 +116,73 @@ export async function convertToPdf(sourcePath: string): Promise<string> {
 }
 
 /**
+ * Convert an HTML document string to a binary Office file (docx/xlsx/pptx/odt…)
+ * using LibreOffice headless. Returns the generated file Buffer.
+ *
+ * Used by the in-browser contenteditable editor to write back edits as a real
+ * Office file when no JS-side emitter is available (notably docx from HTML).
+ *
+ * Throws if LibreOffice is not installed or conversion fails.
+ */
+export async function convertHtmlToOffice(
+  html: string,
+  targetExt: string,
+): Promise<Buffer> {
+  const bin = await detectLibreOfficeBin();
+  if (!bin) {
+    throw new Error('LibreOffice not installed on the server');
+  }
+  const ext = targetExt.toLowerCase().replace(/^\./, '');
+  const ALLOWED = ['docx', 'doc', 'odt', 'rtf'];
+  if (!ALLOWED.includes(ext)) {
+    throw new Error(`Unsupported target extension: ${targetExt}`);
+  }
+
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+  const jobId = crypto.randomUUID();
+  const tmpOutDir = path.join(CACHE_DIR, `tmp-htmloffice-${jobId}`);
+  fs.rmSync(tmpOutDir, { recursive: true, force: true });
+  fs.mkdirSync(tmpOutDir, { recursive: true });
+  const srcPath = path.join(tmpOutDir, `source.html`);
+  fs.writeFileSync(srcPath, html, 'utf-8');
+
+  // HTML 输入必须显式指定导出过滤器名，否则 LibreOffice 报
+  // "no export filter" —— 用 "<ext>:<filter>" 形式。
+  const FILTER_FOR_EXT: Record<string, string> = {
+    docx: 'MS Word 2007 XML',
+    doc: 'MS Word 97',
+    odt: 'writer8',
+    rtf: 'Rich Text Format',
+  };
+  const filter = FILTER_FOR_EXT[ext];
+  const convertTarget = filter ? `${ext}:${filter}` : ext;
+
+  try {
+    await execFileP(
+      bin,
+      [
+        '--headless',
+        '--nologo',
+        '--nofirststartwizard',
+        '--norestore',
+        '-env:UserInstallation=file://' + path.join(CACHE_DIR, 'profile'),
+        '--convert-to', convertTarget,
+        '--outdir', tmpOutDir,
+        srcPath,
+      ],
+      { timeout: CONVERT_TIMEOUT_MS, maxBuffer: MAX_BUFFER },
+    );
+    const generated = path.join(tmpOutDir, `source.${ext}`);
+    if (!fs.existsSync(generated)) {
+      throw new Error('LibreOffice produced no output file');
+    }
+    return fs.readFileSync(generated);
+  } finally {
+    fs.rmSync(tmpOutDir, { recursive: true, force: true });
+  }
+}
+
+/**
  * Clear cached conversion results older than `maxAgeMs`.
  * Called by a periodic maintenance task to bound disk usage.
  */

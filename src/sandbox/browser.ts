@@ -110,6 +110,37 @@ export class BrowserController {
     await this.page.click(selector, { timeout: 10_000 });
   }
 
+  /** 坐标点击：用于前端帧上的交互点击转发与 Browser Use Agent。 */
+  async clickAt(x: number, y: number): Promise<void> {
+    if (!this.page) throw new Error('浏览器未启动');
+    await this.page.mouse.move(x, y);
+    await this.page.mouse.click(x, y);
+  }
+
+  /** 滚动（像素增量）。 */
+  async scroll(deltaX: number, deltaY: number): Promise<void> {
+    if (!this.page) throw new Error('浏览器未启动');
+    await this.page.mouse.wheel(deltaX, deltaY);
+  }
+
+  /** 在当前焦点元素输入文本（用于 Agent type 动作）。 */
+  async typeText(text: string): Promise<void> {
+    if (!this.page) throw new Error('浏览器未启动');
+    await this.page.keyboard.type(text, { delay: 10 });
+  }
+
+  /** 按键，如 Enter / Tab / Backspace。 */
+  async pressKey(key: string): Promise<void> {
+    if (!this.page) throw new Error('浏览器未启动');
+    await this.page.keyboard.press(key);
+  }
+
+  /** 取页面尺寸，用于把前端相对坐标换算为绝对坐标。 */
+  async getViewportSize(): Promise<{ width: number; height: number } | null> {
+    if (!this.page) return null;
+    return await this.page.viewportSize();
+  }
+
   async type(selector: string, text: string): Promise<void> {
     if (!this.page) throw new Error('浏览器未启动');
     await this.page.fill(selector, text, { timeout: 10_000 });

@@ -55,6 +55,12 @@ export const sandboxApi = {
     api.post<{ ok: boolean; url: string }>(`/api/sandbox/sessions/${id}/browser/navigate`, { url }),
   browserClick: (id: string, selector: string) =>
     api.post<{ ok: boolean }>(`/api/sandbox/sessions/${id}/browser/click`, { selector }),
+  browserClickAt: (id: string, x: number, y: number) =>
+    api.post<{ ok: boolean }>(`/api/sandbox/sessions/${id}/browser/click`, { x, y }),
+  browserScroll: (id: string, deltaX: number, deltaY: number) =>
+    api.post<{ ok: boolean }>(`/api/sandbox/sessions/${id}/browser/scroll`, { deltaX, deltaY }),
+  browserPress: (id: string, key: string) =>
+    api.post<{ ok: boolean }>(`/api/sandbox/sessions/${id}/browser/press`, { key }),
   browserType: (id: string, selector: string, text: string) =>
     api.post<{ ok: boolean }>(`/api/sandbox/sessions/${id}/browser/type`, { selector, text }),
   browserScreenshot: (id: string) =>
@@ -63,6 +69,10 @@ export const sandboxApi = {
     api.post<{ value: unknown }>(`/api/sandbox/sessions/${id}/browser/evaluate`, { script }),
   browserStop: (id: string) =>
     api.post<{ ok: boolean }>(`/api/sandbox/sessions/${id}/browser/stop`),
+  runBrowserAgent: (id: string, body: { goal: string; maxSteps?: number; initialUrl?: string }) =>
+    api.post<{ ok: boolean; runId: string }>(`/api/sandbox/sessions/${id}/browser/agent`, body),
+  stopBrowserAgent: (id: string) =>
+    api.post<{ ok: boolean }>(`/api/sandbox/sessions/${id}/browser/agent/stop`),
   getByGroup: (groupFolder: string) =>
     api.get<{ sessionId: string | null; status?: string; browserEnabled?: boolean }>(`/api/sandbox/by-group/${groupFolder}`),
   listFiles: (id: string, path: string) =>

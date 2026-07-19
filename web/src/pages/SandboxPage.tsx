@@ -3,6 +3,7 @@ import { useSandboxStore } from '../stores/sandbox';
 import { SandboxList } from '../components/sandbox/SandboxList';
 import { SandboxTerminal } from '../components/sandbox/SandboxTerminal';
 import { BrowserView } from '../components/sandbox/BrowserView';
+import { BrowserUsePanel } from '../components/sandbox/BrowserUsePanel';
 import { SandboxToolbar } from '../components/sandbox/SandboxToolbar';
 import { wsManager } from '../api/ws';
 
@@ -53,28 +54,41 @@ export function SandboxPage() {
         <div className="col-span-9 md:col-span-10 flex flex-col min-h-0 gap-2">
           <SandboxToolbar sessionId={activeId} />
 
-          <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <div className="bg-[#1a1b26] rounded border border-white/10 min-h-0 overflow-hidden">
-              {activeId ? (
-                <SandboxTerminal sessionId={activeId} />
-              ) : (
-                <div className="h-full flex items-center justify-center text-neutral-500 text-sm">
-                  选择左侧沙箱，或新建一个沙箱开始使用
-                </div>
-              )}
-            </div>
-            <div className="bg-[#0f0f14] rounded border border-white/10 min-h-0 overflow-hidden">
-              {activeSession?.browserEnabled ? (
+          {activeSession?.browserEnabled ? (
+            <div className="flex-1 min-h-0 grid grid-cols-12 gap-2">
+              {/* Browser Use Agent 控制面板 */}
+              <div className="col-span-4 xl:col-span-3 bg-[#0f0f14] rounded border border-white/10 min-h-0 overflow-hidden">
+                <BrowserUsePanel sessionId={activeId!} />
+              </div>
+              {/* 浏览器实时视图 */}
+              <div className="col-span-8 xl:col-span-9 bg-[#0f0f14] rounded border border-white/10 min-h-0 overflow-hidden">
                 <BrowserView sessionId={activeId!} />
-              ) : (
+              </div>
+              {/* 终端 */}
+              <div className="col-span-12 h-[30%] min-h-[120px] bg-[#1a1b26] rounded border border-white/10 overflow-hidden">
+                <SandboxTerminal sessionId={activeId!} />
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-2">
+              <div className="bg-[#1a1b26] rounded border border-white/10 min-h-0 overflow-hidden">
+                {activeId ? (
+                  <SandboxTerminal sessionId={activeId} />
+                ) : (
+                  <div className="h-full flex items-center justify-center text-neutral-500 text-sm">
+                    选择左侧沙箱，或新建一个沙箱开始使用
+                  </div>
+                )}
+              </div>
+              <div className="bg-[#0f0f14] rounded border border-white/10 min-h-0 overflow-hidden">
                 <div className="h-full flex items-center justify-center text-neutral-500 text-sm px-6 text-center">
                   {activeId
-                    ? '该沙箱未启用浏览器。销毁后重新创建并勾选"启动浏览器"以使用浏览器视图。'
+                    ? '该沙箱未启用浏览器。销毁后重新创建并勾选"启动浏览器"以使用浏览器视图与 Browser Use Agent。'
                     : '选择沙箱以查看浏览器视图'}
                 </div>
-              )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

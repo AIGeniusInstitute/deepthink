@@ -35,6 +35,8 @@ interface FileState {
   navigateTo: (jid: string, path: string) => void;
   getFileContent: (jid: string, filePath: string) => Promise<string | null>;
   saveFileContent: (jid: string, filePath: string, content: string) => Promise<boolean>;
+  saveFileBinary: (jid: string, filePath: string, data: ArrayBuffer | Blob) => Promise<boolean>;
+  saveHtmlAsDocx: (jid: string, filePath: string, html: string) => Promise<boolean>;
 }
 
 export function toBase64Url(str: string): string {
@@ -204,6 +206,41 @@ export const useFileStore = create<FileState>((set, get) => ({
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to save file';
       console.error('Failed to save file content:', err);
+      set({ error: msg });
+      return false;
+    }
+  },
+
+  saveFileBinary: async (jid: string, filePath: string, data: ArrayBuffer | Blob) => {
+    try {
+      const encoded = toBase64Url(filePath);
+      const body = data instanceof Blob ? await data.arrayBuffer() : data;
+      await apiFetch(`/api/groups/${encodeURIComponent(jid)}/files/binary/${encoded}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body,
+      });
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save binary file';
+      console.error('Failed to save binary file:', err);
+      set({ error: msg });
+      return false;
+    }
+  },
+
+  saveHtmlAsDocx: async (jid: string, filePath: string, html: string) => {
+    try {
+      const encoded = toBase64Url(filePath);
+      await apiFetch(`/api/groups/${encodeURIComponent(jid)}/files/html-docx/${encoded}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        body: html,
+      });
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to convert HTML to docx';
+      console.error('Failed to convert HTML to docx:', err);
       set({ error: msg });
       return false;
     }

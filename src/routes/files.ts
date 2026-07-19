@@ -28,7 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
-import { convertToPdf, isConvertibleToPdf, isLibreOfficeAvailable } from '../office-converter.js';
+import { convertToPdf, isConvertibleToPdf, isLibreOfficeAvailable, convertHtmlToOffice } from '../office-converter.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -1084,6 +1084,223 @@ fileRoutes.put('/:jid/files/content/:path', authMiddleware, async (c) => {
   } catch (error) {
     logger.error({ err: error }, `Failed to save file content for ${jid}`);
     return c.json({ error: 'Failed to save file content' }, 500);
+  }
+});
+
+// PUT /api/groups/:jid/files/binary/:path - 保存二进制 Office 文件（docx/xlsx/pptx）
+// 用于在线编辑器（xlsx SheetJS 导出 / docx html-docx-js 导出）写回原文件。
+fileRoutes.put('/:jid/files/binary/:path', authMiddleware, async (c) => {
+  const jid = c.req.param('jid');
+  const encodedPath = c.req.param('path');
+
+  const group = getRegisteredGroup(jid);
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json(
+      { error: 'Insufficient permissions for host execution mode' },
+      403,
+    );
+  }
+
+  try {
+    const rootOverride = getFileRootOverride(group);
+    const relativePath = Buffer.from(encodedPath, 'base64url').toString('utf-8');
+
+    if (isSystemPath(relativePath)) {
+      return c.json({ error: 'Cannot edit system file' }, 403);
+    }
+
+    const absolutePath = validateAndResolvePath(
+      group.folder,
+      relativePath,
+      rootOverride,
+    );
+
+    const ext = path.extname(absolutePath).slice(1).toLowerCase();
+    const BINARY_EDITABLE = new Set(['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt']);
+    if (!BINARY_EDITABLE.has(ext)) {
+      return c.json({ error: 'File type not supported for binary editing' }, 400);
+    }
+
+    // 读取原始 body
+    const buf = Buffer.from(await c.req.arrayBuffer().catch(() => new ArrayBuffer(0)));
+    if (buf.byteLength === 0) {
+      return c.json({ error: 'Empty body' }, 400);
+    }
+    // 限制 50MB
+    if (buf.byteLength > 50 * 1024 * 1024) {
+      return c.json({ error: 'Content too large (max 50MB)' }, 400);
+    }
+
+    if (isBillingEnabled() && group.created_by) {
+      let prevSize = 0;
+      try {
+        prevSize = fs.statSync(absolutePath).size;
+      } catch { /* 可能是新文件 */ }
+      const additionalBytes = Math.max(0, buf.byteLength - prevSize);
+      if (additionalBytes > 0) {
+        const currentUsage = getGroupStorageUsage(group.folder, rootOverride);
+        const storageCheck = checkStorageLimit(
+          group.created_by,
+          authUser.role,
+          currentUsage,
+          additionalBytes,
+        );
+        if (!storageCheck.allowed) {
+          return c.json({ error: storageCheck.reason }, 403);
+        }
+      }
+    }
+
+    // 原子写入（同 content PUT：tmp + O_EXCL/NOFOLLOW + rename）
+    try {
+      const lst = fs.lstatSync(absolutePath);
+      if (lst.isSymbolicLink()) {
+        return c.json({ error: 'Refusing to overwrite symbolic link' }, 403);
+      }
+    } catch (err: any) {
+      if (err && err.code !== 'ENOENT') throw err;
+    }
+    const tmp = `${absolutePath}.tmp`;
+    const noFollowFlag = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW;
+    let renameOk = false;
+    try {
+      if (noFollowFlag !== undefined) {
+        const flags =
+          fs.constants.O_WRONLY |
+          fs.constants.O_CREAT |
+          fs.constants.O_TRUNC |
+          fs.constants.O_EXCL |
+          noFollowFlag;
+        let fd: number | null = null;
+        try {
+          fd = fs.openSync(tmp, flags, 0o644);
+          fs.writeFileSync(fd, buf);
+        } finally {
+          if (fd !== null) {
+            try { fs.closeSync(fd); } catch { /* ignore */ }
+          }
+        }
+      } else {
+        try {
+          fs.writeFileSync(tmp, buf, { flag: 'wx', mode: 0o644 });
+        } catch (err: any) {
+          if (err && err.code === 'EEXIST') {
+            fs.unlinkSync(tmp);
+            fs.writeFileSync(tmp, buf, { flag: 'wx', mode: 0o644 });
+          } else {
+            throw err;
+          }
+        }
+      }
+      fs.renameSync(tmp, absolutePath);
+      renameOk = true;
+    } finally {
+      if (!renameOk) {
+        try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+      }
+    }
+
+    invalidateGroupStorageUsage(group.folder, rootOverride);
+    return c.json({ success: true, size: buf.byteLength });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to save binary file for ${jid}`);
+    return c.json({ error: 'Failed to save binary file' }, 500);
+  }
+});
+
+// PUT /api/groups/:jid/files/html-docx/:path - 将 contenteditable 编辑的 HTML 转为 docx 写回
+// 后端用 LibreOffice 转换，避免前端引入 html-docx-js（其 with 语句破坏 Rollup 构建）。
+fileRoutes.put('/:jid/files/html-docx/:path', authMiddleware, async (c) => {
+  const jid = c.req.param('jid');
+  const encodedPath = c.req.param('path');
+
+  const group = getRegisteredGroup(jid);
+  if (!group) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json({ error: 'Insufficient permissions for host execution mode' }, 403);
+  }
+
+  try {
+    const rootOverride = getFileRootOverride(group);
+    const relativePath = Buffer.from(encodedPath, 'base64url').toString('utf-8');
+    if (isSystemPath(relativePath)) {
+      return c.json({ error: 'Cannot edit system file' }, 403);
+    }
+    const absolutePath = validateAndResolvePath(group.folder, relativePath, rootOverride);
+    const ext = path.extname(absolutePath).slice(1).toLowerCase();
+    if (ext !== 'docx' && ext !== 'doc') {
+      return c.json({ error: 'html-docx endpoint only targets .docx/.doc' }, 400);
+    }
+
+    const html = await c.req.text().catch(() => '');
+    if (!html || html.length === 0) {
+      return c.json({ error: 'Empty HTML body' }, 400);
+    }
+    if (html.length > 20 * 1024 * 1024) {
+      return c.json({ error: 'HTML too large (max 20MB)' }, 400);
+    }
+
+    if (!(await isLibreOfficeAvailable())) {
+      return c.json({ error: 'LibreOffice not installed on the server', code: 'no_libreoffice' }, 501);
+    }
+
+    const buf = await convertHtmlToOffice(html, ext);
+
+    // 写回配额检查
+    if (isBillingEnabled() && group.created_by) {
+      let prevSize = 0;
+      try { prevSize = fs.statSync(absolutePath).size; } catch { /* 可能新文件 */ }
+      const additionalBytes = Math.max(0, buf.byteLength - prevSize);
+      if (additionalBytes > 0) {
+        const currentUsage = getGroupStorageUsage(group.folder, rootOverride);
+        const storageCheck = checkStorageLimit(
+          group.created_by, authUser.role, currentUsage, additionalBytes,
+        );
+        if (!storageCheck.allowed) {
+          return c.json({ error: storageCheck.reason }, 403);
+        }
+      }
+    }
+
+    // 原子写入
+    try {
+      const lst = fs.lstatSync(absolutePath);
+      if (lst.isSymbolicLink()) {
+        return c.json({ error: 'Refusing to overwrite symbolic link' }, 403);
+      }
+    } catch (err: any) {
+      if (err && err.code !== 'ENOENT') throw err;
+    }
+    // 文件可能是新建的：先确保父目录存在（与文本 content PUT 一致）
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+    const tmp = `${absolutePath}.tmp`;
+    try {
+      fs.writeFileSync(tmp, buf, { flag: 'wx', mode: 0o644 });
+      fs.renameSync(tmp, absolutePath);
+    } catch (err: any) {
+      try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+      throw err;
+    }
+
+    invalidateGroupStorageUsage(group.folder, rootOverride);
+    return c.json({ success: true, size: buf.byteLength });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to convert HTML to docx for ${jid}`);
+    return c.json({ error: 'Failed to convert HTML to docx' }, 500);
   }
 });
 

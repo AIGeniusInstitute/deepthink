@@ -69,3 +69,75 @@ export async function sdkQuery(
     clearTimeout(timer);
   }
 }
+
+/**
+ * Anthropic 消息内容块类型（文本 / 图像 base64）。
+ * 仅声明我们用到的子集，避免依赖 SDK 私有类型。
+ */
+export type AssistantContentBlock =
+  | { type: 'text'; text: string }
+  | {
+      type: 'image';
+      source: { type: 'base64'; media_type: string; data: string };
+    };
+
+export interface AssistantMessage {
+  role: 'user' | 'assistant';
+  content: string | AssistantContentBlock[];
+}
+
+/**
+ * 发送带图像的消息（用于 Browser Use Agent：截图 + 文本指令 → 下一步动作）。
+ * 复用 provider 配置；maxTurns=1、不允许工具，纯模型问答。
+ * 返回文本结果（调用方自行解析 JSON 动作）。
+ */
+export async function sdkQueryMessages(
+  messages: AssistantMessage[],
+  opts?: { model?: string; timeout?: number },
+): Promise<string | null> {
+  const timeout = opts?.timeout ?? 90_000;
+  const config = getClaudeProviderConfig();
+  const envLines = buildClaudeEnvLines(config);
+  const env: Record<string, string | undefined> = { ...process.env };
+  for (const line of envLines) {
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    env[line.slice(0, eq)] = line.slice(eq + 1);
+  }
+
+  const abortController = new AbortController();
+  const timer = setTimeout(() => abortController.abort(), timeout);
+
+  try {
+    const model = opts?.model || config.anthropicModel || undefined;
+    let result = '';
+    const conversation = query({
+      // SDK 接受 messages（含图像 content block）
+      messages: messages as any,
+      options: {
+        ...(model && { model }),
+        env,
+        maxTurns: 1,
+        allowedTools: [],
+        permissionMode: 'bypassPermissions' as const,
+        allowDangerouslySkipPermissions: true,
+        abortController,
+      },
+    } as any);
+
+    for await (const event of conversation) {
+      if (event.type === 'result' && event.subtype === 'success') {
+        result = event.result;
+      }
+    }
+    return result.trim() || null;
+  } catch (err) {
+    logger.warn(
+      { err: (err as Error).message?.slice(0, 200) },
+      'sdkQueryMessages failed',
+    );
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}

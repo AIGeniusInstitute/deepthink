@@ -8,6 +8,7 @@
  * here we call hljs directly to highlight arbitrary content.
  */
 import { useEffect, useRef, useState } from 'react';
+import hljs from 'highlight.js';
 import type { ArtifactSource } from './types';
 
 interface Props {
@@ -41,9 +42,6 @@ export function CodeRenderer({ source, previewUrl, language }: Props) {
   // Apply hljs after content is set
   useEffect(() => {
     if (!codeRef.current) return;
-    // hljs is attached to window by highlight.js; loaded via rehype-highlight dependency
-    const hljs = (window as any).hljs;
-    if (!hljs) return;
     try {
       const result = language
         ? hljs.highlight(code, { language, ignoreIllegals: true })
