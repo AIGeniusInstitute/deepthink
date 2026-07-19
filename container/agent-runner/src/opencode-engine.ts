@@ -125,10 +125,21 @@ async function writeOpencodeConfigFile(
     for (const m of p.models) {
       modelsMap[m] = { name: m };
     }
+    // OpenCode v1 provider config schema (packages/core/src/v1/config/provider.ts):
+    // the credentials live under `options` as camelCase `apiKey`/`baseURL`, and
+    // `api` selects the API integration. DeepThink's opencode providers all use
+    // OpenAI-compatible baseURLs (e.g. dashscope /compatible-mode/v1), so
+    // `api: "openai"`. The previous `api_key`/`base_url` (snake_case, top-level)
+    // format was unreadable by OpenCode → baseURL resolved to `undefined` →
+    // "undefined/chat/completions cannot be parsed as a URL" → the LLM was
+    // never called (only the user's prompt echoed back).
     (config.provider as Record<string, unknown>)[p.id] = {
       name: p.name || p.id,
-      api_key: p.apiKey,
-      base_url: p.baseURL,
+      api: 'openai',
+      options: {
+        apiKey: p.apiKey,
+        baseURL: p.baseURL,
+      },
       models: modelsMap,
     };
   }
