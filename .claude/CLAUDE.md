@@ -11,47 +11,33 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
 
 > "让每一家企业都拥有一支永不停歇、持续进化的 AI 超级研发团队——从工具使用者，到代码创造者，最终成长为可自我繁衍的超级智能体。让我们在通往 AGI 的道路上一起前行。"
 
-
-## 🔴 MANDATORY：监督者 Supervisor Agent
-
-**核心原则**：DeepThink 不是一次性任务执行者，而是由监督者 Supervisor Agent 驱动的持续闭环系统。
-
-**绝对禁止**：
-- ❌ 过度自信：测试跑一次通过就宣称修复完成
-- ❌ 过度承诺：声称"应该可以"、"大概率成功"
-- ❌ 提前退出：未达到明确退出条件就停止循环
-- ❌ 主观判断：基于"感觉"而非"证据"下结论
-
-**必须做到**：
-- ✅ 客观验证：每个结论必须有截图、日志、测试结果支撑
-- ✅ 持续迭代：直到达到明确的退出条件
-- ✅ 二选一结论：要么"真正修复"，要么"无法修复（需人工介入）"
-- ✅ 完整记录：每轮测试结果、修复记录、失败原因全部留存
-
 ## 项目源代码仓库
 
 源代码在本机 ~/deepthink 目录下
 
 Git仓库地址：git@gitcode.com:AIGeniusInstitute/deepthink.git
 
+## 工作流程
 
-## 需求开发任务工作流程
+### 需求开发任务工作流程
 
-0、针对该任务创建工作分支树 worktree
-1、生成需求 prd 文档，写入 docs/prd 目录下，要创建这个需求自己的独立文件夹
-2、设计技术方案，详细开发技术方案文档，写入 docs/tech_solution 目录下，也要创建这个需求自己的独立文件夹
-3、方案全面实施，执行编码；执行过程中，把执行状态写到 docs/task_state 目录下，也要创建这个需求自己的独立文件夹
-4、全部测试和修复全部通过之后， 把需求测试报告写入 docs/test_report 目录下，也要创建这个需求自己的独立文件夹
-5、合并 worktree 分支到 main 分支，提交并push 到 main
+0.针对该任务创建工作分支树 worktree
+1.生成需求 prd 文档 & 每个功能点的验收标准 & 测试用例，写入 docs/prd 目录下，要创建这个需求自己的独立文件夹
+2.设计技术方案，详细开发技术方案文档，写入 docs/tech_solution 目录下，也要创建这个需求自己的独立文件夹
+3.方案全面实施，执行编码；执行过程中，把执行状态写到 docs/task_state 目录下，也要创建这个需求自己的独立文件夹
+4.执行测试用例，遇到问题bug，查找运行log和相关代码行，修复好问题，再次验证，循环执行步骤2,3。 直到全部测试和修复全部通过
+5.把需求测试报告写入 docs/test_report 目录下，也要创建这个需求自己的独立文件夹
+6.合并 worktree 分支到 main 分支，提交并push 到 main
 
 
-## Issue 修复任务工作流程
+### Issue 修复任务工作流程
 
 针对 bug 修复 / 线上事故 / CI 故障等 issue 处理（**不**走 PRD → tech_solution → test_report 那条线，因为不是新需求开发）：
 
-0、针对该任务创建工作分支树 worktree
-1、定位根因：必须有证据（日志、API 输出、测试结果），禁止主观判断下结论
-2、把本次 issue 处理经验沉淀到 `docs/issues/{YYYY-MM-DD}-{slug}.md`，文件结构必须包含：
+0.针对该任务创建工作分支树 worktree
+1.定位根因：必须有证据（日志、API 输出、测试结果），禁止主观判断下结论
+2.执行编码修复，与 issue 文档一并 commit。遇到问题bug，查找运行log和相关代码行，修复好问题，再次验证，循环执行，直到全部测试和修复全部通过。
+3.把本次 issue 处理经验沉淀到 `docs/issues/{YYYY-MM-DD}-{slug}.md`，文件结构必须包含：
    - `## 1. 用户现象`：从用户/外部视角描述看到了什么
    - `## 2. 问题描述`：从技术视角简述发生了什么
    - `## 3. 根因`：代码层面 / 基础设施层面的具体原因，附外部依据链接
@@ -60,8 +46,7 @@ Git仓库地址：git@gitcode.com:AIGeniusInstitute/deepthink.git
    - `## 6. 修复方案`：diff 形式呈现关键改动 + 选型理由
    - `## 7. 处理卡住的状态`（如适用）：如何救活已 stuck 的运行态
    - `## 8. 经验沉淀 / 预防`：未来怎么避免同类问题、巡检脚本、告警建议
-3、执行编码修复，与 issue 文档一并 commit
-4、合并 worktree 分支到 main 分支，提交并push 到 main
+4.合并 worktree 分支到 main 分支，提交并push 到 main
 
 ## 工作原则【最高宪法】
 
@@ -93,3 +78,20 @@ Claude, left unconstrained, tends to interpret "fix this" as implicit permission
 
 Core principle: "Define success criteria. Loop until verified."
 Every task should be converted into a measurable objective with explicit verification steps before Claude starts writing. The difference between "add a login form" and "add a login form — success when: form renders at /login, submits correctly with valid credentials, shows error state on invalid credentials, and passes the existing auth test suite" is not pedantry. It's the difference between an agent that loops productively and one that declares victory on a half-finished implementation.
+
+
+## 🔴 MANDATORY：监督者 Supervisor Agent
+
+**核心原则**：DeepThink 不是一次性任务执行者，而是由监督者 Supervisor Agent 驱动的持续闭环系统。
+
+**绝对禁止**：
+- ❌ 过度自信：测试跑一次通过就宣称修复完成
+- ❌ 过度承诺：声称"应该可以"、"大概率成功"
+- ❌ 提前退出：未达到明确退出条件就停止循环
+- ❌ 主观判断：基于"感觉"而非"证据"下结论
+
+**必须做到**：
+- ✅ 客观验证：每个结论必须有截图、日志、测试结果支撑
+- ✅ 持续迭代：直到达到明确的退出条件
+- ✅ 二选一结论：要么"真正修复"，要么"无法修复（需人工介入）"
+- ✅ 完整记录：每轮测试结果、修复记录、失败原因全部留存
