@@ -1,11 +1,11 @@
-.PHONY: dev dev-backend dev-web build build-backend build-web start \
+.PHONY: dev dev-backend dev-web build build-backend build-web start start-prod \
        typecheck typecheck-backend typecheck-web typecheck-agent-runner \
        format format-check install install-host-tools clean reset-init migrate-data update-sdk ensure-latest-sdk sync-types \
        backup restore help _ensure-docker-image _ensure-sandbox-image \
        sandbox-build logs status stop \
        _check-sync _build-web-if-stale _build-ar-if-stale _build-backend-if-stale \
        _start-pm2 _start-direct \
-       admin-create admin-passwd \
+       admin-create admin-passwd admin-set \
        desktop-install desktop-build-deps desktop-build desktop-fetch-node \
        desktop-rebuild-natives desktop-dev desktop-pack-mac desktop-pack-mac-x64 \
        desktop-pack-mac-all desktop-pack-win desktop-pack-linux
@@ -98,6 +98,9 @@ _start-direct: ## (内部) 裸跑模式（无 pm2 或未注册）
 	@$(MAKE) _ensure-native-abi
 	@echo "🟢 Node 模式：运行编译后的 dist/index.js（端口 $(PORT)，本项目不使用 bun，WebSocket 需要 node）"
 	WEB_PORT=$(PORT) node dist/index.js
+
+start-prod: ## 以端口 9999 启动生产前后端（复用 start 逻辑，前后端共用该端口）
+	@$(MAKE) --no-print-directory start PORT=9999
 
 # ─── Internal build checks ────────────────────────────────────
 
@@ -373,6 +376,18 @@ admin-passwd: ## 修改管理员密码（USERNAME=xxx [PASSWORD=xxx]，省略 PA
 	@ARGS="passwd $(USERNAME)"; \
 	  [ -n "$(PASSWORD)" ] && ARGS="$$ARGS $(PASSWORD)"; \
 	  npx tsx src/admin-account-cli.js $$ARGS
+
+# admin-set：一键设置/重置 admin 账号密码，幂等（不存在则创建，已存在则改密并吊销旧会话）。
+# 用法：
+#   make admin-set                                    # 默认 admin / 88888888
+#   make admin-set ADMIN_NAME=alice ADMIN_PASS=Str0ngPass   # 自定义账号/密码（密码 ≥8 位）
+# 说明：用 ADMIN_NAME/ADMIN_PASS 而非 USERNAME/PASSWORD，避免 shell 环境
+# 变量 USERNAME（=当前登录用户）污染默认值。
+admin-set: ## 设置/重置 admin 账号密码（默认 admin/88888888，可 ADMIN_NAME=/ADMIN_PASS= 覆盖；账号不存在则创建，已存在则改密码并吊销旧会话）
+	@U="$(or $(ADMIN_NAME),admin)"; P="$(or $(ADMIN_PASS),88888888)"; \
+	  echo ">> admin-set: username=$$U"; \
+	  npx tsx src/admin-account-cli.js passwd "$$U" "$$P" 2>/dev/null \
+	    || npx tsx src/admin-account-cli.js create "$$U" "$$P"
 
 # ─── Backup / Restore ────────────────────────────────────────
 
