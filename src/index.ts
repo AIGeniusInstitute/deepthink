@@ -179,6 +179,7 @@ import {
   type SupervisorCheckDeps,
   type RecentMessageLite,
 } from './supervisor-agent.js';
+import { bootRecoverGraphRuns } from './graph-engineering/graph-recovery.js';
 import { setSupervisorDeps } from './routes/supervisor.js';
 import { seedMarketplaceIfEmpty } from './marketplace-seed.js';
 import {
@@ -11570,6 +11571,17 @@ async function main(): Promise<void> {
   bootRecoverSupervisor(supervisorDeps).catch((err) => {
     logger.error({ err }, 'Supervisor boot recovery failed');
   });
+  // Graph Engineering boot recovery: flip stale 'running' graph_runs /
+  // graph_node_runs → 'failed' so they are resumable, not stuck. See
+  // docs/tech_solution/graph-engineering/SOLUTION.md §6.2.
+  try {
+    const recovered = bootRecoverGraphRuns();
+    if (recovered.runsFlipped > 0 || recovered.nodesFlipped > 0) {
+      logger.info({ recovered }, 'Graph runs recovered after restart');
+    }
+  } catch (err) {
+    logger.error({ err }, 'Graph boot recovery failed');
+  }
   startStreamingBuffer();
   startMessageLoop();
 
