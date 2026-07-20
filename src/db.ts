@@ -465,6 +465,90 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_chat_trace_parent ON chat_trace_nodes(parent_node_id);
   `);
 
+  // Graph Engineering tables (v52)
+  // Graph = orchestration layer over Loop. A graph definition declares nodes +
+  // edges (DAG); a graph_run is an execution instance; graph_node_runs are
+  // per-node checkpoints (resume point); graph_node_run_locks isolate concurrent
+  // node workspaces within one folder (see AC2.7). Modeled on loop_runs /
+  // loop_iterations / loop_trace_nodes (v41) three-piece pattern.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS graph_definitions (
+      id TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      parent_version_id TEXT,
+      name TEXT NOT NULL,
+      description TEXT,
+      nodes_json TEXT NOT NULL,
+      edges_json TEXT NOT NULL,
+      state_schema_json TEXT,
+      manifest_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','deprecated')),
+      created_at TEXT NOT NULL,
+      UNIQUE(id, version)
+    );
+    CREATE INDEX IF NOT EXISTS idx_graph_def_status ON graph_definitions(status);
+
+    CREATE TABLE IF NOT EXISTS graph_runs (
+      id TEXT PRIMARY KEY,
+      definition_id TEXT NOT NULL,
+      definition_version INTEGER NOT NULL,
+      owner_user_id TEXT NOT NULL,
+      group_folder TEXT NOT NULL,
+      chat_jid TEXT NOT NULL,
+      goal_text TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending','running','paused','completed','failed','cancelled')),
+      current_node_id TEXT,
+      state_json TEXT NOT NULL DEFAULT '{}',
+      max_parallel INTEGER NOT NULL DEFAULT 4,
+      total_input_tokens INTEGER NOT NULL DEFAULT 0,
+      total_output_tokens INTEGER NOT NULL DEFAULT 0,
+      total_cost_usd REAL NOT NULL DEFAULT 0,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      cancel_reason TEXT,
+      FOREIGN KEY (definition_id) REFERENCES graph_definitions(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_graph_runs_owner ON graph_runs(owner_user_id, started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_graph_runs_status ON graph_runs(status);
+
+    CREATE TABLE IF NOT EXISTS graph_node_runs (
+      id TEXT PRIMARY KEY,
+      graph_run_id TEXT NOT NULL,
+      node_id TEXT NOT NULL,
+      node_type TEXT NOT NULL
+        CHECK(node_type IN ('agent','gate','branch','join','human')),
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending','running','completed','failed','skipped','paused')),
+      attempt INTEGER NOT NULL DEFAULT 0,
+      input_summary TEXT,
+      output_summary TEXT,
+      state_patch_json TEXT,
+      parent_node_run_id TEXT,
+      started_at TEXT,
+      ended_at TEXT,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      cost_usd REAL NOT NULL DEFAULT 0,
+      error TEXT,
+      is_idempotent INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (graph_run_id) REFERENCES graph_runs(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_graph_node_runs_run ON graph_node_runs(graph_run_id, status);
+    CREATE INDEX IF NOT EXISTS idx_graph_node_runs_parent ON graph_node_runs(parent_node_run_id);
+
+    CREATE TABLE IF NOT EXISTS graph_node_run_locks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      graph_run_id TEXT NOT NULL,
+      node_id TEXT NOT NULL,
+      workspace_folder TEXT NOT NULL,
+      acquired_at TEXT NOT NULL,
+      released_at TEXT,
+      FOREIGN KEY (graph_run_id) REFERENCES graph_runs(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_graph_locks_run ON graph_node_run_locks(graph_run_id, released_at);
+  `);
+
   // Self-Evolving Harness tables (v43)
   // DGM-style version archive + AHE falsifiable contracts + Harness-Bench mini eval.
   // Design notes:
@@ -1846,7 +1930,7 @@ export function initDatabase(): void {
     db.exec('ALTER TABLE scheduled_tasks ADD COLUMN loop_run_id TEXT');
   }
 
-  const SCHEMA_VERSION = '51';
+  const SCHEMA_VERSION = '52';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -2962,6 +3046,74 @@ export interface LoopTraceNodeRow {
 }
 
 // =============================================================================
+// Graph Engineering — row types + CRUD.
+// Graph = orchestration layer over Loop. See docs/tech_solution/graph-engineering/SOLUTION.md.
+// =============================================================================
+
+export interface GraphDefinitionRow {
+  id: string;
+  version: number;
+  parent_version_id: string | null;
+  name: string;
+  description: string | null;
+  nodes_json: string;
+  edges_json: string;
+  state_schema_json: string | null;
+  manifest_hash: string;
+  status: 'active' | 'deprecated';
+  created_at: string;
+}
+
+export interface GraphRunRow {
+  id: string;
+  definition_id: string;
+  definition_version: number;
+  owner_user_id: string;
+  group_folder: string;
+  chat_jid: string;
+  goal_text: string | null;
+  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+  current_node_id: string | null;
+  state_json: string;
+  max_parallel: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_usd: number;
+  started_at: string;
+  ended_at: string | null;
+  cancel_reason: string | null;
+}
+
+export interface GraphNodeRunRow {
+  id: string;
+  graph_run_id: string;
+  node_id: string;
+  node_type: 'agent' | 'gate' | 'branch' | 'join' | 'human';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'paused';
+  attempt: number;
+  input_summary: string | null;
+  output_summary: string | null;
+  state_patch_json: string | null;
+  parent_node_run_id: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  error: string | null;
+  is_idempotent: number;
+}
+
+export interface GraphNodeRunLockRow {
+  id: number;
+  graph_run_id: string;
+  node_id: string;
+  workspace_folder: string;
+  acquired_at: string;
+  released_at: string | null;
+}
+
+// =============================================================================
 // Long-running Supervisor Agent — row types + CRUD.
 // =============================================================================
 
@@ -3478,6 +3630,330 @@ export function cleanupOldLoopRuns(retentionDays = 30): number {
     )
     .run(cutoff);
   return result.changes;
+}
+
+// =============================================================================
+// Graph Engineering — CRUD accessors.
+// Used by src/graph-engineering/* (orchestrator, scheduler, runner, recovery).
+// =============================================================================
+
+/** Insert a new graph definition version. Returns composite key "id@version". */
+export function createGraphDefinition(
+  row: Omit<GraphDefinitionRow, 'created_at'> & { created_at?: string },
+): string {
+  const version = row.version ?? 1;
+  const created_at = row.created_at ?? new Date().toISOString();
+  db.prepare(
+    `INSERT INTO graph_definitions
+      (id, version, parent_version_id, name, description, nodes_json, edges_json,
+       state_schema_json, manifest_hash, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    row.id,
+    version,
+    row.parent_version_id ?? null,
+    row.name,
+    row.description ?? null,
+    row.nodes_json,
+    row.edges_json,
+    row.state_schema_json ?? null,
+    row.manifest_hash,
+    row.status ?? 'active',
+    created_at,
+  );
+  return `${row.id}@${version}`;
+}
+
+/** Get a specific (id, version) definition. */
+export function getGraphDefinition(
+  id: string,
+  version: number,
+): GraphDefinitionRow | undefined {
+  return db
+    .prepare('SELECT * FROM graph_definitions WHERE id = ? AND version = ?')
+    .get(id, version) as GraphDefinitionRow | undefined;
+}
+
+/** Get the latest active version of a definition by id. */
+export function getLatestGraphDefinition(id: string): GraphDefinitionRow | undefined {
+  return db
+    .prepare(
+      `SELECT * FROM graph_definitions WHERE id = ? AND status = 'active'
+       ORDER BY version DESC LIMIT 1`,
+    )
+    .get(id) as GraphDefinitionRow | undefined;
+}
+
+/** List all graph definitions (latest active version per id). */
+export function listGraphDefinitions(): GraphDefinitionRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM graph_definitions WHERE status = 'active'
+       GROUP BY id HAVING version = MAX(version)
+       ORDER BY created_at DESC`,
+    )
+    .all() as GraphDefinitionRow[];
+}
+
+// --- graph_runs ---
+
+export function createGraphRun(row: {
+  id: string;
+  definition_id: string;
+  definition_version: number;
+  owner_user_id: string;
+  group_folder: string;
+  chat_jid: string;
+  goal_text?: string | null;
+  max_parallel?: number;
+  state_json?: string;
+  started_at: string;
+}): string {
+  db.prepare(
+    `INSERT INTO graph_runs
+      (id, definition_id, definition_version, owner_user_id, group_folder, chat_jid,
+       goal_text, status, current_node_id, state_json, max_parallel, started_at,
+       total_input_tokens, total_output_tokens, total_cost_usd)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?, ?, 0, 0, 0)`,
+  ).run(
+    row.id,
+    row.definition_id,
+    row.definition_version,
+    row.owner_user_id,
+    row.group_folder,
+    row.chat_jid,
+    row.goal_text ?? null,
+    row.state_json ?? '{}',
+    row.max_parallel ?? 4,
+    row.started_at,
+  );
+  return row.id;
+}
+
+export function getGraphRun(id: string): GraphRunRow | undefined {
+  return db.prepare('SELECT * FROM graph_runs WHERE id = ?').get(id) as
+    | GraphRunRow
+    | undefined;
+}
+
+export function listGraphRuns(
+  ownerUserId: string,
+  opts: { status?: string; limit?: number; offset?: number } = {},
+): GraphRunRow[] {
+  const where: string[] = ['owner_user_id = ?'];
+  const params: (string | number)[] = [ownerUserId];
+  if (opts.status) {
+    where.push('status = ?');
+    params.push(opts.status);
+  }
+  params.push(opts.limit ?? 50);
+  params.push(opts.offset ?? 0);
+  return db
+    .prepare(
+      `SELECT * FROM graph_runs WHERE ${where.join(' AND ')} ORDER BY started_at DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...params) as GraphRunRow[];
+}
+
+export function updateGraphRunStatus(
+  id: string,
+  status: GraphRunRow['status'],
+  extra?: {
+    currentNodeId?: string | null;
+    stateJson?: string;
+    endedAt?: string;
+    cancelReason?: string;
+  },
+): void {
+  if (extra) {
+    db.prepare(
+      `UPDATE graph_runs SET status = ?,
+        current_node_id = CASE WHEN ? IS NULL THEN current_node_id ELSE ? END,
+        state_json = COALESCE(?, state_json),
+        ended_at = COALESCE(?, ended_at),
+        cancel_reason = COALESCE(?, cancel_reason)
+       WHERE id = ?`,
+    ).run(
+      status,
+      extra.currentNodeId === undefined ? null : 1,
+      extra.currentNodeId ?? null,
+      extra.stateJson ?? null,
+      extra.endedAt ?? null,
+      extra.cancelReason ?? null,
+      id,
+    );
+  } else {
+    db.prepare('UPDATE graph_runs SET status = ? WHERE id = ?').run(status, id);
+  }
+}
+
+export function addGraphRunUsage(
+  id: string,
+  inputTokens: number,
+  outputTokens: number,
+  costUsd: number,
+): void {
+  db.prepare(
+    `UPDATE graph_runs SET
+      total_input_tokens = total_input_tokens + ?,
+      total_output_tokens = total_output_tokens + ?,
+      total_cost_usd = total_cost_usd + ?
+    WHERE id = ?`,
+  ).run(inputTokens, outputTokens, costUsd, id);
+}
+
+/** List graph_runs not in a terminal state — used by boot recovery. */
+export function listNonTerminalGraphRuns(): GraphRunRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM graph_runs WHERE status IN ('running','paused','pending')`,
+    )
+    .all() as GraphRunRow[];
+}
+
+// --- graph_node_runs ---
+
+export function createGraphNodeRun(row: {
+  id: string;
+  graph_run_id: string;
+  node_id: string;
+  node_type: GraphNodeRunRow['node_type'];
+  parent_node_run_id?: string | null;
+  is_idempotent?: boolean;
+  input_summary?: string;
+}): string {
+  db.prepare(
+    `INSERT INTO graph_node_runs
+      (id, graph_run_id, node_id, node_type, status, attempt, input_summary,
+       output_summary, state_patch_json, parent_node_run_id, started_at, ended_at,
+       input_tokens, output_tokens, cost_usd, error, is_idempotent)
+     VALUES (?, ?, ?, ?, 'running', 0, ?, NULL, NULL, ?, ?, NULL, 0, 0, 0, NULL, ?)`,
+  ).run(
+    row.id,
+    row.graph_run_id,
+    row.node_id,
+    row.node_type,
+    row.input_summary ?? null,
+    row.parent_node_run_id ?? null,
+    new Date().toISOString(),
+    row.is_idempotent ? 1 : 0,
+  );
+  return row.id;
+}
+
+export function getGraphNodeRun(id: string): GraphNodeRunRow | undefined {
+  return db.prepare('SELECT * FROM graph_node_runs WHERE id = ?').get(id) as
+    | GraphNodeRunRow
+    | undefined;
+}
+
+export function listGraphNodeRuns(graphRunId: string): GraphNodeRunRow[] {
+  return db
+    .prepare(
+      'SELECT * FROM graph_node_runs WHERE graph_run_id = ? ORDER BY started_at ASC',
+    )
+    .all(graphRunId) as GraphNodeRunRow[];
+}
+
+/** Latest node_run for a given (run, node_id), regardless of status. */
+export function getLatestGraphNodeRun(
+  graphRunId: string,
+  nodeId: string,
+): GraphNodeRunRow | undefined {
+  return db
+    .prepare(
+      `SELECT * FROM graph_node_runs WHERE graph_run_id = ? AND node_id = ?
+       ORDER BY attempt DESC LIMIT 1`,
+    )
+    .get(graphRunId, nodeId) as GraphNodeRunRow | undefined;
+}
+
+export function updateGraphNodeRun(
+  id: string,
+  updates: Partial<
+    Pick<
+      GraphNodeRunRow,
+      | 'status'
+      | 'attempt'
+      | 'output_summary'
+      | 'state_patch_json'
+      | 'ended_at'
+      | 'input_tokens'
+      | 'output_tokens'
+      | 'cost_usd'
+      | 'error'
+    >
+  >,
+): void {
+  const fields: string[] = [];
+  const values: (string | number | null)[] = [];
+  for (const [k, v] of Object.entries(updates)) {
+    if (v === undefined) continue;
+    fields.push(`${k} = ?`);
+    values.push(v as string | number | null);
+  }
+  if (fields.length === 0) return;
+  values.push(id);
+  db.prepare(`UPDATE graph_node_runs SET ${fields.join(', ')} WHERE id = ?`).run(
+    ...values,
+  );
+}
+
+/** Set of node_id values that reached 'completed' for a run — resume skip set. */
+export function getCompletedGraphNodeIds(graphRunId: string): Set<string> {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT node_id FROM graph_node_runs WHERE graph_run_id = ? AND status = 'completed'`,
+    )
+    .all(graphRunId) as { node_id: string }[];
+  return new Set(rows.map((r) => r.node_id));
+}
+
+/** Reset a node and its downstream to pending (rerun). */
+export function resetGraphNodeAndDownstream(
+  graphRunId: string,
+  nodeId: string,
+): number {
+  // P0: reset the single node (downstream recompute is driven by scheduler
+  // re-deriving ready queue from completed-set). Mark node pending, attempt+1
+  // is applied when the runner picks it up again.
+  const result = db
+    .prepare(
+      `UPDATE graph_node_runs SET status = 'pending', ended_at = NULL, error = NULL
+       WHERE graph_run_id = ? AND node_id = ? AND status NOT IN ('running')`,
+    )
+    .run(graphRunId, nodeId);
+  return result.changes;
+}
+
+// --- graph_node_run_locks (workspace isolation, AC2.7) ---
+
+export function acquireNodeLock(row: {
+  graph_run_id: string;
+  node_id: string;
+  workspace_folder: string;
+}): number {
+  const result = db
+    .prepare(
+      `INSERT INTO graph_node_run_locks (graph_run_id, node_id, workspace_folder, acquired_at)
+       VALUES (?, ?, ?, ?)`,
+    )
+    .run(row.graph_run_id, row.node_id, row.workspace_folder, new Date().toISOString());
+  return Number(result.lastInsertRowid);
+}
+
+export function releaseNodeLock(id: number): void {
+  db.prepare(
+    `UPDATE graph_node_run_locks SET released_at = ? WHERE id = ?`,
+  ).run(new Date().toISOString(), id);
+}
+
+export function getActiveNodeLocks(graphRunId: string): GraphNodeRunLockRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM graph_node_run_locks WHERE graph_run_id = ? AND released_at IS NULL`,
+    )
+    .all(graphRunId) as GraphNodeRunLockRow[];
 }
 
 // =============================================================================
