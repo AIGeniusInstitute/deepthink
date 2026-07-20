@@ -429,6 +429,26 @@ export interface AuthAuditLog {
 export type AgentStatus = 'idle' | 'running' | 'completed' | 'error';
 export type AgentKind = 'task' | 'conversation' | 'spawn';
 
+// Long-running Supervisor Agent — type aliases shared with the route layer.
+export type SupervisorStrategy = 'periodic' | 'on_iteration' | 'hybrid';
+export type SupervisorSessionStatus =
+  | 'active'
+  | 'paused'
+  | 'completed'
+  | 'failed'
+  | 'aborted';
+export type SupervisorAction =
+  | 'continue'
+  | 'redirect'
+  | 'escalate'
+  | 'complete'
+  | 'abort';
+export interface SupervisorEvidence {
+  type: 'message' | 'test' | 'file' | 'loop_status';
+  ref: string;
+  detail?: string;
+}
+
 export interface SubAgent {
   id: string;
   group_folder: string;

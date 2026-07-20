@@ -102,6 +102,8 @@ import {
   backfillEmptyAllowlistsForUser,
   hybridSearchKbDocuments,
   getKnowledgeBase,
+  getLoopRun,
+  listLoopIterations,
 } from './db.js';
 // feishu.js deprecated exports are no longer needed; imManager handles all connections
 import { imManager } from './im-manager.js';
@@ -171,6 +173,13 @@ import type {
 } from './im-manager.js';
 import { GroupQueue } from './group-queue.js';
 import { startSchedulerLoop, triggerTaskNow, computeNextRunForSchedule } from './task-scheduler.js';
+import {
+  startSupervisorLoop,
+  bootRecoverSupervisor,
+  type SupervisorCheckDeps,
+  type RecentMessageLite,
+} from './supervisor-agent.js';
+import { setSupervisorDeps } from './routes/supervisor.js';
 import { seedMarketplaceIfEmpty } from './marketplace-seed.js';
 import {
   checkBillingAccessFresh,
@@ -11471,6 +11480,80 @@ async function main(): Promise<void> {
   };
   startSchedulerLoop(schedulerDeps);
 
+  // Long-running Supervisor Agent — boot the tick loop and inject deps into
+  // the route layer. Deps reuse schedulerDeps (storePromptMessage, queue) plus
+  // a supervisor-specific message store (sourceKind='supervisor').
+  const storeSupervisorMessage = (
+    chatJid: string,
+    text: string,
+  ) => {
+    const msgId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    ensureChatExists(chatJid);
+    storeMessageDirect(
+      msgId,
+      chatJid,
+      '__supervisor__',
+      'Supervisor',
+      text,
+      now,
+      false,
+      { meta: { sourceKind: 'supervisor' } },
+    );
+    broadcastNewMessage(chatJid, {
+      id: msgId,
+      chat_jid: chatJid,
+      sender: '__supervisor__',
+      sender_name: 'Supervisor',
+      content: text,
+      timestamp: now,
+      is_from_me: false,
+    });
+  };
+  const supervisorDeps: SupervisorCheckDeps = {
+    getRecentMessages: async (chatJid, limit) => {
+      const rows = getMessagesPage(chatJid, undefined, limit);
+      return rows.map(
+        (m): RecentMessageLite => ({
+          id: m.id,
+          sender: m.sender,
+          sender_name: m.sender_name,
+          content: m.content,
+          is_from_me: m.is_from_me,
+          source_kind: m.source_kind ?? null,
+        }),
+      );
+    },
+    getBoundLoopSummary: async (loopRunId) => {
+      const run = getLoopRun(loopRunId);
+      if (!run) return null;
+      const iterations = listLoopIterations(loopRunId);
+      const last = iterations[iterations.length - 1] ?? null;
+      return {
+        loop_run_id: run.id,
+        status: run.status,
+        current_turn: run.current_turn,
+        max_turns: run.max_turns,
+        goal_text: run.goal_text,
+        last_review_result: last?.review_result ?? null,
+        last_review_reason: last?.review_reason ?? null,
+      };
+    },
+    sdkQuery: (prompt, opts) =>
+      sdkQuery(prompt, { model: opts.model, timeout: 60_000 }),
+    storePromptMessage: (chatJid, _senderId, _senderName, text) => {
+      storeSupervisorMessage(chatJid, text);
+    },
+    enqueueMessageCheck: (chatJid) => {
+      queue.enqueueMessageCheck(chatJid);
+    },
+    notifyUser: (chatJid, text) => {
+      storeSupervisorMessage(chatJid, text);
+    },
+  };
+  setSupervisorDeps(supervisorDeps);
+  startSupervisorLoop(supervisorDeps);
+
   // Inject triggerTaskRun into WebDeps (schedulerDeps must exist first)
   const webDeps = getWebDeps();
   if (webDeps) {
@@ -11482,6 +11565,11 @@ async function main(): Promise<void> {
   recoverStreamingBuffer();
   recoverPendingMessages();
   recoverConversationAgents();
+  // Supervisor boot recovery: flip stale 'running' decisions → 'error' and
+  // re-arm active sessions whose next_check_at has passed.
+  bootRecoverSupervisor(supervisorDeps).catch((err) => {
+    logger.error({ err }, 'Supervisor boot recovery failed');
+  });
   startStreamingBuffer();
   startMessageLoop();
 

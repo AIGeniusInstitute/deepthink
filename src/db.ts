@@ -537,6 +537,69 @@ export function initDatabase(): void {
     );
   `);
 
+  // Long-running Supervisor Agent tables (v44)
+  // A persistent, crash-recoverable supervisor that monitors the main
+  // conversation agent throughout a task lifecycle. Distinct from the
+  // stateless supervisor.ts pre-dispatch intent parser.
+  // Design notes:
+  // - supervisor_sessions: one long-running supervisor per chat. status drives
+  //   the tick loop. next_check_at (ISO) is the scheduling anchor.
+  // - supervisor_decisions: per-check audit row. status='running' acts as a
+  //   heartbeat; boot cleanup flips stale 'running' -> 'error' (task-scheduler
+  //   pattern). evidence_json holds the decision evidence for visualization.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS supervisor_sessions (
+      id TEXT PRIMARY KEY,
+      group_folder TEXT NOT NULL,
+      chat_jid TEXT NOT NULL,
+      owner_user_id TEXT,
+      goal_text TEXT NOT NULL,
+      success_criteria TEXT NOT NULL,
+      strategy TEXT NOT NULL DEFAULT 'periodic'
+        CHECK(strategy IN ('periodic','on_iteration','hybrid')),
+      period_ms INTEGER NOT NULL DEFAULT 300000,
+      max_checks INTEGER NOT NULL DEFAULT 100,
+      bound_loop_run_id TEXT,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK(status IN ('active','paused','completed','failed','aborted')),
+      consecutive_errors INTEGER NOT NULL DEFAULT 0,
+      current_checks INTEGER NOT NULL DEFAULT 0,
+      last_check_at TEXT,
+      next_check_at TEXT,
+      last_bound_turn INTEGER NOT NULL DEFAULT 0,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      config_json TEXT,
+      created_at TEXT NOT NULL,
+      created_by TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_supervisor_sessions_status ON supervisor_sessions(status);
+    CREATE INDEX IF NOT EXISTS idx_supervisor_sessions_chat ON supervisor_sessions(chat_jid);
+    CREATE INDEX IF NOT EXISTS idx_supervisor_sessions_next ON supervisor_sessions(next_check_at);
+
+    CREATE TABLE IF NOT EXISTS supervisor_decisions (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      turn_index INTEGER NOT NULL,
+      action TEXT NOT NULL
+        CHECK(action IN ('continue','redirect','escalate','complete','abort','error')),
+      conclusion TEXT,
+      evidence_json TEXT,
+      next_action_hint TEXT,
+      confidence REAL,
+      trace_summary TEXT,
+      triggered_by TEXT NOT NULL DEFAULT 'tick',
+      status TEXT NOT NULL DEFAULT 'completed'
+        CHECK(status IN ('running','completed','error')),
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      error TEXT,
+      FOREIGN KEY (session_id) REFERENCES supervisor_sessions(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_supervisor_decisions_session ON supervisor_decisions(session_id, started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_supervisor_decisions_status ON supervisor_decisions(status);
+  `);
+
   // State tables (replacing JSON files)
   db.exec(`
     CREATE TABLE IF NOT EXISTS router_state (
@@ -2896,6 +2959,315 @@ export interface LoopTraceNodeRow {
   tokens: number;
   status: string | null;
   edited_at: string | null;
+}
+
+// =============================================================================
+// Long-running Supervisor Agent — row types + CRUD.
+// =============================================================================
+
+export interface SupervisorSessionRow {
+  id: string;
+  group_folder: string;
+  chat_jid: string;
+  owner_user_id: string | null;
+  goal_text: string;
+  success_criteria: string;
+  strategy: 'periodic' | 'on_iteration' | 'hybrid';
+  period_ms: number;
+  max_checks: number;
+  bound_loop_run_id: string | null;
+  status: 'active' | 'paused' | 'completed' | 'failed' | 'aborted';
+  consecutive_errors: number;
+  current_checks: number;
+  last_check_at: string | null;
+  next_check_at: string | null;
+  last_bound_turn: number;
+  started_at: string;
+  ended_at: string | null;
+  config_json: string | null;
+  created_at: string;
+  created_by: string | null;
+}
+
+export interface SupervisorDecisionRow {
+  id: string;
+  session_id: string;
+  turn_index: number;
+  action: 'continue' | 'redirect' | 'escalate' | 'complete' | 'abort' | 'error';
+  conclusion: string | null;
+  evidence_json: string | null;
+  next_action_hint: string | null;
+  confidence: number | null;
+  trace_summary: string | null;
+  triggered_by: string;
+  status: 'running' | 'completed' | 'error';
+  started_at: string;
+  ended_at: string | null;
+  error: string | null;
+}
+
+export function createSupervisorSession(row: {
+  id: string;
+  group_folder: string;
+  chat_jid: string;
+  owner_user_id?: string | null;
+  goal_text: string;
+  success_criteria: string;
+  strategy?: SupervisorSessionRow['strategy'];
+  period_ms?: number;
+  max_checks?: number;
+  bound_loop_run_id?: string | null;
+  status?: SupervisorSessionRow['status'];
+  next_check_at?: string | null;
+  started_at: string;
+  created_at: string;
+  created_by?: string | null;
+}): string {
+  db.prepare(
+    `INSERT INTO supervisor_sessions
+      (id, group_folder, chat_jid, owner_user_id, goal_text, success_criteria, strategy,
+       period_ms, max_checks, bound_loop_run_id, status, consecutive_errors, current_checks,
+       last_check_at, next_check_at, last_bound_turn, started_at, ended_at, config_json,
+       created_at, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, 0, ?, NULL, NULL, ?, ?)`,
+  ).run(
+    row.id,
+    row.group_folder,
+    row.chat_jid,
+    row.owner_user_id ?? null,
+    row.goal_text,
+    row.success_criteria,
+    row.strategy ?? 'periodic',
+    row.period_ms ?? 300000,
+    row.max_checks ?? 100,
+    row.bound_loop_run_id ?? null,
+    row.status ?? 'active',
+    row.next_check_at ?? null,
+    row.started_at,
+    row.created_at,
+    row.created_by ?? null,
+  );
+  return row.id;
+}
+
+export function getSupervisorSession(id: string): SupervisorSessionRow | undefined {
+  return db.prepare('SELECT * FROM supervisor_sessions WHERE id = ?').get(id) as
+    | SupervisorSessionRow
+    | undefined;
+}
+
+export function getActiveSupervisorSessionForChat(
+  chatJid: string,
+): SupervisorSessionRow | undefined {
+  return db
+    .prepare(
+      `SELECT * FROM supervisor_sessions WHERE chat_jid = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(chatJid) as SupervisorSessionRow | undefined;
+}
+
+export function listSupervisorSessions(
+  ownerUserId: string | null,
+  opts: { status?: string; chatJid?: string; limit?: number; offset?: number } = {},
+): SupervisorSessionRow[] {
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (ownerUserId !== null) {
+    where.push('owner_user_id = ?');
+    params.push(ownerUserId);
+  }
+  if (opts.status) {
+    where.push('status = ?');
+    params.push(opts.status);
+  }
+  if (opts.chatJid) {
+    where.push('chat_jid = ?');
+    params.push(opts.chatJid);
+  }
+  params.push(opts.limit ?? 50);
+  params.push(opts.offset ?? 0);
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  return db
+    .prepare(
+      `SELECT * FROM supervisor_sessions ${clause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...params) as SupervisorSessionRow[];
+}
+
+export function listDueSupervisorSessions(nowIso: string): SupervisorSessionRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM supervisor_sessions
+       WHERE status = 'active' AND next_check_at IS NOT NULL AND next_check_at <= ?
+       ORDER BY next_check_at ASC`,
+    )
+    .all(nowIso) as SupervisorSessionRow[];
+}
+
+export function listStaleHeartbeatSupervisorSessions(
+  nowMs: number,
+): SupervisorSessionRow[] {
+  // Active sessions whose last_check_at is older than 3x their period — i.e. a
+  // check almost certainly crashed or never fired. Returned in ms-agnostic form;
+  // caller compares. We fetch all active rows and filter in JS for precision.
+  const rows = db
+    .prepare(
+      `SELECT * FROM supervisor_sessions WHERE status = 'active' AND last_check_at IS NOT NULL`,
+    )
+    .all() as SupervisorSessionRow[];
+  return rows.filter((r) => {
+    const last = Date.parse(r.last_check_at!);
+    if (Number.isNaN(last)) return false;
+    return nowMs - last > r.period_ms * 3;
+  });
+}
+
+export function updateSupervisorSession(
+  id: string,
+  patch: Partial<
+    Pick<
+      SupervisorSessionRow,
+      | 'status'
+      | 'goal_text'
+      | 'success_criteria'
+      | 'strategy'
+      | 'period_ms'
+      | 'max_checks'
+      | 'bound_loop_run_id'
+      | 'consecutive_errors'
+      | 'current_checks'
+      | 'last_check_at'
+      | 'next_check_at'
+      | 'last_bound_turn'
+      | 'ended_at'
+      | 'config_json'
+    >
+  >,
+): void {
+  const fields: string[] = [];
+  const values: (string | number | null)[] = [];
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue;
+    fields.push(`${k} = ?`);
+    values.push(v as string | number | null);
+  }
+  if (fields.length === 0) return;
+  values.push(id);
+  db.prepare(
+    `UPDATE supervisor_sessions SET ${fields.join(', ')} WHERE id = ?`,
+  ).run(...values);
+}
+
+export function deleteSupervisorSession(id: string): void {
+  db.prepare('DELETE FROM supervisor_decisions WHERE session_id = ?').run(id);
+  db.prepare('DELETE FROM supervisor_sessions WHERE id = ?').run(id);
+}
+
+export function createSupervisorDecision(row: {
+  id: string;
+  session_id: string;
+  turn_index: number;
+  started_at: string;
+  triggered_by?: string;
+}): string {
+  db.prepare(
+    `INSERT INTO supervisor_decisions
+      (id, session_id, turn_index, action, conclusion, evidence_json, next_action_hint,
+       confidence, trace_summary, triggered_by, status, started_at, ended_at, error)
+     VALUES (?, ?, ?, 'continue', NULL, NULL, NULL, NULL, NULL, ?, 'running', ?, NULL, NULL)`,
+  ).run(
+    row.id,
+    row.session_id,
+    row.turn_index,
+    row.triggered_by ?? 'tick',
+    row.started_at,
+  );
+  return row.id;
+}
+
+export function finalizeSupervisorDecision(
+  id: string,
+  patch: {
+    action: SupervisorDecisionRow['action'];
+    conclusion?: string | null;
+    evidence_json?: string | null;
+    next_action_hint?: string | null;
+    confidence?: number | null;
+    trace_summary?: string | null;
+    status?: SupervisorDecisionRow['status'];
+    ended_at?: string;
+    error?: string | null;
+  },
+): void {
+  db.prepare(
+    `UPDATE supervisor_decisions SET
+      action = ?, conclusion = COALESCE(?, conclusion),
+      evidence_json = COALESCE(?, evidence_json),
+      next_action_hint = COALESCE(?, next_action_hint),
+      confidence = COALESCE(?, confidence),
+      trace_summary = COALESCE(?, trace_summary),
+      status = ?, ended_at = COALESCE(?, ended_at),
+      error = COALESCE(?, error)
+     WHERE id = ?`,
+  ).run(
+    patch.action,
+    patch.conclusion ?? null,
+    patch.evidence_json ?? null,
+    patch.next_action_hint ?? null,
+    patch.confidence ?? null,
+    patch.trace_summary ?? null,
+    patch.status ?? 'completed',
+    patch.ended_at ?? null,
+    patch.error ?? null,
+    id,
+  );
+}
+
+export function listSupervisorDecisions(
+  sessionId: string,
+  opts: { limit?: number; offset?: number } = {},
+): SupervisorDecisionRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM supervisor_decisions WHERE session_id = ? ORDER BY started_at DESC LIMIT ? OFFSET ?`,
+    )
+    .all(sessionId, opts.limit ?? 50, opts.offset ?? 0) as SupervisorDecisionRow[];
+}
+
+export function getLatestSupervisorDecision(
+  sessionId: string,
+): SupervisorDecisionRow | undefined {
+  return db
+    .prepare(
+      `SELECT * FROM supervisor_decisions WHERE session_id = ? ORDER BY started_at DESC LIMIT 1`,
+    )
+    .get(sessionId) as SupervisorDecisionRow | undefined;
+}
+
+export function cleanupStaleSupervisorChecks(): number {
+  // Flip stale 'running' decisions to 'error'. Mirrors the task-scheduler
+  // cleanupStaleRunningLogs() boot-time recovery pattern.
+  const result = db
+    .prepare(
+      `UPDATE supervisor_decisions SET status = 'error', ended_at = ?,
+       error = COALESCE(error, 'interrupted by process restart')
+       WHERE status = 'running'`,
+    )
+    .run(new Date().toISOString());
+  return result.changes;
+}
+
+export function cleanupOldSupervisorSessions(retentionDays = 30): number {
+  const cutoff = new Date(
+    Date.now() - retentionDays * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const result = db
+    .prepare(
+      `DELETE FROM supervisor_sessions
+       WHERE status IN ('completed','failed','aborted') AND started_at < ?`,
+    )
+    .run(cutoff);
+  return result.changes;
 }
 
 export function createLoopRun(row: Partial<LoopRunRow> & {
