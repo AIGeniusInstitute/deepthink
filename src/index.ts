@@ -180,6 +180,12 @@ import {
   type RecentMessageLite,
 } from './supervisor-agent.js';
 import { bootRecoverGraphRuns } from './graph-engineering/graph-recovery.js';
+import {
+  executeGraph,
+  buildRunContext,
+  startGraphRun,
+} from './graph-engineering/graph-orchestrator.js';
+import type { GraphDeps } from './graph-engineering/graph-runner.js';
 import { setSupervisorDeps } from './routes/supervisor.js';
 import { seedMarketplaceIfEmpty } from './marketplace-seed.js';
 import {
@@ -11560,6 +11566,65 @@ async function main(): Promise<void> {
   if (webDeps) {
     webDeps.triggerTaskRun = (taskId: string) =>
       triggerTaskNow(taskId, schedulerDeps);
+
+    // Graph Engineering: build GraphDeps (mirrors loopDeps in
+    // resolveLoopCommandDeps) and wire startGraphRun / resumeGraphRun so the
+    // /api/graph routes can launch + resume runs with full server context
+    // (queue, broadcastStreamEvent, sendMessage). See SOLUTION.md §10.
+    const graphDeps: GraphDeps = {
+      registeredGroups: () => registeredGroups,
+      getSessions: () => sessions,
+      onProcess: (
+        groupJid, proc, containerName, groupFolder, displayName, taskRunId,
+        selectedProviderId,
+      ) =>
+        queue.registerProcess(groupJid, proc, {
+          containerName,
+          groupFolder,
+          displayName,
+          taskRunId,
+          selectedProviderId,
+        }),
+      broadcastStreamEvent,
+      storeResultAndNotify: async (targetJid, text, options) => {
+        await sendMessage(targetJid, text, {
+          sendToIM: false,
+          source: 'scheduled_task',
+          messageMeta: { sourceKind: options.sourceKind || 'sdk_final' },
+        });
+      },
+    };
+    webDeps.startGraphRun = (opts) => {
+      const started = startGraphRun(opts);
+      if ('error' in started) {
+        return { success: false, error: started.error };
+      }
+      const { runId } = started;
+      // Detached background execution — the run persists checkpoints so a
+      // process crash mid-run is recoverable via /resume.
+      buildRunContext(runId, graphDeps).then((ctxRes) => {
+        if (!ctxRes) {
+          logger.error({ runId }, 'Graph start: context build failed');
+          return;
+        }
+        executeGraph(ctxRes.ctx, graphDeps).catch((err) => {
+          logger.error({ err, runId }, 'Graph run execution failed');
+        });
+      });
+      return { success: true, runId };
+    };
+    webDeps.resumeGraphRun = (runId) => {
+      buildRunContext(runId, graphDeps).then((ctxRes) => {
+        if (!ctxRes) {
+          logger.error({ runId }, 'Graph resume: context build failed');
+          return;
+        }
+        executeGraph(ctxRes.ctx, graphDeps).catch((err) => {
+          logger.error({ err, runId }, 'Graph resume failed');
+        });
+      });
+      return { success: true };
+    };
   }
 
   startIpcWatcher();

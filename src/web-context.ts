@@ -144,6 +144,25 @@ export interface WebDeps {
    * ——updateReplyRoute 触发的 route updater 已内置同样的收口。 */
   finalizeHeldCard?: (key: string) => void;
   triggerTaskRun?: (taskId: string) => { success: boolean; error?: string };
+  /**
+   * Start a registered graph definition as a new run (background, detached).
+   * Wired in index.ts where full GraphDeps (queue, broadcastStreamEvent,
+   * sendMessage) are in scope. Returns the new run id. See graph-orchestrator.ts.
+   */
+  startGraphRun?: (opts: {
+    definitionId: string;
+    ownerUserId: string;
+    groupFolder: string;
+    chatJid: string;
+    goalText?: string;
+    maxParallel?: number;
+    initialState?: Record<string, unknown>;
+  }) => { success: boolean; runId?: string; error?: string };
+  /**
+   * Resume a paused/failed graph run from its last checkpoint. Detached
+   * background execution. See graph-orchestrator.ts executeGraph.
+   */
+  resumeGraphRun?: (runId: string) => { success: boolean; error?: string };
   handleSpawnCommand?: (
     chatJid: string,
     message: string,
