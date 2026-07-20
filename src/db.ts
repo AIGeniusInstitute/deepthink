@@ -507,7 +507,7 @@ export function initDatabase(): void {
       started_at TEXT NOT NULL,
       ended_at TEXT,
       cancel_reason TEXT,
-      FOREIGN KEY (definition_id) REFERENCES graph_definitions(id)
+      FOREIGN KEY (definition_id, definition_version) REFERENCES graph_definitions(id, version)
     );
     CREATE INDEX IF NOT EXISTS idx_graph_runs_owner ON graph_runs(owner_user_id, started_at DESC);
     CREATE INDEX IF NOT EXISTS idx_graph_runs_status ON graph_runs(status);
