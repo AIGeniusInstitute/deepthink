@@ -1,4 +1,4 @@
-.PHONY: dev dev-backend dev-web build build-backend build-web start start-prod \
+.PHONY: dev dev-backend dev-web dev-isolated build build-backend build-web start start-prod \
        typecheck typecheck-backend typecheck-web typecheck-agent-runner \
        format format-check install install-host-tools clean reset-init migrate-data update-sdk ensure-latest-sdk sync-types \
        backup restore help _ensure-docker-image _ensure-sandbox-image \
@@ -42,6 +42,28 @@ dev: ## 启动前后端（首次自动安装依赖和构建容器镜像）；自
 	@$(PKG) --prefix container/agent-runner run build $(NPM_FLAGS) --silent 2>/dev/null || $(PKG) --prefix container/agent-runner run build $(NPM_FLAGS)
 	@$(PM2_GUARD); \
 	echo "🚀 使用 $(PKG) 启动..."; \
+	$(PKG) run dev:all
+
+# 隔离 dev：独立端口 + 独立数据目录，与生产实例（/opt/DeepThink 桌面 app 或 pm2）并存，
+# 不抢端口、不共享 SQLite、不触发 PM2_GUARD。适合在 DeepThink agent 会话里跑（agent
+# shell 会继承生产实例的 WEB_PORT/DEEPTHINK_DATA_DIR，必须显式覆盖，否则会撞生产库）。
+# 用法: make dev-isolated
+#       make dev-isolated ISOLATED_PORT=9899 ISOLATED_DATA_DIR=/tmp/dt
+ISOLATED_PORT ?= 9898
+ISOLATED_DATA_DIR ?= /tmp/deepthink-dev-$(ISOLATED_PORT)
+
+dev-isolated: ## 隔离跑 dev（独立端口+独立数据目录，不碰生产实例；可覆盖 ISOLATED_PORT/ISOLATED_DATA_DIR）
+	@if [ ! -d node_modules ] || [ package.json -nt node_modules ]; then echo "📦 依赖有更新，安装依赖..."; $(MAKE) install; fi
+	@$(MAKE) _ensure-native-abi
+	@$(PKG) --prefix container/agent-runner run build $(NPM_FLAGS) --silent 2>/dev/null || $(PKG) --prefix container/agent-runner run build $(NPM_FLAGS)
+	@mkdir -p $(ISOLATED_DATA_DIR)
+	@echo "🚀 隔离 dev: 后端 :$(ISOLATED_PORT)  数据目录 $(ISOLATED_DATA_DIR)"
+	@echo "   Web UI: http://127.0.0.1:5173 (vite) → 代理到后端 :$(ISOLATED_PORT)"
+	@echo "   首次访问走 Setup 注册首个 admin。Ctrl-C 退出。"
+	WEB_PORT=$(ISOLATED_PORT) \
+	DEEPTHINK_DATA_DIR=$(ISOLATED_DATA_DIR) \
+	VITE_API_PROXY_TARGET=http://127.0.0.1:$(ISOLATED_PORT) \
+	VITE_WS_PROXY_TARGET=ws://127.0.0.1:$(ISOLATED_PORT) \
 	$(PKG) run dev:all
 
 dev-backend: ## 仅启动后端（tsx 直跑 TS）；自动暂停 pm2，退出后恢复
