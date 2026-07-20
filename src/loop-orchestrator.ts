@@ -448,8 +448,18 @@ export async function executeGoalLoop(ctx: LoopRunContext, deps: LoopDeps): Prom
   let finalResult: ReviewResult = 'needs_improvement';
   let finalReason = '';
 
+  // Resume support (AC8.1, need 2): if the loop_run was restarted after a crash
+  // and current_turn > 0, continue from that turn instead of replaying from 0.
+  // current_turn is persisted at each iteration boundary (lines below), so it is
+  // a safe checkpoint. See docs/tech_solution/graph-engineering/SOLUTION.md §7.
+  const beforeRun = getLoopRun(ctx.loopRunId);
+  const startTurn = beforeRun?.current_turn ?? 0;
+  if (startTurn > 0) {
+    logger.info({ loopRunId: ctx.loopRunId, startTurn }, 'Loop resuming from checkpoint turn');
+  }
+
   try {
-    for (let i = 0; i < ctx.maxTurns; i++) {
+    for (let i = startTurn; i < ctx.maxTurns; i++) {
       // Check for cancellation between iterations
       const current = getLoopRun(ctx.loopRunId);
       if (current?.status === 'cancelled') {
