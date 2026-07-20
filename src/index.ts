@@ -264,6 +264,7 @@ import {
   handleSkillEvolutionCommand,
   handleListLoopsCommand as handleListLoopsCmd,
 } from './loop-commands.js';
+import { handleGraphStartCommand } from './graph-engineering/graph-commands.js';
 import {
   claimOwner,
   releaseOwner,
@@ -1538,6 +1539,8 @@ async function handleCommand(
       return handleAllowlistCommand(chatJid);
     case 'goal':
       return handleGoalLoopCommand(chatJid, rawArgs, senderImId);
+    case 'graph':
+      return handleGraphLoopCommand(chatJid, rawArgs, senderImId);
     case 'loop':
       return handleTimeLoopCommand(chatJid, rawArgs, senderImId);
     case 'schedule':
@@ -2172,6 +2175,16 @@ async function handleGoalLoopCommand(
   const resolved = resolveLoopCommandDeps(chatJid, senderImId);
   if (!resolved.ok) return resolved.reply;
   return handleGoalCommand(rawArgs, resolved.deps);
+}
+
+async function handleGraphLoopCommand(
+  chatJid: string,
+  rawArgs: string,
+  senderImId?: string,
+): Promise<string> {
+  const resolved = resolveLoopCommandDeps(chatJid, senderImId);
+  if (!resolved.ok) return resolved.reply;
+  return handleGraphStartCommand(rawArgs, resolved.deps);
 }
 
 async function handleTimeLoopCommand(
