@@ -77,8 +77,31 @@ const SYSTEM_PROMPT = `你是一个浏览器自动化 Agent。你将看到当前
 4. 坐标基于截图尺寸，点击你判断的目标元素位置。
 5. 每次只做一步。`;
 
-/** 从模型文本中抠出 JSON 对象并解析。 */
-function parseAction(raw: string | null): AgentAction | null {
+/** 从模型输出中提取动作字段（兼容模型把字段扁平到顶层的写法）。 */
+function buildAction(type: string, src: Record<string, any>): AgentAction {
+  return {
+    type: type as AgentAction['type'],
+    ...(src.url != null && { url: String(src.url) }),
+    ...(src.x != null && { x: Number(src.x) }),
+    ...(src.y != null && { y: Number(src.y) }),
+    ...(src.text != null && { text: String(src.text) }),
+    ...(src.key != null && { key: String(src.key) }),
+    ...(src.deltaX != null && { deltaX: Number(src.deltaX) }),
+    ...(src.deltaY != null && { deltaY: Number(src.deltaY) }),
+    ...(src.script != null && { script: String(src.script) }),
+    ...(src.reason != null && { reason: String(src.reason) }),
+  };
+}
+
+/**
+ * 从模型文本中抠出 JSON 对象并解析为动作。
+ * 兼容三种实际出现的形态（不同模型/供应商对 schema 的遵循度不一）：
+ *   A. 规范：{ "action": { "type": "navigate", "url": "..." } }
+ *   B. 扁平：{ "action": "navigate", "url": "...", "reason": "..." }
+ *      （模型把 action.type 简化成字符串 action，其余字段提到顶层）
+ *   C. 顶层：{ "type": "navigate", "url": "..." }
+ */
+export function parseAction(raw: string | null): AgentAction | null {
   if (!raw) return null;
   let text = raw.trim();
   // 去掉 Markdown 代码块
@@ -88,17 +111,25 @@ function parseAction(raw: string | null): AgentAction | null {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start >= 0 && end > start) text = text.slice(start, end + 1);
+  let obj: any;
   try {
-    const obj = JSON.parse(text);
-    if (obj && typeof obj === 'object' && obj.action && obj.action.type) {
-      return obj.action as AgentAction;
-    }
-    // 有时模型把 thought/action 平铺
-    if (obj && typeof obj === 'object' && obj.type) {
-      return obj as AgentAction;
-    }
+    obj = JSON.parse(text);
   } catch {
-    /* fall through */
+    return null;
+  }
+  if (!obj || typeof obj !== 'object') return null;
+
+  // A. action 为对象且带 type（顶层字段如 reason 也合并进来）
+  if (obj.action && typeof obj.action === 'object' && obj.action.type) {
+    return buildAction(obj.action.type, { ...obj, ...obj.action });
+  }
+  // B. action 为字符串（类型名），其余字段在顶层
+  if (typeof obj.action === 'string') {
+    return buildAction(obj.action, obj);
+  }
+  // C. 顶层直接带 type
+  if (typeof obj.type === 'string') {
+    return buildAction(obj.type, obj);
   }
   return null;
 }
