@@ -44,6 +44,24 @@ describe('parseAction (browser agent)', () => {
     });
   });
 
+  it('parses input_and_search composite (selector + submit_selector)', () => {
+    // 模型常发的复合搜索动作（type=string + selector/text/submit_selector 顶层）
+    const a = parseAction(
+      '{"action":"input_and_search","selector":"#kw","text":"DeepThink","submit_selector":"#su"}',
+    );
+    expect(a).toEqual({
+      type: 'input_and_search',
+      selector: '#kw',
+      text: 'DeepThink',
+      submit_selector: '#su',
+    });
+  });
+
+  it('parses click with selector (no coords)', () => {
+    const a = parseAction('{"action":"click","selector":"#su"}');
+    expect(a).toEqual({ type: 'click', selector: '#su' });
+  });
+
   it('returns null on empty / unparseable', () => {
     expect(parseAction(null)).toBeNull();
     expect(parseAction('')).toBeNull();
