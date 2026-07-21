@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { Play, RotateCcw } from 'lucide-react';
 import { useGraphStore, type GraphNodeRun } from '../../stores/graph';
+import { NodeTraceSubgraph } from './NodeTraceSubgraph';
 
 interface GraphNodeDetailProps {
   runId: string;
@@ -75,6 +76,12 @@ export function GraphNodeDetail({ runId, node }: GraphNodeDetailProps) {
           <pre className="text-[11px] whitespace-pre-wrap break-all bg-red-50 text-red-700 rounded p-2 max-h-40 overflow-y-auto">
             {node.error}
           </pre>
+        </Section>
+      )}
+
+      {node.node_type === 'agent' && (
+        <Section title="节点内子步骤 trace（Super Agent Team）">
+          <NodeTraceSubgraph runId={runId} nodeId={node.node_id} />
         </Section>
       )}
 
