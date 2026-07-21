@@ -61,7 +61,55 @@ export interface GraphNode {
   backoffMs?: number;
   /** Hard timeout per attempt in ms. */
   timeoutMs?: number;
+
+  // ---- Super Agent Team extensions (v53) ----
+  /**
+   * For 'agent' nodes: references an agent_definitions.id created by the Team
+   * Builder. When set, runAgentNode puts it on the synthetic RegisteredGroup so
+   * container-runner's existing loadGroupAgentDefinition(group.agentDefId, ...)
+   * loads the Team-designed systemPrompt/engine/skills/mcp — zero change to
+   * container-runner. Missing → falls back to the default agent (backward compat).
+   */
+  agentDefId?: string;
+  /** Member name (human-readable, for the UI); pairs with agentDefId. */
+  agentMember?: string;
+  /**
+   * For 'agent' nodes: the original goal + acceptance criteria + role +
+   * deliverable, prepended to the prompt on every execution so the goal is
+   * re-anchored each turn (fixes "forget the original goal"). Missing → the
+   * node runs with just its prompt (backward compat).
+   */
+  goalAnchor?: string;
+  /**
+   * For 'gate' nodes: behavioral-evidence assertions (harness-eval style) run
+   * against the upstream agent's output text. Any assertion failing → gate
+   * failed, no LLM reviewer fallback. Missing → LLM-only review (backward compat).
+   */
+  assertions?: GraphAssertion[];
+  /**
+   * For 'gate' nodes: an optional shell command run in the owner group folder
+   * (via runScript). Non-zero exit → gate failed (behavioral evidence). Runs
+   * before assertions and the LLM reviewer. Missing → no shell check.
+   */
+  shellCheck?: string;
+  /**
+   * For 'gate' nodes: which upstream agent node's output to assert against
+   * (reads state[node_<upstreamNodeId>_output]). Defaults to the nearest
+   * predecessor agent node.
+   */
+  upstreamNodeId?: string;
 }
+
+/**
+ * A behavioral-evidence assertion for a gate node. Mirrors harness-eval's
+ * EvalAssertion shape so scoreAssertion can be reused directly. Plain
+ * JSON-serializable so it persists in graph_definitions.nodes_json.
+ */
+export interface GraphAssertion {
+  kind: 'contains' | 'not_contains' | 'regex' | 'no_error';
+  value: string;
+}
+
 
 /** A directed edge between nodes. */
 export interface GraphEdge {
