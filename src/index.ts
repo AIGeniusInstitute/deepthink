@@ -186,6 +186,8 @@ import {
   startGraphRun,
 } from './graph-engineering/graph-orchestrator.js';
 import type { GraphDeps } from './graph-engineering/graph-runner.js';
+import { buildTeam } from './agent-team/team-builder.js';
+import { handleTeamStartCommand } from './agent-team/team-commands.js';
 import { setSupervisorDeps } from './routes/supervisor.js';
 import { seedMarketplaceIfEmpty } from './marketplace-seed.js';
 import {
@@ -1541,6 +1543,8 @@ async function handleCommand(
       return handleGoalLoopCommand(chatJid, rawArgs, senderImId);
     case 'graph':
       return handleGraphLoopCommand(chatJid, rawArgs, senderImId);
+    case 'team':
+      return handleTeamLoopCommand(chatJid, rawArgs, senderImId);
     case 'loop':
       return handleTimeLoopCommand(chatJid, rawArgs, senderImId);
     case 'schedule':
@@ -2185,6 +2189,16 @@ async function handleGraphLoopCommand(
   const resolved = resolveLoopCommandDeps(chatJid, senderImId);
   if (!resolved.ok) return resolved.reply;
   return handleGraphStartCommand(rawArgs, resolved.deps);
+}
+
+async function handleTeamLoopCommand(
+  chatJid: string,
+  rawArgs: string,
+  senderImId?: string,
+): Promise<string> {
+  const resolved = resolveLoopCommandDeps(chatJid, senderImId);
+  if (!resolved.ok) return resolved.reply;
+  return handleTeamStartCommand(rawArgs, resolved.deps);
 }
 
 async function handleTimeLoopCommand(
@@ -11638,6 +11652,10 @@ async function main(): Promise<void> {
       });
       return { success: true };
     };
+    // Super Agent Team: wire buildTeam so /api/team/runs can autonomously
+    // decompose a complex task + create agent members + assemble + start a
+    // graph run with full GraphDeps in scope. See src/agent-team/team-builder.ts.
+    webDeps.buildTeam = (input) => buildTeam(input, graphDeps);
   }
 
   startIpcWatcher();

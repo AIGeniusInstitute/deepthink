@@ -163,6 +163,25 @@ export interface WebDeps {
    * background execution. See graph-orchestrator.ts executeGraph.
    */
   resumeGraphRun?: (runId: string) => { success: boolean; error?: string };
+  /**
+   * Super Agent Team: autonomously decompose a complex task into a team
+   * (create agent members + assemble a graph definition) and start a graph
+   * run. Async — the decomposition + member creation happen before the run
+   * starts. Wired in index.ts where full GraphDeps are in scope. Returns the
+   * run id + plan, or an error. See src/agent-team/team-builder.ts.
+   */
+  buildTeam?: (input: {
+    goalText: string;
+    background?: string;
+    acceptanceCriteria?: string;
+    ownerUserId: string;
+    groupFolder: string;
+    chatJid: string;
+    userLanguage?: string;
+  }) => Promise<
+    | { runId: string; definitionId: string; definitionVersion: number; plan: unknown; memberDefIds: Record<string, string> }
+    | { error: string; detail?: string }
+  >;
   handleSpawnCommand?: (
     chatJid: string,
     message: string,
