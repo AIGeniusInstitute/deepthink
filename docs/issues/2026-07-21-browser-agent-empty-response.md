@@ -191,3 +191,38 @@ grep -E 'API REQUEST|result|subtype|aborted' <最新 sdk-*.txt>
    - 函数级实跑：修复后 `sdkQueryMessages`（带 1×1 PNG）返回 `{"action":{"type":"done","reason":"测试"}}`，`parseAction` 成功解析 ✅
 
 > 注：要在运行中的 dev app 内复测，需重启 dev server（tsx 无热重载）使 `src/sdk-query.ts` 改动生效。
+
+---
+
+## 9. 端到端实测（重启 dev server 后，真实 glm-5.2 provider）
+
+重启 dev server 加载新代码，登录 → 创建带浏览器沙箱 → 启动浏览器 → 触发 agent，WS 实时捕获步骤。过程中又发现并修复了 3 个连环问题，最终在 Bing 上跑通完整闭环：
+
+| 轮次 | 现象 | 根因 | 修复 commit |
+|------|------|------|------|
+| 第 1 轮 | 每步 "空响应" | `sdkQueryMessages` 把 `messages` 传给 `query()`（SDK 无此参数，被忽略→abort） | `ba42ab6` |
+| 第 2 轮 | 模型返回了 JSON 但 "无法解析" | glm-5.2 把 `action` 扁平成字符串 + 顶层字段，旧 `parseAction` 不认 | `3d02976` |
+| 第 3 轮 | 模型发明 `input_and_search`/`search` 等非规范动作→"未知动作类型" | `SYSTEM_PROMPT` 定义了却**从未传给模型**；动作集只有坐标级原语 | `48a404c` |
+| 第 4 轮 | `page.fill('#kw')`/`page.goto` 超时直接终结 run | 浏览器控制器无容错，单次超时即崩溃 | `4da1f9f` |
+
+**最终结果（commit 4da1f9f，dev server 实跑）：**
+
+任务「打开 Bing 搜索 DeepThink 并截图」（initialUrl `https://cn.bing.com`）：
+
+```
+step #1 action=input_and_search  selector=#sb_form_q text=DeepThink
+  result: 已在 #sb_form_q 输入 DeepThink 并回车提交   ✅
+step #2 action=done
+  result: 任务完成                                       ✅
+[DONE] status=done summary=任务完成                      ✅
+```
+
+最终页面 URL：`https://cn.bing.com/search?q=DeepThink&...`（搜索结果页），截图已保存 `browser-agent-bing-result.png`。
+
+**关于百度**：任务「打开百度搜索 DeepThink」时，agent 正确完成导航→在 #kw 输入 DeepThink→回车提交（step #2 成功，截图 38k→54k 结果页已加载），但百度随即触发**反爬图形验证码**。模型在 step #3 正确识别验证码并报 `failed`（reason：百度触发图形验证码，需人工完成验证）。这是百度的反爬机制（沙箱 Chromium 自动化指纹被识别），属外部限制，非代码缺陷——agent 框架行为正确（成功执行搜索、遇到阻塞后明确失败并给出原因）。
+
+## 结论
+
+✅ Browser Use Agent 功能完备、闭环可用：system prompt → 视觉模型给出 selector 级动作 → parseAction 兼容多形态 → executeAction 执行（type 填词 / Enter 提交 / click）→ 结果页加载 → done。UX 侧「启动浏览器」按钮也已落地可点。
+
+⚠️ 单一外部限制：被反爬严格的站点（百度）会触发验证码，需人工通过或换站点——这是站点侧策略，无法在代码层"修复"，agent 已能正确探测并明确上报。
