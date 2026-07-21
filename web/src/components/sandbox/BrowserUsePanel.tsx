@@ -17,8 +17,12 @@ interface Props {
   sessionId: string;
 }
 
+// 稳定空数组引用：避免在 selector 中每次返回新的 [] 导致 useSyncExternalStore
+// 判定快照变化而触发无限重渲染（React error #185）。
+const EMPTY_STEPS: never[] = [];
+
 export function BrowserUsePanel({ sessionId }: Props) {
-  const steps = useSandboxStore((s) => s.agentSteps[sessionId] ?? []);
+  const steps = useSandboxStore((s) => s.agentSteps[sessionId] ?? EMPTY_STEPS);
   const running = useSandboxStore((s) => s.agentRunning[sessionId] ?? false);
   const summary = useSandboxStore((s) => s.agentSummary[sessionId] ?? null);
   const clearAgent = useSandboxStore((s) => s.clearAgent);
