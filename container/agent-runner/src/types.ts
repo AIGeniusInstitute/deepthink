@@ -79,6 +79,11 @@ export interface ContainerInput {
       kbName?: string;
     }>;
   };
+  /** Super Agent Team: graph linkage. When set (agent node executed by
+   *  graph-runner), TraceNodeAllocator tags every trace node + tool call with
+   *  these so the node-internal sub-graph is traceable. Optional. */
+  graphRunId?: string;
+  graphNodeId?: string;
 }
 
 export interface ContainerOutput {

@@ -16,6 +16,8 @@ import {
   listTraceToolCalls,
   getDb,
 } from '../../src/db.js';
+import { persistTraceNodeFromStreamEvent } from '../../src/chat-trace-persist.js';
+import type { StreamEvent } from '../../src/stream-event.types.js';
 
 beforeAll(() => {
   initDatabase();
@@ -133,5 +135,79 @@ describe('super-agent-team C1: trace_tool_calls upsert merge (TC13)', () => {
     expect(rows[0].output_json).toContain('file.txt');
     expect(rows[0].status).toBe('success');
     expect(rows[0].ended_at).toBe('2026-07-22T00:00:01.000Z');
+  });
+});
+
+describe('super-agent-team C3: persistTraceNodeFromStreamEvent captures tool I/O (TC13)', () => {
+  const chatJid = 'feishu:persist-test';
+  const runId = 'graph-run-persist';
+
+  afterEach(() => {
+    getDb().prepare('DELETE FROM chat_trace_nodes WHERE chat_jid = ?').run(chatJid);
+    getDb().prepare('DELETE FROM trace_tool_calls WHERE chat_jid = ?').run(chatJid);
+  });
+
+  test('tool_use_start (toolInput) + tool_result (toolResult) merge into trace_tool_calls', () => {
+    // tool_use_start event carries toolInput + traceNode with graph linkage
+    const startEvent: StreamEvent = {
+      eventType: 'tool_use_start',
+      toolName: 'Bash',
+      toolUseId: 'toolu_p1',
+      toolInput: { command: 'echo hi' },
+      traceNode: {
+        nodeId: 9001,
+        nodeType: 'tool',
+        parentNodeId: 9000,
+        status: 'running',
+        graphRunId: runId,
+        graphNodeId: 'node-impl',
+        toolName: 'Bash',
+        toolUseId: 'toolu_p1',
+      },
+    };
+    persistTraceNodeFromStreamEvent(chatJid, startEvent);
+
+    // tool_result event carries toolResult
+    const resultEvent: StreamEvent = {
+      eventType: 'tool_result',
+      toolName: 'Bash',
+      toolUseId: 'toolu_p1',
+      toolResult: 'hi',
+      traceNode: {
+        nodeId: 9001,
+        nodeType: 'tool',
+        parentNodeId: 9000,
+        status: 'done',
+        graphRunId: runId,
+        graphNodeId: 'node-impl',
+        toolName: 'Bash',
+        toolUseId: 'toolu_p1',
+      },
+    };
+    persistTraceNodeFromStreamEvent(chatJid, resultEvent);
+
+    const calls = listTraceToolCalls(runId, 'node-impl');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].tool_use_id).toBe('toolu_p1');
+    expect(calls[0].input_json).toContain('echo hi');
+    expect(calls[0].output_json).toBe('hi');
+    expect(calls[0].status).toBe('success');
+
+    // trace node also persisted with graph linkage
+    const nodes = listGraphNodeTraceNodes(runId, 'node-impl');
+    expect(nodes.length).toBeGreaterThanOrEqual(1);
+    expect(nodes[0].tool_use_id).toBe('toolu_p1');
+  });
+
+  test('plain chat trace event (no graph fields) persists without graph linkage (TC14)', () => {
+    const event: StreamEvent = {
+      eventType: 'status',
+      statusText: 'turn_start',
+      traceNode: { nodeId: 9100, nodeType: 'turn', status: 'running' },
+    };
+    persistTraceNodeFromStreamEvent(chatJid, event);
+    // should not crash, should not be linked to graph
+    const nodes = listGraphNodeTraceNodes(runId, 'node-impl');
+    expect(nodes).toHaveLength(0);
   });
 });
