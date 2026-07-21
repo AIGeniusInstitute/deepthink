@@ -93,7 +93,7 @@ export interface AssistantMessage {
  */
 export async function sdkQueryMessages(
   messages: AssistantMessage[],
-  opts?: { model?: string; timeout?: number },
+  opts?: { model?: string; timeout?: number; systemPrompt?: string },
 ): Promise<string | null> {
   const timeout = opts?.timeout ?? 90_000;
   const config = getClaudeProviderConfig();
@@ -138,6 +138,7 @@ export async function sdkQueryMessages(
       options: {
         ...(model && { model }),
         env,
+        ...(opts?.systemPrompt && { systemPrompt: opts.systemPrompt }),
         maxTurns: 1,
         allowedTools: [],
         permissionMode: 'bypassPermissions' as const,
