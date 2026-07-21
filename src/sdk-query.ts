@@ -111,9 +111,30 @@ export async function sdkQueryMessages(
   try {
     const model = opts?.model || config.anthropicModel || undefined;
     let result = '';
+
+    // ⚠️ Claude Agent SDK 的 query() 只接受 `prompt`（string 或
+    // AsyncIterable<SDKUserMessage>），**没有** `messages` 参数。早期实现把
+    // `messages` 直接传给 query()，该字段被静默忽略 → prompt 缺失 → SDK 立即
+    // abort("Operation aborted") → 返回 null → Browser Use Agent 全步 "空响应"。
+    //
+    // 正确做法：把输入消息转成 SDKUserMessage 流，作为 prompt 传入。
+    // SDKUserMessage.message 是 MessageParam，其 content 支持 text/image content
+    // block，因此图像截图可以照常携带。
+    const promptStream = (async function* () {
+      for (const m of messages) {
+        yield {
+          type: 'user' as const,
+          message: {
+            role: m.role,
+            content: m.content,
+          },
+          parent_tool_use_id: null,
+        };
+      }
+    })();
+
     const conversation = query({
-      // SDK 接受 messages（含图像 content block）
-      messages: messages as any,
+      prompt: promptStream as any,
       options: {
         ...(model && { model }),
         env,
@@ -123,7 +144,7 @@ export async function sdkQueryMessages(
         allowDangerouslySkipPermissions: true,
         abortController,
       },
-    } as any);
+    });
 
     for await (const event of conversation) {
       if (event.type === 'result' && event.subtype === 'success') {
