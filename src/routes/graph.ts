@@ -15,6 +15,8 @@ import {
   listGraphRuns,
   listGraphNodeRuns,
   listGraphDefinitions,
+  listGraphNodeTraceNodes,
+  listTraceToolCalls,
 } from '../db.js';
 import {
   deserializeDefinition,
@@ -224,4 +226,21 @@ graphRoutes.get('/runs/:id/usage', (c) => {
     { inputTokens: 0, outputTokens: 0, costUsd: 0 },
   );
   return c.json({ byNode, totals });
+});
+
+/** GET /api/graph/runs/:id/nodes/:nodeId/trace — Super Agent Team: the agent
+ *  node's internal sub-step trace (turn/tool span tree) + raw tool-call I/O.
+ *  Returns {traceNodes, toolCalls} for the node-internal sub-graph view. */
+graphRoutes.get('/runs/:id/nodes/:nodeId/trace', (c) => {
+  const authUser = c.get('user') as import('../types.js').AuthUser;
+  const id = c.req.param('id');
+  const nodeId = c.req.param('nodeId');
+  const run = getGraphRun(id);
+  if (!run) return c.json({ error: 'Graph run not found' }, 404);
+  if (run.owner_user_id !== authUser.id && authUser.role !== 'admin') {
+    return c.json({ error: 'Graph run not found' }, 404);
+  }
+  const traceNodes = listGraphNodeTraceNodes(id, nodeId);
+  const toolCalls = listTraceToolCalls(id, nodeId);
+  return c.json({ traceNodes, toolCalls });
 });
