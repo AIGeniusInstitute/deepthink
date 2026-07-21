@@ -137,6 +137,14 @@ export function BrowserView({ sessionId }: BrowserViewProps) {
     }
   };
 
+  const startBrowser = async () => {
+    try {
+      await sandboxApi.browserStart(sessionId);
+    } catch (e: any) {
+      showToast('启动浏览器失败', e?.message ?? '');
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-[#0f0f14]">
       {/* Toolbar */}
@@ -181,9 +189,20 @@ export function BrowserView({ sessionId }: BrowserViewProps) {
             className={`max-w-full max-h-full object-contain ${interactMode ? 'cursor-pointer' : ''}`}
             draggable={false}
           />
+        ) : started ? (
+          <div className="text-neutral-500 text-sm">等待首帧...</div>
         ) : (
-          <div className="text-neutral-500 text-sm">
-            {started ? '等待首帧...' : '点击"启动浏览器"开始'}
+          <div className="h-full flex flex-col items-center justify-center gap-3 text-neutral-500">
+            <div className="text-sm">浏览器尚未启动</div>
+            <button
+              onClick={startBrowser}
+              className="px-3 py-1.5 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-500"
+            >
+              启动浏览器
+            </button>
+            <div className="text-[11px] text-neutral-600 text-center max-w-xs">
+              点击上方按钮启动；启动后可在工具栏输入网址回车导航，或在右侧 Browser Use Agent 输入任务自动操作。
+            </div>
           </div>
         )}
         {interactMode && (
