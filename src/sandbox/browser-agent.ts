@@ -256,8 +256,13 @@ export function runBrowserAgent(opts: {
           });
           return;
         }
-        // 截图（PNG，给视觉 LLM）
-        const pngDataUrl = await browser.screenshot().catch(() => null);
+        // 截图（PNG，给视觉 LLM）。导航刚完成时页面可能仍在渲染，首次截图偶发
+        // 失败，等 500ms 重试一次再判失败。
+        let pngDataUrl = await browser.screenshot().catch(() => null);
+        if (!pngDataUrl) {
+          await new Promise((r) => setTimeout(r, 500));
+          pngDataUrl = await browser.screenshot().catch(() => null);
+        }
         if (!pngDataUrl) {
           broadcastSandboxAgentEvent(userId, {
             type: 'sandbox_browser_agent_done',

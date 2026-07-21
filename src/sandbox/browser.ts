@@ -102,12 +102,24 @@ export class BrowserController {
     // 'domcontentloaded' returns as soon as the DOM is ready, avoiding
     // ERR_ABORTED on heavy sites (amap, baidu) whose window.onload fires
     // late or never under memory pressure.
-    await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    try {
+      await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 });
+    } catch (e: any) {
+      // 重页面（百度结果页等）常在 domcontentloaded 上超时，但 DOM 往往已可用。
+      // 导航被中断(ERR_ABORTED)时页面通常仍停留在目标 URL。不抛错，让后续
+      // 截图/动作继续，避免单次超时直接终结整个 Agent run。
+      if (!/Timeout|ERR_ABORTED|net::/i.test(String(e?.message ?? e))) throw e;
+    }
   }
 
   async click(selector: string): Promise<void> {
     if (!this.page) throw new Error('浏览器未启动');
-    await this.page.click(selector, { timeout: 10_000 });
+    try {
+      await this.page.click(selector, { timeout: 8_000 });
+    } catch {
+      // 元素被遮挡/不可见时普通 click 会超时；强制点击兜底。
+      await this.page.click(selector, { force: true, timeout: 8_000 });
+    }
   }
 
   /** 坐标点击：用于前端帧上的交互点击转发与 Browser Use Agent。 */
@@ -143,12 +155,21 @@ export class BrowserController {
 
   async type(selector: string, text: string): Promise<void> {
     if (!this.page) throw new Error('浏览器未启动');
-    await this.page.fill(selector, text, { timeout: 10_000 });
+    try {
+      await this.page.fill(selector, text, { timeout: 8_000 });
+    } catch {
+      // fill 在元素不可交互（被皮肤层遮挡/不可见）时会超时；回退到强制聚焦 +
+      // 键盘输入。百度首页 #kw 常出现这种情况。
+      const el = await this.page.$(selector);
+      if (!el) throw new Error(`元素未找到: ${selector}`);
+      await el.click({ force: true }).catch(() => {});
+      await this.page.keyboard.type(text, { delay: 10 });
+    }
   }
 
   async screenshot(): Promise<string> {
     if (!this.page) throw new Error('浏览器未启动');
-    const buf = await this.page.screenshot({ type: 'png' });
+    const buf = await this.page.screenshot({ type: 'png', timeout: 15_000 });
     return `data:image/png;base64,${buf.toString('base64')}`;
   }
 
