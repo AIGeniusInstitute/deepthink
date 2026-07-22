@@ -35,9 +35,12 @@ import {
   type ContainerOutput,
 } from '../container-runner.js';
 import { parseReviewResult } from '../loop-orchestrator.js';
+import { runScript } from '../script-runner.js';
+import { scoreAssertion } from '../harness-eval.js';
 import type { ExecutionMode, RegisteredGroup } from '../types.js';
 import type { StreamEvent } from '../stream-event.types.js';
 import type {
+  GraphAssertion,
   GraphDefinition,
   GraphNode,
   GraphState,
@@ -205,7 +208,7 @@ async function dispatchByType(
     case 'agent':
       return runAgentNode(ctx, deps, node);
     case 'gate':
-      return runGateNode(node);
+      return runGateNode(ctx, node);
     case 'branch':
       return runBranchNode(node, ctx.state);
     case 'join':
@@ -242,13 +245,45 @@ async function runAgentNode(
   const group = buildOwnerGroup(ctx, executionMode);
   const turnId = `${ctx.graphRunId}-${node.id}`;
 
+  // Super Agent Team: if the node references a Team-created agent definition,
+  // set it on the synthetic group so container-runner's existing
+  // loadGroupAgentDefinition(group.agentDefId, group.created_by) loads the
+  // Team-designed systemPrompt/engine/skills/mcp — zero change to
+  // container-runner. loadGroupAgentDefinition returns undefined unless BOTH
+  // agentDefId and created_by are non-null, so set created_by = ownerUserId.
+  // (buildOwnerGroup sets owner_user_id, which RegisteredGroup doesn't read; we
+  // set the correct created_by field only when an agentDefId is present, leaving
+  // existing agentDefId-less nodes' behavior unchanged.)
+  if (node.agentDefId) {
+    const g = group as unknown as {
+      agentDefId?: string;
+      created_by?: string;
+      _graphAgentNode?: boolean;
+    };
+    g.agentDefId = node.agentDefId;
+    g.created_by = ctx.ownerUserId;
+    // Marker: suppress writeAgentProjectClaudeMd for graph agent nodes so we
+    // don't clobber the shared owner-folder CLAUDE.md. The Team-designed
+    // systemPrompt still reaches the SDK via the <agent-definition> tag
+    // (agent-runner index.ts:1487), which is independent of the CLAUDE.md write.
+    g._graphAgentNode = true;
+  }
+
   let output = '';
   let inputTokens = 0;
   let outputTokens = 0;
   let costUsd = 0;
 
+  // Super Agent Team: prepend the goal anchor (original goal + acceptance
+  // criteria + role + deliverable) to the prompt on every execution so the
+  // goal is re-anchored each turn. Missing goalAnchor → backward-compat.
+  const basePrompt = node.prompt ?? node.title;
+  const prompt = node.goalAnchor
+    ? `${node.goalAnchor}\n\n---\n\n${basePrompt}`
+    : basePrompt;
+
   const input: ContainerInput = {
-    prompt: node.prompt ?? node.title,
+    prompt,
     groupFolder: ctx.groupFolder,
     chatJid: ctx.chatJid,
     isMain: ctx.groupFolder === 'main',
@@ -256,6 +291,11 @@ async function runAgentNode(
     isAdminHome: ctx.groupFolder === 'main',
     turnId,
     userLanguage: ctx.userLanguage ?? 'zh-CN',
+    // Super Agent Team: propagate graph linkage so agent-runner tags its
+    // trace nodes + tool calls with this graph_run_id / graph_node_id, forming
+    // the node-internal sub-graph trace.
+    graphRunId: ctx.graphRunId,
+    graphNodeId: node.id,
   };
 
   await runAgent(
@@ -298,19 +338,115 @@ async function runAgentNode(
   };
 }
 
-/** Run a 'gate' node — reviewer decides pass/fail. */
-async function runGateNode(node: GraphNode): Promise<NodeRunOutcome> {
-  const prompt = buildGatePrompt(node, node.prompt ?? '');
-  const raw = await lightweightSdkQuery(prompt, { timeout: GATE_REVIEW_TIMEOUT_MS });
-  const parsed = parseReviewResult(raw);
-  const status = parsed.result === 'pass' ? 'completed' : 'failed';
+/**
+ * Pure evaluation of a gate's behavioral evidence (assertions + shellCheck
+ * result). Returns null if evidence passed; returns a failure description
+ * string if any evidence failed. Extracted for unit testing (TC8-TC11) — no
+ * I/O, no SDK calls. The LLM reviewer is NOT part of behavioral evidence and
+ * runs separately as a confirming/legacy pass.
+ *
+ * @param assertions  gate node's GraphAssertion[]
+ * @param upstreamOutput  the upstream agent's output text to assert against
+ * @param shellResult  result of node.shellCheck (null if no shellCheck)
+ */
+export function evaluateBehavioralEvidence(
+  assertions: GraphAssertion[] | undefined,
+  upstreamOutput: string,
+  shellResult: { exitCode: number; stdout: string; stderr: string } | null,
+): { pass: boolean; detail: string } {
+  let hadError = false;
+  const evidence: string[] = [];
+  if (shellResult) {
+    hadError = shellResult.exitCode !== 0;
+    evidence.push(
+      `shellCheck (exit ${shellResult.exitCode}) stdout:\n${shellResult.stdout.slice(0, 1500)}${shellResult.stderr ? `\nstderr:\n${shellResult.stderr.slice(0, 800)}` : ''}`,
+    );
+    if (hadError) {
+      return {
+        pass: false,
+        detail: `行为证据失败：shellCheck 退出码 ${shellResult.exitCode}\n${evidence[0]}`,
+      };
+    }
+  }
+  const combinedText = `${upstreamOutput}\n${evidence.join('\n')}`;
+  for (const assertion of assertions ?? []) {
+    const r = scoreAssertion(assertion, combinedText, hadError);
+    if (!r.pass) {
+      return {
+        pass: false,
+        detail: `行为证据失败：断言 [${assertion.kind}:${assertion.value}] ${r.detail}`,
+      };
+    }
+    evidence.push(`断言通过 [${assertion.kind}:${assertion.value}]`);
+  }
+  return { pass: true, detail: `行为证据通过：${evidence.join(' | ')}` };
+}
+
+/** Run a 'gate' node — behavioral-evidence first (shellCheck + assertions),
+ *  then LLM reviewer as fallback. Behavioral evidence failing → gate failed,
+ *  no LLM whitewashing (fixes "premature completion"). Missing evidence →
+ *  LLM-only review (backward compat with existing gate nodes). */
+async function runGateNode(
+  ctx: GraphRunContext,
+  node: GraphNode,
+): Promise<NodeRunOutcome> {
+  // Resolve the upstream agent's output text to assert against.
+  const upstreamId = node.upstreamNodeId;
+  const upstreamKey = upstreamId ? `node_${upstreamId}_output` : null;
+  const upstreamOutput =
+    (upstreamKey && typeof ctx.state[upstreamKey] === 'string'
+      ? (ctx.state[upstreamKey] as string)
+      : '') || node.prompt || '';
+
+  // 1+2. Behavioral evidence (shellCheck + assertions) via the pure evaluator.
+  let shellResult: { exitCode: number; stdout: string; stderr: string } | null = null;
+  if (node.shellCheck) {
+    const res = await runScript(node.shellCheck, ctx.groupFolder);
+    shellResult = { exitCode: res.exitCode ?? 1, stdout: res.stdout, stderr: res.stderr };
+  }
+  const hasEvidence = !!node.shellCheck || !!(node.assertions && node.assertions.length > 0);
+  const verdict = evaluateBehavioralEvidence(node.assertions, upstreamOutput, shellResult);
+  if (hasEvidence && !verdict.pass) {
+    return {
+      status: 'failed',
+      output: `${verdict.detail}\n上游产出片段：${upstreamOutput.slice(0, 500)}`,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+      error: verdict.detail,
+    };
+  }
+
+  // 3. LLM reviewer: legacy path when no behavioral evidence (backward compat),
+  //    or a confirming pass after evidence passed when successCriteria is set.
+  if (!hasEvidence) {
+    const prompt = buildGatePrompt(node, upstreamOutput);
+    const raw = await lightweightSdkQuery(prompt, { timeout: GATE_REVIEW_TIMEOUT_MS });
+    const parsed = parseReviewResult(raw);
+    const status = parsed.result === 'pass' ? 'completed' : 'failed';
+    return {
+      status,
+      output: parsed.reason,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+      error: status === 'failed' ? parsed.reason : undefined,
+    };
+  }
+
+  // Behavioral evidence passed → completed (optionally annotated with LLM reason).
+  let llmReason = '';
+  if (node.successCriteria) {
+    const prompt = buildGatePrompt(node, upstreamOutput);
+    const raw = await lightweightSdkQuery(prompt, { timeout: GATE_REVIEW_TIMEOUT_MS });
+    llmReason = parseReviewResult(raw).reason ?? '';
+  }
   return {
-    status,
-    output: parsed.reason,
+    status: 'completed',
+    output: `${verdict.detail}${llmReason ? `\nLLM 评审：${llmReason}` : ''}`,
     inputTokens: 0,
     outputTokens: 0,
     costUsd: 0,
-    error: status === 'failed' ? parsed.reason : undefined,
   };
 }
 

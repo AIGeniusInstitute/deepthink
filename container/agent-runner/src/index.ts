@@ -1264,6 +1264,10 @@ async function runQuery(
   // Reset per-turn allocator state (clears currentTurnId + tool/task maps,
   // but NOT nextId — nodeIds stay monotonic across turns within the process).
   traceAllocator.resetTurn();
+  // Super Agent Team: stamp graph linkage onto every trace node this process
+  // emits, so an agent node's internal steps form a traceable sub-graph.
+  // Undefined for plain (non-graph) chats — no-op, backward compat.
+  traceAllocator.setGraphContext(containerInput.graphRunId, containerInput.graphNodeId);
   // Track the current turn's nodeId so we can finalize it at query end.
   let currentTurnNode: TraceNodeDescriptor | null = null;
   // Accumulate assistant text to populate the turn node's outputSummary.

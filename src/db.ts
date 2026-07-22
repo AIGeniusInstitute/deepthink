@@ -547,6 +547,27 @@ export function initDatabase(): void {
       FOREIGN KEY (graph_run_id) REFERENCES graph_runs(id)
     );
     CREATE INDEX IF NOT EXISTS idx_graph_locks_run ON graph_node_run_locks(graph_run_id, released_at);
+
+    -- Super Agent Team trace table (v53)
+    -- Stores raw tool-call input/output JSON for graph agent nodes, enabling
+    -- full per-step traceability inside a graph node (sub-graph). Keyed on
+    -- (graph_run_id, tool_use_id) for idempotent upsert. See
+    -- docs/tech_solution/super-agent-team/SOLUTION.md §2.2.
+    CREATE TABLE IF NOT EXISTS trace_tool_calls (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      graph_run_id TEXT,
+      graph_node_id TEXT,
+      chat_jid TEXT,
+      tool_use_id TEXT NOT NULL,
+      tool_name TEXT NOT NULL,
+      input_json TEXT,
+      output_json TEXT,
+      status TEXT,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      UNIQUE(graph_run_id, tool_use_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_trace_tool_graph ON trace_tool_calls(graph_run_id, graph_node_id);
   `);
 
   // Self-Evolving Harness tables (v43)
@@ -1930,7 +1951,27 @@ export function initDatabase(): void {
     db.exec('ALTER TABLE scheduled_tasks ADD COLUMN loop_run_id TEXT');
   }
 
-  const SCHEMA_VERSION = '52';
+  // v52 → v53: Super Agent Team — extend chat_trace_nodes with graph linkage +
+  // tool-call columns (aligned with loop_trace_nodes), so graph agent nodes'
+  // internal steps form a traceable sub-tree. CREATE TABLE IF NOT EXISTS in the
+  // schema block above already created trace_tool_calls for fresh DBs; ALTER
+  // TABLE below extends existing chat_trace_nodes in-place (nullable columns,
+  // no CHECK constraint changes — backward compatible with existing chat trace).
+  for (const col of ['graph_run_id', 'graph_node_id', 'tool_name', 'tool_use_id']) {
+    if (
+      !db
+        .prepare("PRAGMA table_info('chat_trace_nodes')")
+        .all()
+        .some((c: any) => c.name === col)
+    ) {
+      db.exec(`ALTER TABLE chat_trace_nodes ADD COLUMN ${col} TEXT`);
+    }
+  }
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_chat_trace_graph ON chat_trace_nodes(graph_run_id, graph_node_id)',
+  );
+
+  const SCHEMA_VERSION = '53';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -4313,6 +4354,11 @@ export interface ChatTraceNodeRow {
   annotation_output: string | null;
   started_at: string;
   ended_at: string | null;
+  // Super Agent Team (v53): link trace node to its graph run/node + tool call.
+  graph_run_id: string | null;
+  graph_node_id: string | null;
+  tool_name: string | null;
+  tool_use_id: string | null;
 }
 
 export interface ChatTraceNodeUpsertInput {
@@ -4328,6 +4374,10 @@ export interface ChatTraceNodeUpsertInput {
   status?: string | null;
   started_at: string;
   ended_at?: string | null;
+  graph_run_id?: string | null;
+  graph_node_id?: string | null;
+  tool_name?: string | null;
+  tool_use_id?: string | null;
 }
 
 /**
@@ -4339,8 +4389,9 @@ export function upsertChatTraceNode(row: ChatTraceNodeUpsertInput): void {
   db.prepare(
     `INSERT INTO chat_trace_nodes
        (id, chat_jid, session_id, parent_node_id, node_type, title,
-        input_summary, output_summary, tokens, status, started_at, ended_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        input_summary, output_summary, tokens, status, started_at, ended_at,
+        graph_run_id, graph_node_id, tool_name, tool_use_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(chat_jid, id) DO UPDATE SET
        session_id = COALESCE(excluded.session_id, session_id),
        parent_node_id = COALESCE(excluded.parent_node_id, parent_node_id),
@@ -4349,7 +4400,11 @@ export function upsertChatTraceNode(row: ChatTraceNodeUpsertInput): void {
        output_summary = COALESCE(excluded.output_summary, output_summary),
        tokens = MAX(tokens, excluded.tokens),
        status = COALESCE(excluded.status, status),
-       ended_at = COALESCE(excluded.ended_at, ended_at)`,
+       ended_at = COALESCE(excluded.ended_at, ended_at),
+       graph_run_id = COALESCE(excluded.graph_run_id, graph_run_id),
+       graph_node_id = COALESCE(excluded.graph_node_id, graph_node_id),
+       tool_name = COALESCE(excluded.tool_name, tool_name),
+       tool_use_id = COALESCE(excluded.tool_use_id, tool_use_id)`,
   ).run(
     row.id,
     row.chat_jid,
@@ -4363,6 +4418,10 @@ export function upsertChatTraceNode(row: ChatTraceNodeUpsertInput): void {
     row.status ?? null,
     row.started_at,
     row.ended_at ?? null,
+    row.graph_run_id ?? null,
+    row.graph_node_id ?? null,
+    row.tool_name ?? null,
+    row.tool_use_id ?? null,
   );
 }
 
@@ -4401,6 +4460,108 @@ export function deleteChatTraceNodes(chatJid: string): number {
     .prepare('DELETE FROM chat_trace_nodes WHERE chat_jid = ?')
     .run(chatJid);
   return result.changes;
+}
+
+// ---- Super Agent Team: graph-node trace + tool-call persistence (v53) ----
+
+/** Trace nodes belonging to a specific agent node's internal sub-graph. */
+export function listGraphNodeTraceNodes(
+  graphRunId: string,
+  graphNodeId: string,
+): ChatTraceNodeRow[] {
+  return db
+    .prepare(
+      'SELECT * FROM chat_trace_nodes WHERE graph_run_id = ? AND graph_node_id = ? ORDER BY id ASC',
+    )
+    .all(graphRunId, graphNodeId) as ChatTraceNodeRow[];
+}
+
+export interface TraceToolCallRow {
+  id: number;
+  graph_run_id: string | null;
+  graph_node_id: string | null;
+  chat_jid: string | null;
+  tool_use_id: string;
+  tool_name: string;
+  input_json: string | null;
+  output_json: string | null;
+  status: string | null;
+  started_at: string;
+  ended_at: string | null;
+}
+
+export interface TraceToolCallUpsertInput {
+  graph_run_id?: string | null;
+  graph_node_id?: string | null;
+  chat_jid?: string | null;
+  tool_use_id: string;
+  tool_name: string;
+  input_json?: string | null;
+  output_json?: string | null;
+  status?: string | null;
+  started_at: string;
+  ended_at?: string | null;
+}
+
+/**
+ * Idempotent upsert keyed on (graph_run_id, tool_use_id). The agent-runner
+ * emits tool-input then tool-result as separate stream events; each call
+ * merges into the same row (input_json on the first, output_json on the
+ * second). Null graph_run_id rows are allowed for non-graph (plain chat)
+ * tool calls if later needed.
+ */
+export function upsertTraceToolCall(row: TraceToolCallUpsertInput): void {
+  db.prepare(
+    `INSERT INTO trace_tool_calls
+       (graph_run_id, graph_node_id, chat_jid, tool_use_id, tool_name,
+        input_json, output_json, status, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(graph_run_id, tool_use_id) DO UPDATE SET
+       graph_node_id = COALESCE(excluded.graph_node_id, graph_node_id),
+       chat_jid = COALESCE(excluded.chat_jid, chat_jid),
+       tool_name = COALESCE(excluded.tool_name, tool_name),
+       input_json = COALESCE(excluded.input_json, input_json),
+       output_json = COALESCE(excluded.output_json, output_json),
+       status = COALESCE(excluded.status, status),
+       ended_at = COALESCE(excluded.ended_at, ended_at)`,
+  ).run(
+    row.graph_run_id ?? null,
+    row.graph_node_id ?? null,
+    row.chat_jid ?? null,
+    row.tool_use_id,
+    row.tool_name,
+    row.input_json ?? null,
+    row.output_json ?? null,
+    row.status ?? null,
+    row.started_at,
+    row.ended_at ?? null,
+  );
+}
+
+export function listTraceToolCalls(
+  graphRunId: string,
+  graphNodeId?: string,
+): TraceToolCallRow[] {
+  if (graphNodeId) {
+    return db
+      .prepare(
+        'SELECT * FROM trace_tool_calls WHERE graph_run_id = ? AND graph_node_id = ? ORDER BY id ASC',
+      )
+      .all(graphRunId, graphNodeId) as TraceToolCallRow[];
+  }
+  return db
+    .prepare('SELECT * FROM trace_tool_calls WHERE graph_run_id = ? ORDER BY id ASC')
+    .all(graphRunId) as TraceToolCallRow[];
+}
+
+/** Look up an agent definition by (owner user id, name) for idempotent team build. */
+export function getAgentDefinitionByName(
+  userId: string,
+  name: string,
+): AgentDefinitionRow | undefined {
+  return db
+    .prepare('SELECT * FROM agent_definitions WHERE user_id = ? AND name = ?')
+    .get(userId, name) as AgentDefinitionRow | undefined;
 }
 
 export function getRouterStateByPrefix(

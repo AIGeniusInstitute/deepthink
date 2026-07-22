@@ -281,6 +281,15 @@ export interface ContainerInput {
       kbName?: string;
     }>;
   };
+  /**
+   * Super Agent Team: graph linkage. When set (agent node executed by
+   * graph-runner), agent-runner tags its trace nodes + tool calls with these
+   * so the node-internal sub-graph is traceable. Propagated through the
+   * dockerInput/hostInput spreads (no container-runner logic change). Optional
+   * — undefined for non-graph (plain chat) runs.
+   */
+  graphRunId?: string;
+  graphNodeId?: string;
 }
 
 export interface ContainerOutput {
@@ -1117,6 +1126,15 @@ function writeAgentProjectClaudeMd(
   agentDef: ContainerInput['agentDefinition'],
 ): void {
   if (!agentDef?.systemPrompt) return;
+  // Super Agent Team: graph agent nodes run in the shared owner folder but
+  // carry their own systemPrompt via the <agent-definition> tag (injected by
+  // agent-runner index.ts:1487). Skip the CLAUDE.md write so we don't clobber
+  // the owner's group CLAUDE.md with a single member's identity (which would
+  // also leak across parallel/serial team members). Agent Studio groups (no
+  // marker) keep the existing write-to-project-CLAUDE.md behavior.
+  if ((group as unknown as { _graphAgentNode?: boolean })._graphAgentNode) {
+    return;
+  }
   const groupDir = path.join(GROUPS_DIR, group.folder);
   mkdirForContainer(groupDir);
   const claudeMdPath = path.join(groupDir, 'CLAUDE.md');

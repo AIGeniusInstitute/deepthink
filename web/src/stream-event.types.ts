@@ -186,5 +186,14 @@ export interface StreamEvent {
     outputSummary?: string;
     tokens?: number;
     status?: string;
+    /** Super Agent Team: link this trace node to its graph run + agent node,
+     *  so an agent node's internal steps form a traceable sub-graph. Set by
+     *  TraceNodeAllocator from ContainerInput.graphRunId/graphNodeId. */
+    graphRunId?: string;
+    graphNodeId?: string;
+    /** Tool call identity (for tool nodes), mirrored from the event so the
+     *  persist layer can join trace_tool_calls without re-reading the event. */
+    toolName?: string;
+    toolUseId?: string;
   };
 }

@@ -38,6 +38,11 @@ export interface TraceNodeDescriptor {
   outputSummary?: string;
   tokens?: number;
   status?: string;
+  /** Super Agent Team: graph linkage (set from ContainerInput). */
+  graphRunId?: string;
+  graphNodeId?: string;
+  toolName?: string;
+  toolUseId?: string;
 }
 
 /** SDK task patch statuses that signal a terminal subagent result. */
@@ -53,10 +58,26 @@ export class TraceNodeAllocator {
   private currentTurnId: number | null = null;
   private toolByUseId = new Map<string, ActiveTool>();
   private taskById = new Map<string, ActiveTask>();
+  /** Super Agent Team: graph linkage for the current agent-runner process.
+   *  Set from ContainerInput.graphRunId/graphNodeId at query start so every
+   *  trace node emitted by this process is tagged → forms the agent node's
+   *  internal sub-graph in the trace DB. Undefined for plain (non-graph) chats. */
+  private graphRunId?: string;
+  private graphNodeId?: string;
 
   /** Allocate a fresh nodeId. */
   private alloc(): number {
     return this.nextId++;
+  }
+
+  /**
+   * Super Agent Team: set the graph run/node context for this process. Called
+   * once per query from index.ts after parsing ContainerInput. When unset
+   * (undefined), trace nodes are not graph-linked (plain chat behavior).
+   */
+  setGraphContext(graphRunId?: string, graphNodeId?: string): void {
+    this.graphRunId = graphRunId;
+    this.graphNodeId = graphNodeId;
   }
 
   /**
@@ -75,6 +96,8 @@ export class TraceNodeAllocator {
       title: 'Turn',
       inputSummary: inputSummary,
       status: 'running',
+      graphRunId: this.graphRunId,
+      graphNodeId: this.graphNodeId,
     };
   }
 
@@ -90,6 +113,8 @@ export class TraceNodeAllocator {
       nodeType: 'turn',
       outputSummary,
       status,
+      graphRunId: this.graphRunId,
+      graphNodeId: this.graphNodeId,
     };
   }
 
@@ -207,6 +232,16 @@ export class TraceNodeAllocator {
       }
       default:
         break;
+    }
+    // Super Agent Team: stamp graph linkage + tool identity onto any traceNode
+    // the switch populated, so the persist layer can link the node into the
+    // agent node's sub-graph and join trace_tool_calls. No-op when graphRunId
+    // is unset (plain chat — backward compat).
+    if (event.traceNode && this.graphRunId) {
+      event.traceNode.graphRunId = this.graphRunId;
+      event.traceNode.graphNodeId = this.graphNodeId;
+      if (event.toolName) event.traceNode.toolName = event.toolName;
+      if (event.toolUseId) event.traceNode.toolUseId = event.toolUseId;
     }
     return event;
   }
