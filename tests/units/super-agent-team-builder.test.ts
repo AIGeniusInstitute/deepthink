@@ -105,6 +105,19 @@ describe('super-agent-team C4: parseTeamPlan + integrity (TC1/TC2)', () => {
     expect(parseTeamPlan('not json')).toBeNull();
     expect(parseTeamPlan(null)).toBeNull();
   });
+
+  test('empty-value non-no_error assertions are dropped (tolerates LLM output)', () => {
+    const j = JSON.parse(validPlanJson);
+    // gate 'accept' has assertions[0] = {contains, '测试通过'}; add an empty one
+    j.graph.nodes[2].assertions.push({ kind: 'contains', value: '' });
+    j.graph.nodes[2].assertions.push({ kind: 'no_error', value: '' });
+    const plan = parseTeamPlan(JSON.stringify(j));
+    expect(plan).not.toBeNull();
+    const accept = plan!.graph.nodes.find((n) => n.id === 'accept')!;
+    // empty contains dropped; empty no_error kept
+    expect(accept.assertions!.some((a) => a.kind === 'no_error')).toBe(true);
+    expect(accept.assertions!.every((a) => a.kind === 'no_error' || a.value.length > 0)).toBe(true);
+  });
 });
 
 describe('super-agent-team C4: assembleGraphDefinition (TC3/TC4)', () => {

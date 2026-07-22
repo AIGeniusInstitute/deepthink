@@ -16,7 +16,10 @@ import { z } from 'zod';
 
 export const GraphAssertionSchema = z.object({
   kind: z.enum(['contains', 'not_contains', 'regex', 'no_error']),
-  value: z.string().min(1),
+  // value may be empty for the 'no_error' kind (which checks hadError, not the
+  // value text). We drop empty-value non-no_error assertions after parse
+  // (a vacuous contains:"" would always pass, weakening the gate).
+  value: z.string(),
 });
 
 export const TeamMemberSchema = z.object({
@@ -115,6 +118,17 @@ export function parseTeamPlan(raw: string | null): TeamPlan | null {
   }
   const result = TeamPlanSchema.safeParse(parsed);
   if (!result.success) return null;
+  // Normalize: drop empty-value assertions for non-no_error kinds (a vacuous
+  // contains:"" / regex:"" would always pass, weakening the gate). Tolerates
+  // LLM-produced empty values without rejecting the whole plan.
+  for (const node of result.data.graph.nodes) {
+    if (node.assertions) {
+      node.assertions = node.assertions.filter(
+        (a) => a.kind === 'no_error' || a.value.length > 0,
+      );
+      if (node.assertions.length === 0) delete node.assertions;
+    }
+  }
   if (!validatePlanIntegrity(result.data)) return null;
   return result.data;
 }
