@@ -59,7 +59,13 @@ export const useTeamStore = create<TeamState>((set) => ({
       }>('/api/team/runs', {
         method: 'POST',
         body: JSON.stringify(input),
-        timeoutMs: 150_000, // decomposition + member creation can take a while
+        // buildTeam 在后端同步阻塞于 decompose()（LLM 分解，单次 120s 超时、
+        // 失败重试 1 次 → 最坏 2×120s=240s），之后才创建成员/注册/启动 graph。
+        // 原值 150s < 240s 最坏耗时，超大任务（如多章节长文）会在此提前 abort，
+        // 抛出 AbortError → client.ts 转成 408 'Request timeout'，而后端其实
+        // 仍在跑甚至最终成功。这里对齐后端最坏耗时（240s）+ 余量，且保持低于
+        // 后端 requestTimeout(600s) 与 Node/Vite 默认 requestTimeout(300s)。
+        timeoutMs: 280_000,
       });
       if (!data.ok || !data.runId || !data.plan) {
         set({
