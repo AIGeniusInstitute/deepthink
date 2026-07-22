@@ -26,6 +26,10 @@ const USER_GLOBAL_DIR = path.join(GROUPS_DIR, 'user-global');
 const MAIN_MEMORY_DIR = path.join(GROUPS_DIR, 'main');
 const MAIN_MEMORY_FILE = path.join(MAIN_MEMORY_DIR, 'CLAUDE.md');
 const MEMORY_DATA_DIR = path.join(DATA_DIR, 'memory');
+// 记忆路径以 DATA_DIR 的父目录为基准（默认 ~/.deepthink），使相对路径形如
+// `data/groups/...` / `data/memory/...`，与服务启动时的 process.cwd() 解耦，
+// 避免 cwd 不在数据目录上层时生成 `../...` 路径被安全校验拒绝（400）。
+const MEMORY_BASE_DIR = path.dirname(DATA_DIR);
 const MAX_GLOBAL_MEMORY_LENGTH = 200_000;
 const MAX_MEMORY_FILE_LENGTH = 500_000;
 const MEMORY_LIST_LIMIT = 500;
@@ -75,7 +79,7 @@ function resolveMemoryPath(
   absolutePath: string;
   writable: boolean;
 } {
-  const absolute = path.resolve(process.cwd(), relativePath);
+  const absolute = path.resolve(MEMORY_BASE_DIR, relativePath);
   const inGroups = isWithinRoot(absolute, GROUPS_DIR);
   const inMemoryData = isWithinRoot(absolute, MEMORY_DATA_DIR);
   const writable = inGroups || inMemoryData;
@@ -393,7 +397,7 @@ function listMemorySources(user: AuthUser): MemorySource[] {
     if (!inGroups && !inMemoryData) continue;
 
     const relativePath = path
-      .relative(process.cwd(), absolutePath)
+      .relative(MEMORY_BASE_DIR, absolutePath)
       .replace(/\\/g, '/');
     const exists = fs.existsSync(absolutePath);
     let updatedAt: string | null = null;
