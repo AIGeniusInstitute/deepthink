@@ -21,7 +21,8 @@ export type StreamEventType =
   | 'usage'
   | 'status' | 'init'
   | 'loop_start' | 'loop_iteration_start' | 'loop_iteration_end'
-  | 'loop_goal_check' | 'loop_review_result' | 'loop_end';
+  | 'loop_goal_check' | 'loop_review_result' | 'loop_end'
+  | 'human_approval_request' | 'human_approval_result';
 
 export type StreamAgentScope = 'main' | 'task' | 'subagent' | 'system';
 export type StreamDisplayLevel = 'primary' | 'detail' | 'debug';
@@ -195,5 +196,25 @@ export interface StreamEvent {
      *  persist layer can join trace_tool_calls without re-reading the event. */
     toolName?: string;
     toolUseId?: string;
+  };
+  /** Super Agent Team P1: a human approval node paused the run and is awaiting
+   *  the user's decision in the DeepThink chat. The frontend renders an
+   *  ApprovalCard from this payload. */
+  approvalRequest?: {
+    runId: string;
+    nodeId: string;
+    title: string;
+    question: string;
+    options: { label: string; value: string }[];
+    stateKey?: string;
+  };
+  /** Super Agent Team P1: the user submitted an approval decision. Lets all
+   *  clients mark the corresponding ApprovalCard as resolved. */
+  approvalResult?: {
+    runId: string;
+    nodeId: string;
+    optionId?: string;
+    note?: string;
+    byUserId?: string;
   };
 }

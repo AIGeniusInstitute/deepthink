@@ -70,6 +70,11 @@ interface GraphState {
   pauseRun: (id: string) => Promise<boolean>;
   cancelRun: (id: string) => Promise<boolean>;
   rerunNode: (id: string, nodeId: string) => Promise<boolean>;
+  approveNode: (
+    id: string,
+    nodeId: string,
+    payload: { optionId: string; note?: string },
+  ) => Promise<boolean>;
 }
 
 export const useGraphStore = create<GraphState>((set, get) => ({
@@ -170,6 +175,18 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     try {
       await apiFetch(`/api/graph/runs/${id}/nodes/${nodeId}/rerun`, {
         method: 'POST',
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  approveNode: async (id, nodeId, payload) => {
+    try {
+      await apiFetch(`/api/graph/runs/${id}/nodes/${nodeId}/approve`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
       });
       return true;
     } catch {

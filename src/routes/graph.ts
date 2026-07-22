@@ -12,11 +12,13 @@ import { authMiddleware } from '../middleware/auth.js';
 import { getWebDeps } from '../web-context.js';
 import {
   getGraphRun,
+  getLatestGraphNodeRun,
   listGraphRuns,
   listGraphNodeRuns,
   listGraphDefinitions,
   listGraphNodeTraceNodes,
   listTraceToolCalls,
+  repointGraphRunDefinition,
 } from '../db.js';
 import {
   deserializeDefinition,
@@ -24,6 +26,7 @@ import {
   toMermaid,
 } from '../graph-engineering/graph-registry.js';
 import {
+  approveHumanNode,
   cancelGraphRun,
   pauseGraphRun,
   rerunGraphNode,
@@ -243,4 +246,72 @@ graphRoutes.get('/runs/:id/nodes/:nodeId/trace', (c) => {
   const traceNodes = listGraphNodeTraceNodes(id, nodeId);
   const toolCalls = listTraceToolCalls(id, nodeId);
   return c.json({ traceNodes, toolCalls });
+});
+
+/** GET /api/graph/runs/:id/nodes/:nodeId — latest node_run (approval status). */
+graphRoutes.get('/runs/:id/nodes/:nodeId', (c) => {
+  const authUser = c.get('user') as import('../types.js').AuthUser;
+  const id = c.req.param('id');
+  const nodeId = c.req.param('nodeId');
+  const run = getGraphRun(id);
+  if (!run) return c.json({ error: 'Graph run not found' }, 404);
+  if (run.owner_user_id !== authUser.id && authUser.role !== 'admin') {
+    return c.json({ error: 'Graph run not found' }, 404);
+  }
+  const nodeRun = getLatestGraphNodeRun(id, nodeId);
+  if (!nodeRun) return c.json({ error: 'Node run not found' }, 404);
+  return c.json({ nodeRun });
+});
+
+/** POST /api/graph/runs/:id/nodes/:nodeId/approve — P1: submit a human node
+ *  approval decision. Marks the human node completed, writes the chosen
+ *  option into state, and resumes the run. Body: { optionId, note? }. */
+graphRoutes.post('/runs/:id/nodes/:nodeId/approve', async (c) => {
+  const authUser = c.get('user') as import('../types.js').AuthUser;
+  const id = c.req.param('id');
+  const nodeId = c.req.param('nodeId');
+  const run = getGraphRun(id);
+  if (!run) return c.json({ error: 'Graph run not found' }, 404);
+  if (run.owner_user_id !== authUser.id && authUser.role !== 'admin') {
+    return c.json({ error: 'Graph run not found' }, 404);
+  }
+  const body = await c.req.json().catch(() => null);
+  if (!body?.optionId) return c.json({ error: 'Missing optionId' }, 400);
+  const result = approveHumanNode(id, nodeId, String(body.optionId), body.note ? String(body.note) : undefined);
+  if (!result.ok) return c.json({ error: result.error }, 400);
+  const webDeps = getWebDeps();
+  webDeps?.resumeGraphRun?.(id);
+  return c.json({ ok: true, stateKey: result.stateKey });
+});
+
+/** POST /api/graph/runs/:id/replan — P1: dynamic re-plan. Registers a new
+ *  version of the run's definition and repoints the run to it, then resumes.
+ *  Body: { nodes, edges, stateSchema? }. Admin only (mutates the graph). */
+graphRoutes.post('/runs/:id/replan', async (c) => {
+  const authUser = c.get('user') as import('../types.js').AuthUser;
+  if (authUser.role !== 'admin') return c.json({ error: 'admin only' }, 403);
+  const id = c.req.param('id');
+  const run = getGraphRun(id);
+  if (!run) return c.json({ error: 'Graph run not found' }, 404);
+  const body = await c.req.json().catch(() => null);
+  if (!Array.isArray(body?.nodes) || !Array.isArray(body?.edges)) {
+    return c.json({ error: 'Missing nodes/edges' }, 400);
+  }
+  const newVersion = (run.definition_version ?? 0) + 1;
+  try {
+    registerDefinition({
+      id: run.definition_id,
+      version: newVersion,
+      name: run.definition_id,
+      nodes: body.nodes,
+      edges: body.edges,
+      stateSchema: body.stateSchema,
+    });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+  repointGraphRunDefinition(id, run.definition_id, newVersion);
+  const webDeps = getWebDeps();
+  webDeps?.resumeGraphRun?.(id);
+  return c.json({ ok: true, version: newVersion });
 });

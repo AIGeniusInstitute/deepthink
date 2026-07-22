@@ -3828,6 +3828,19 @@ export function updateGraphRunStatus(
   }
 }
 
+/** P1: repoint a graph run to a new definition version (dynamic re-plan).
+ *  Used after registerDefinition creates v(N+1) so resume loads the new
+ *  nodes/edges. Completed-node set is unaffected; new nodes become ready. */
+export function repointGraphRunDefinition(
+  runId: string,
+  definitionId: string,
+  version: number,
+): void {
+  db.prepare(
+    `UPDATE graph_runs SET definition_id = ?, definition_version = ? WHERE id = ?`,
+  ).run(definitionId, version, runId);
+}
+
 export function addGraphRunUsage(
   id: string,
   inputTokens: number,

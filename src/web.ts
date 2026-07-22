@@ -527,6 +527,53 @@ async function handleWebUserMessage(
         deps.advanceGlobalCursor({ timestamp: supTs, id: supMsgId });
         return { ok: true, messageId: supMsgId, timestamp: supTs };
       }
+      // delegate_team: Supervisor judged the task complex enough to autonomously
+      // build an Agent Team. Delegate to buildTeam (creates members + graph +
+      // starts a run). Falls through to the agent queue on any failure so the
+      // user still gets a response.
+      if (decision?.action === 'delegate_team' && decision.instruction && deps.buildTeam) {
+        const owner = group.created_by ? getUserById(group.created_by) : null;
+        const teamUserLanguage = owner?.language ?? 'zh-CN';
+        try {
+          const res = await deps.buildTeam({
+            goalText: decision.instruction,
+            ownerUserId: group.created_by!,
+            groupFolder: group.folder,
+            chatJid,
+            userLanguage: teamUserLanguage,
+          });
+          if ('runId' in res) {
+            const teamMsgId = crypto.randomUUID();
+            const teamTs = new Date().toISOString();
+            const teamText = `🧭 Supervisor 判定该任务需要多角色协作，已自主组建 Agent 团队并启动执行。\n\n任务：${decision.instruction.slice(0, 500)}\n运行 ID：${res.runId}`;
+            storeMessageDirect(
+              teamMsgId,
+              chatJid,
+              '__supervisor__',
+              ASSISTANT_NAME,
+              teamText,
+              teamTs,
+              true,
+              { meta: { sourceKind: 'supervisor' } },
+            );
+            broadcastNewMessage(chatJid, {
+              id: teamMsgId,
+              chat_jid: chatJid,
+              sender: '__supervisor__',
+              sender_name: ASSISTANT_NAME,
+              content: teamText,
+              timestamp: teamTs,
+              is_from_me: true,
+            });
+            deps.setLastAgentTimestamp(chatJid, { timestamp: teamTs, id: teamMsgId });
+            deps.advanceGlobalCursor({ timestamp: teamTs, id: teamMsgId });
+            return { ok: true, messageId: teamMsgId, timestamp: teamTs };
+          }
+          logger.warn({ err: (res as { error?: string }).error, chatJid }, 'delegate_team buildTeam failed — falling through to agent');
+        } catch (err) {
+          logger.warn({ err, chatJid }, 'delegate_team exception — falling through to agent');
+        }
+      }
       // delegate/auto → fall through, queue original content to agent
     }
   }

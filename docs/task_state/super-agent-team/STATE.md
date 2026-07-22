@@ -30,15 +30,26 @@
 | C5 | routes/team.ts + web.ts 挂载 + index.ts 注入 + /team 命令 | ✅ | `649923d` |
 | C6 | routes/graph.ts trace 端点 | ✅ | `f8a9daa` |
 | C7 | 前端 stores/team.ts + TeamPage + NodeTraceSubgraph | ✅ | `a88a471` |
-| C8 | 构建验证 + 测试报告 | ✅ | （本提交） |
+| C8 | 构建验证 + 测试报告 | ✅ | （已合并 main） |
+
+## 2b. P1 阶段进度（自主路由 + 审批闭环 + re-plan）
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| C8.2 | PRD §9 + SOLUTION §13 P1 技术方案 | ✅ |
+| C8.3 | human 审批闭环：GraphNode approval 字段 + approveHumanNode + approve 端点 + ApprovalCard 前端 | ✅ |
+| C8.4 | 运行中 re-plan：repointGraphRunDefinition + /replan 端点 | ✅ |
+| C8.5 | Supervisor delegate_team 自动路由（supervisor.ts + web.ts 消费） | ✅ |
+| C8.6 | 单测 37/37 + 构建全绿 + 测试报告增量 + 合并 push | ✅ |
 
 ## 3. 测试结果
 
-- 单元测试：**28/28 通过**（builder 12 + gate 8 + trace 8）
+- 单元测试：**37/37 通过**（builder 12 + gate 8 + trace 8 + approval 9 + delegate 4 = 41 用例，含 P1 TC15-TC21）
 - 后端 typecheck / build：✅ EXIT=0
 - agent-runner build：✅ EXIT=0
-- 前端 build：✅ built in 10.40s
+- 前端 build：✅ built in 10.09s
 - 环境注记：`better-sqlite3` 原生模块因 Node 版本不匹配需 `npm rebuild better-sqlite3` 重建后通过，非代码缺陷。
+- 环境注记2：approval 测试用动态 import 隔离 DB（规避 ESM 静态 import 提升 + DEEPTHINK_DATA_DIR 失效问题），不污染生产 DB。
 
 详见 `docs/test_report/super-agent-team/TEST_REPORT.md`。
 

@@ -5,7 +5,7 @@ import { isSupervisorEnabled } from './supervisor-config.js';
 const SUPERVISOR_TIMEOUT_MS = 60_000;
 
 export interface SupervisorDecision {
-  action: 'clarify' | 'delegate' | 'auto' | 'accept' | 'retry';
+  action: 'clarify' | 'delegate' | 'auto' | 'delegate_team' | 'accept' | 'retry';
   instruction?: string;
   question?: string;
   reason?: string;
@@ -17,7 +17,8 @@ export interface SupervisorDecision {
  *
  * The Supervisor is a lightweight intent parser — it does NOT call tools.
  * It outputs strict JSON deciding: clarify (ask user), delegate (forward
- * original), or auto (rewrite instruction).
+ * original), auto (rewrite instruction), or delegate_team (complex task →
+ * autonomously decompose + build an Agent Team).
  */
 export async function runSupervisorPreDispatch(
   userMessage: string,
@@ -32,10 +33,11 @@ export async function runSupervisorPreDispatch(
     userMessage.slice(0, 4000),
     '',
     '请输出严格 JSON（不要 markdown 代码块）：',
-    '{"action":"clarify"|"delegate"|"auto","instruction"?:string,"question"?:string}',
+    '{"action":"clarify"|"delegate"|"auto"|"delegate_team","instruction"?:string,"question"?:string}',
     '- clarify: 消息模糊，向用户提问。question 字段必填。',
     '- delegate: 意图清晰，原样转发。instruction 字段填原消息精简版。',
     '- auto: 意图清晰但可优化表达，instruction 字段填你重写的指令。',
+    '- delegate_team: 任务复杂、需要多角色协作（如需调研+实现+评审+验收、跨多个交付物、需要自主拆解组建团队）。instruction 字段填任务目标描述（将作为 Team Builder 的 goalText）。',
   ].join('\n');
 
   try {
@@ -63,7 +65,13 @@ export function parseDecision(raw: string): SupervisorDecision | null {
   try {
     const parsed = JSON.parse(cleaned.slice(start, end + 1));
     const action = parsed.action as SupervisorDecision['action'];
-    if (action !== 'clarify' && action !== 'delegate' && action !== 'auto') return null;
+    if (
+      action !== 'clarify' &&
+      action !== 'delegate' &&
+      action !== 'auto' &&
+      action !== 'delegate_team'
+    )
+      return null;
     return {
       action,
       instruction: parsed.instruction ? String(parsed.instruction).slice(0, 4000) : undefined,

@@ -223,7 +223,7 @@ export interface WebDeps {
     userLanguage: string,
   ) => Promise<
     | {
-        action: 'clarify' | 'delegate' | 'auto' | 'accept' | 'retry';
+        action: 'clarify' | 'delegate' | 'auto' | 'delegate_team' | 'accept' | 'retry';
         instruction?: string;
         question?: string;
         reason?: string;

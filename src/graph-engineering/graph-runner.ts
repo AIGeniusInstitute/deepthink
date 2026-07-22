@@ -87,6 +87,23 @@ export interface GraphDeps {
       workspaceFolder?: string;
     },
   ) => Promise<void>;
+  /**
+   * Super Agent Team P1: persist an approval card as a chat message (with an
+   * 'approval' attachment) + push it via new_message so the DeepThink chat
+   * renders a button form. Called by the orchestrator when a human node
+   * pauses the run. See routes/graph.ts approve endpoint for the submit path.
+   */
+  storeApprovalCard?: (
+    chatJid: string,
+    payload: {
+      runId: string;
+      nodeId: string;
+      title: string;
+      question: string;
+      options: { label: string; value: string }[];
+      stateKey?: string;
+    },
+  ) => Promise<void>;
 }
 
 /** Resolve execution mode for the owner's home group (mirrors loop-orchestrator). */
@@ -214,10 +231,14 @@ async function dispatchByType(
     case 'join':
       return { status: 'completed', output: '', inputTokens: 0, outputTokens: 0, costUsd: 0 };
     case 'human':
-      // P0 placeholder: pause the run. Full HITL + IM approval in P1.
+      // P1: pause the run and surface an approval card. The orchestrator's
+      // pause branch reads the node's approval fields to store an approval
+      // message + broadcast human_approval_request. Approval is submitted via
+      // POST /api/graph/runs/:id/nodes/:nodeId/approve, which marks this node
+      // run completed + writes the decision into state, then resumes.
       return {
         status: 'paused',
-        output: 'human-in-the-loop node pending (P0 placeholder)',
+        output: node.approvalPrompt ?? 'human-in-the-loop node awaiting approval',
         inputTokens: 0,
         outputTokens: 0,
         costUsd: 0,

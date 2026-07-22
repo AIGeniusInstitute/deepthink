@@ -323,3 +323,64 @@ PRD §5 的 20 个 TC 分布到 C1-C8：
 - 不改既有 Loop/Supervisor 核心逻辑。
 - 不做运行中动态 re-plan（P1）、团队自进化（P2）、human 完整 HITL（P1）、设计态拖拽（P2）、循环节点（P2）。
 - 不引入外部 trace 后端（继续 SQLite）。
+
+---
+
+## 13. P1 技术方案：自主路由 + 审批闭环 + re-plan
+
+### 13.1 Supervisor delegate_team 自动路由
+
+- `supervisor.ts`：`SupervisorDecision.action` 加 `'delegate_team'`；prompt 增一行判据；`parseDecision` 校验集合加 `delegate_team`（返回 `{action, instruction}`）。
+- `web.ts`（消费点 ~L499-531）：`clarify` 分支后加：
+  ```ts
+  else if (decision?.action === 'delegate_team' && deps.buildTeam) {
+    const owner = group.created_by ? getUserById(group.created_by) : null;
+    const res = await deps.buildTeam({ goalText: decision.instruction ?? content,
+      ownerUserId: group.created_by!, groupFolder: group.folder,
+      chatJid, userLanguage: owner?.language ?? 'zh-CN' });
+    // 落"已组建团队"消息（res.runId）或失败回退 agent 队列
+  }
+  ```
+- `buildTeam` 已注入 webDeps（`index.ts:11658`），零改 index.ts。
+
+### 13.2 human 审批闭环
+
+**类型层**（`graph-types.ts`）：GraphNode 加 `approvalPrompt?`、`approvalOptions?: {label;value}[]`、`approvalStateKey?`。plain JSON，无需 schema 改动（进 `graph_definitions.nodes_json`）。
+
+**runner**（`graph-runner.ts:216`）：human 分支返回 `{status:'paused', output: node.approvalPrompt ?? '待审批'}`。
+
+**orchestrator pause 分支**（`graph-orchestrator.ts:209`）：若 `node.type==='human'` 且 `node.approvalOptions`，构造 approval payload，调 `deps.storeApprovalCard?.(ctx.chatJid, {runId:ctx.graphRunId, nodeId:node.id, title:node.title, question:node.approvalPrompt??node.title, options:node.approvalOptions, stateKey:node.approvalStateKey??`node_${node.id}_approval`})`，并 `deps.broadcastStreamEvent?.(ctx.chatJid, {eventType:'human_approval_request', approvalRequest:{...}, traceNode:{graphRunId,graphNodeId:node.id,nodeType:'human'}, displayLevel:'primary'})`。然后 persistState + return。
+
+**GraphDeps** 加 `storeApprovalCard?: (chatJid, payload) => Promise<void>`。`index.ts` 实现：`storeMessageDirect`（带 `attachments=JSON.stringify([{type:'approval',...}])`）+ `broadcastNewMessage`（msg 带同 attachments 字符串）。消息 sender='deepthink-agent'，持久 + WS 即时推送。
+
+**approve 端点**（`routes/graph.ts`）：`POST /runs/:id/nodes/:nodeId/approve` body `{optionId, note?}`：
+1. `getLatestGraphNodeRun(runId, nodeId)` 校验 `node_type==='human' && status==='paused'`。
+2. `stateKey = node.approvalStateKey ?? `node_${nodeId}_approval``；`statePatch = {[stateKey]: optionId, [`${stateKey}__note`]: note??''}`。
+3. `updateGraphNodeRun(nodeRunId, {status:'completed', output_summary:JSON.stringify({optionId,note}), state_patch_json:JSON.stringify(statePatch), ended_at:now})`。
+4. 读 `getGraphRun(runId).state_json`，merge statePatch，`updateGraphRunStatus(runId,'paused',{stateJson: JSON.stringify(merged)})`（保持 paused，让 resume 接管）。
+5. `webDeps.resumeGraphRun(runId)`。
+6. 可选广播 `human_approval_result`。
+
+**resume 修复**：approve 把 human 节点 mark completed → `getCompletedGraphNodeIds` 含 human → `computeReadyNodes` 跳过 → 下游 ready。无新 DB 列，复用 `output_summary`/`state_patch_json`。
+
+**前端**：
+- `MessageBubble.tsx`：`MessageAttachment` 加 `'approval'` 类型 + 字段 `runId/nodeId/title/question/options`；AI 消息内容区按 attachments 分支渲染 `<ApprovalCard>`（同级 loop_card）。
+- `ApprovalCard.tsx`：props `{runId,nodeId,title,question,options}`；按钮调 `useGraphStore.approveNode`；乐观置灰；显示已选。
+- `stores/graph.ts`：`approveNode(runId,nodeId,{optionId,note})` → `apiFetch('/api/graph/runs/:id/nodes/:nodeId/approve',{method:POST,body})`。
+- stream event（可选）：chat store 收 `human_approval_request` 也可触发卡片，但主路径是落库消息 attachments（刷新不丢）。
+
+### 13.3 运行中动态 re-plan
+
+- `db.ts` 新增 `repointGraphRunDefinition(runId, definitionId, newVersion)`：`UPDATE graph_runs SET definition_id=?, definition_version=? WHERE id=?`。
+- `routes/graph.ts` 新增 `POST /runs/:id/replan`（body `{nodes,edges,stateSchema?}`）：`registerDefinition({id:run.definition_id, version:run.definition_version+1, nodes,edges,stateSchema})` → `repointGraphRunDefinition(runId, defId, newVersion)` → `webDeps.resumeGraphRun(runId)`。
+- `buildRunContext` 已按 `run.definition_version` 加载（`graph-orchestrator.ts:56`），resume 自动用新版本；`getCompletedGraphNodeIds` 不变，新节点 ready。orchestrator/scheduler 零改动。
+
+### 13.4 stream-event 扩展
+
+`shared/stream-event.ts`（+ 同步副本）：`StreamEventType` 加 `'human_approval_request' | 'human_approval_result'`；`StreamEvent` 加 `approvalRequest?: {runId,nodeId,title,question,options:{label,value}[],stateKey?}` 和 `approvalResult?: {nodeId,optionId,note?,byUserId?}`。
+
+### 13.5 测试（P1）
+
+- `super-agent-team-approval.test.ts`：human 节点 pause → approve（mark completed + statePatch merge）→ resume 跳过 human + 下游从 state 读审批结果（TC15-TC18）。
+- `super-agent-team-rerun` 既有 + 新增 re-plan：repoint 后 resume 用新版本（TC19）。
+- `super-agent-team-builder.test.ts` 增：delegate_team 路由（supervisor parseDecision + delegate_team action）。

@@ -9,6 +9,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { MessageContextMenu } from './MessageContextMenu';
 import { ImageLightbox } from './ImageLightbox';
 import { InlineLoopCard } from '../loops/InlineLoopCard';
+import { ApprovalCard } from './ApprovalCard';
 import { mediumTap } from '../../hooks/useHaptic';
 import { useDisplayMode } from '../../hooks/useDisplayMode';
 import { formatThinkingDuration } from '../../utils/thinking-duration';
@@ -25,12 +26,19 @@ interface MessageBubbleProps {
 }
 
 interface MessageAttachment {
-  type: 'image' | 'loop_card';
+  type: 'image' | 'loop_card' | 'approval';
   data: string; // base64
   mimeType?: string;
   name?: string;
   loop_run_id?: string;
   task_id?: string;
+  // approval card (Super Agent Team P1 human node)
+  runId?: string;
+  nodeId?: string;
+  title?: string;
+  question?: string;
+  options?: { label: string; value: string }[];
+  stateKey?: string;
 }
 
 /** Collapsible reasoning block for AI messages */
@@ -174,6 +182,9 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
     : [];
   const images = attachments.filter((att) => att.type === 'image');
   const loopCard = attachments.find((att) => att.type === 'loop_card' && att.loop_run_id);
+  const approvalCard = attachments.find(
+    (att) => att.type === 'approval' && att.runId && att.nodeId,
+  );
   const allImageSrcs = images.map((img) => `data:${img.mimeType || 'image/png'};base64,${img.data}`);
 
   // Check if content is empty (only whitespace) and we have images
@@ -609,7 +620,17 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
             )}
 
             {/* Content */}
-            {loopCard ? (
+            {approvalCard ? (
+              <div className="max-w-none overflow-hidden">
+                <ApprovalCard
+                  runId={approvalCard.runId!}
+                  nodeId={approvalCard.nodeId!}
+                  title={approvalCard.title ?? '审批'}
+                  question={approvalCard.question ?? ''}
+                  options={approvalCard.options ?? []}
+                />
+              </div>
+            ) : loopCard ? (
               <div className="max-w-none overflow-hidden">
                 <InlineLoopCard loopRunId={loopCard.loop_run_id!} />
               </div>
