@@ -97,7 +97,20 @@ export interface GraphNode {
    * (reads state[node_<upstreamNodeId>_output]). Defaults to the nearest
    * predecessor agent node.
    */
-  upstreamNodeId?: string;
+  upstreamNodeId?: string
+
+  // ---- Human approval node extensions (P1) ----
+  /** For 'human' nodes: the approval question rendered as a card in the
+   *  DeepThink chat. Missing → the node title is used as the question. */
+  approvalPrompt?: string;
+  /** For 'human' nodes: choice buttons. Each {label, value}; the chosen value
+   *  is written to state[approvalStateKey]. Missing → the human node renders
+   *  as a free-form confirm (any approval just resumes the run). */
+  approvalOptions?: { label: string; value: string }[];
+  /** For 'human' nodes: state key the chosen option value is written to
+   *  (default `node_<id>_approval`). Downstream agent/branch nodes read this
+   *  key to route on the approval decision. */
+  approvalStateKey?: string;
 }
 
 /**

@@ -93,3 +93,56 @@ Test Files  3 passed (3)
 ## 6. 结论
 
 P0 范围内可在单元层客观验证的全部路径通过：**28/28 单测通过，前后端 + agent-runner 构建零错误，类型检查零错误**。行为证据验收闭环（断言 + shellCheck 短路）在单测层证明可阻断"LLM 文本洗白"；trace 持久化证明节点内子步骤可回溯。达到合并 main 的退出条件。
+
+---
+
+## 7. P1 扩展测试（自主路由 + 审批闭环 + re-plan）
+
+### P1 单元测试
+
+```
+Test Files  5 passed (5)
+     Tests  37 passed (37)   # P0 28 + P1 9（approval 5 用例 + delegate 4 用例）
+  Duration  478ms
+```
+
+### C8.3 — human 审批闭环（`super-agent-team-approval.test.ts`，5 用例）
+
+| 用例 | 覆盖 | 结果 |
+|------|------|------|
+| TC15 | approve 标记 human 节点 completed + 决策写入 state_patch_json + state_json | ✅ |
+| TC16 | approve 后 getCompletedGraphNodeIds 含 human 节点（修复 P0 无限 re-pause） | ✅ |
+| TC17 | run 非 paused 时 approve 拒绝（防竞态） | ✅ |
+| TC18 | 非 human 节点 approve 拒绝 | ✅ |
+| TC19 | repoint run 到新版本；resume 加载新版本定义 + 新节点就绪 | ✅ |
+
+### C8.5 — Supervisor delegate_team 路由（`super-agent-team-delegate.test.ts`，4 用例）
+
+| 用例 | 覆盖 | 结果 |
+|------|------|------|
+| TC20 | delegate_team action 解析 + instruction(goalText) 透传 | ✅ |
+| TC20b | delegate_team 容忍 markdown 代码块 | ✅ |
+| TC21 | 未知 action 仍被拒绝 | ✅ |
+| TC21b | clarify/auto/delegate 无回归 | ✅ |
+
+### P1 构建验证
+
+| 项 | 命令 | 结果 |
+|----|------|------|
+| 后端类型检查 | `npm run typecheck` | ✅ EXIT=0 |
+| agent-runner 构建 | `npm --prefix container/agent-runner run build` | ✅ EXIT=0 |
+| 前端构建 | `npm --prefix web run build` | ✅ built in 10.09s（ApprovalCard 编译通过） |
+
+### P1 关键验证结论
+
+- **审批闭环修复 P0 无限 re-pause**：approve 把 human 节点 mark completed → `getCompletedGraphNodeIds` 含该节点 → `computeReadyNodes` 跳过 → resume 继续下游（TC16）。
+- **审批结果可被下游读取**：决策写入 `state[approvalStateKey]`，下游 agent/branch 节点可读（TC15）。
+- **re-plan 零改 orchestrator**：repoint `graph_runs.definition_version` 后 `buildRunContext` 自动加载新版本，已完成节点不变（TC19）。
+- **delegate_team 不破坏既有路由**：clarify/delegate/auto 无回归（TC21b）。
+
+### P1 集成级用例状态说明
+
+以下依赖运行时环境，逻辑路径已在单元层验证，完整 E2E 留待集成环境：
+- Supervisor 预分派 LLM 输出 `delegate_team` → buildTeam → graph run（C8.5）
+- human 节点 pause → storeApprovalCard 落库审批卡消息 → 前端 ApprovalCard 渲染 → 用户点击 → /approve → resume（C8.3）
+- /replan 注册新版本 + repoint + resume 用新定义（C8.4）

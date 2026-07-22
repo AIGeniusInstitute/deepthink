@@ -11620,6 +11620,33 @@ async function main(): Promise<void> {
           messageMeta: { sourceKind: options.sourceKind || 'sdk_final' },
         });
       },
+      // Super Agent Team P1: persist a human-approval card as a chat message
+      // (with an 'approval' attachment) + push via new_message, so the
+      // DeepThink chat renders a button form. Approval is submitted via
+      // POST /api/graph/runs/:id/nodes/:nodeId/approve. See graph-orchestrator.
+      storeApprovalCard: async (chatJid, payload) => {
+        const msgId = crypto.randomUUID();
+        const ts = new Date().toISOString();
+        const content = `🧭 审批请求：${payload.title}\n\n${payload.question}`;
+        const attachment = JSON.stringify([{ type: 'approval', ...payload }]);
+        ensureChatExists(chatJid);
+        storeMessageDirect(msgId, chatJid, 'deepthink-agent', ASSISTANT_NAME, content, ts, true, { attachments: attachment });
+        broadcastNewMessage(
+          chatJid,
+          {
+            id: msgId,
+            chat_jid: chatJid,
+            sender: 'deepthink-agent',
+            sender_name: ASSISTANT_NAME,
+            content,
+            timestamp: ts,
+            is_from_me: true,
+            attachments: attachment,
+          },
+          undefined,
+          'graph_approval',
+        );
+      },
     };
     webDeps.startGraphRun = (opts) => {
       const started = startGraphRun(opts);

@@ -22,8 +22,10 @@ import {
   getCompletedGraphNodeIds,
   getGraphDefinition,
   getGraphRun,
+  getLatestGraphNodeRun,
   listGraphNodeRuns,
   resetGraphNodeAndDownstream,
+  updateGraphNodeRun,
   updateGraphRunStatus,
 } from '../db.js';
 import { logger } from '../logger.js';
@@ -207,12 +209,15 @@ export async function executeGraph(ctx: GraphRunContext, deps: GraphDeps): Promi
             branchDecisions.set(node.id, outcome.branchResult);
           }
         } else if (outcome.status === 'paused') {
-          // human node — pause the whole run (P0).
+          // human node — pause the whole run and surface an approval card.
           updateGraphRunStatus(ctx.graphRunId, 'paused', {
             currentNodeId: node.id,
             endedAt: new Date().toISOString(),
           });
           persistState(ctx.graphRunId, ctx.state);
+          if (node.type === 'human') {
+            await surfaceHumanApproval(ctx, deps, node);
+          }
           logger.info({ graphRunId: ctx.graphRunId, nodeId: node.id }, 'Graph paused at human node');
           return;
         } else {
@@ -288,4 +293,102 @@ export function startGraphRun(opts: {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+const DEFAULT_APPROVAL_OPTIONS = [
+  { label: '批准', value: 'approve' },
+  { label: '拒绝', value: 'reject' },
+];
+
+/**
+ * P1: surface a human approval node's decision card to the DeepThink chat.
+ * Persists an 'approval' attachment message (durable + WS new_message push) and
+ * broadcasts a human_approval_request stream event. Called when a human node
+ * pauses the run. No-op if storeApprovalCard is not wired (e.g. unit tests).
+ */
+async function surfaceHumanApproval(
+  ctx: GraphRunContext,
+  deps: GraphDeps,
+  node: GraphNode,
+): Promise<void> {
+  const options = node.approvalOptions?.length ? node.approvalOptions : DEFAULT_APPROVAL_OPTIONS;
+  const question = node.approvalPrompt ?? node.title ?? '请审批是否继续';
+  const stateKey = node.approvalStateKey ?? `node_${node.id}_approval`;
+  const payload = {
+    runId: ctx.graphRunId,
+    nodeId: node.id,
+    title: node.title ?? node.id,
+    question,
+    options,
+    stateKey,
+  };
+  try {
+    await deps.storeApprovalCard?.(ctx.chatJid, payload);
+  } catch (err) {
+    logger.error({ err, graphRunId: ctx.graphRunId, nodeId: node.id }, 'storeApprovalCard failed');
+  }
+  try {
+    deps.broadcastStreamEvent?.(ctx.chatJid, {
+      eventType: 'human_approval_request',
+      displayLevel: 'primary',
+      agentScope: 'system',
+      traceNode: {
+        nodeId: 0,
+        nodeType: 'subagent',
+        graphRunId: ctx.graphRunId,
+        graphNodeId: node.id,
+        title: node.title,
+      },
+      approvalRequest: payload,
+    });
+  } catch (err) {
+    logger.error({ err, graphRunId: ctx.graphRunId, nodeId: node.id }, 'broadcast approval failed');
+  }
+}
+
+/**
+ * P1: submit an approval decision for a paused human node. Marks the node run
+ * completed, writes the chosen option + note into state (so downstream nodes
+ * can read it via state[approvalStateKey]), and leaves the run paused for the
+ * caller (routes/graph.ts) to resume. Returns the state key the decision was
+ * written under, or an error.
+ */
+export function approveHumanNode(
+  runId: string,
+  nodeId: string,
+  optionId: string,
+  note?: string,
+): { ok: true; stateKey: string } | { ok: false; error: string } {
+  const run = getGraphRun(runId);
+  if (!run) return { ok: false, error: 'Graph run not found' };
+  if (run.status !== 'paused') return { ok: false, error: `Run not paused (status=${run.status})` };
+  const defRow = getGraphDefinition(run.definition_id, run.definition_version);
+  if (!defRow) return { ok: false, error: 'Graph definition version missing' };
+  const def = deserializeDefinition(defRow);
+  const node = def.nodes.find((n) => n.id === nodeId);
+  if (!node || node.type !== 'human') return { ok: false, error: 'Not a human node' };
+
+  const nodeRun = getLatestGraphNodeRun(runId, nodeId);
+  if (!nodeRun || nodeRun.node_type !== 'human') return { ok: false, error: 'Human node run not found' };
+  if (nodeRun.status !== 'paused') return { ok: false, error: `Human node not paused (status=${nodeRun.status})` };
+
+  const stateKey = node.approvalStateKey ?? `node_${nodeId}_approval`;
+  const statePatch: GraphState = {
+    [stateKey]: optionId,
+    [`${stateKey}__note`]: note ?? '',
+  };
+
+  updateGraphNodeRun(nodeRun.id, {
+    status: 'completed',
+    output_summary: JSON.stringify({ optionId, note: note ?? '' }),
+    state_patch_json: JSON.stringify(statePatch),
+    ended_at: new Date().toISOString(),
+  });
+
+  // Merge the decision into the run's persisted state so resume sees it.
+  const merged: GraphState = { ...JSON.parse(run.state_json || '{}') as GraphState, ...statePatch };
+  updateGraphRunStatus(runId, 'paused', { stateJson: JSON.stringify(merged) });
+
+  logger.info({ runId, nodeId, optionId }, 'Human node approved — ready to resume');
+  return { ok: true, stateKey };
 }
