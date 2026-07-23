@@ -13,7 +13,7 @@ export const baseNavItems = [
   { path: '/sandbox', icon: Boxes, label: '沙箱' },
   { path: '/tasks', icon: Clock4, label: '任务' },
   { path: '/loops', icon: Repeat, label: '循环' },
-  { path: '/supervisor', icon: ShieldCheck, label: 'Supervisor' },
+  { path: '/supervisor', icon: ShieldCheck, label: '监督者' },
   { path: '/harness', icon: GitBranch, label: 'Harness' },
   { path: '/billing', icon: Wallet, label: '账单', requiresBilling: true },
   { path: '/settings', icon: User, label: '设置' },
