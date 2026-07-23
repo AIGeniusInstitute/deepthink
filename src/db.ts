@@ -512,6 +512,27 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_graph_runs_owner ON graph_runs(owner_user_id, started_at DESC);
     CREATE INDEX IF NOT EXISTS idx_graph_runs_status ON graph_runs(status);
 
+    -- Super Agent Team 异步组建任务表：POST /api/team/runs 立即返回 buildId，
+    -- decompose + 成员创建 + graph 注册启动在后台 detached 执行（最坏 ~240s），
+    -- 结果（plan + runId）或 error 回写本表，前端轮询 GET /api/team/runs/:buildId
+    -- 拿终态。与 graph_runs 解耦：graph_runs.definition_id 为 NOT NULL+FK，
+    -- decompose 之前没有 graph definition，无法承载 build 期。
+    CREATE TABLE IF NOT EXISTS team_builds (
+      id TEXT PRIMARY KEY,
+      owner_user_id TEXT NOT NULL,
+      group_folder TEXT NOT NULL,
+      chat_jid TEXT NOT NULL,
+      goal_text TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running'
+        CHECK(status IN ('running','completed','failed')),
+      plan_json TEXT,
+      run_id TEXT,
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_team_builds_owner ON team_builds(owner_user_id, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS graph_node_runs (
       id TEXT PRIMARY KEY,
       graph_run_id TEXT NOT NULL,
@@ -3125,6 +3146,21 @@ export interface GraphRunRow {
   cancel_reason: string | null;
 }
 
+/** 异步 team build 任务行（POST /api/team/runs 立即创建，后台 buildTeam 回写）。 */
+export interface TeamBuildRow {
+  id: string;
+  owner_user_id: string;
+  group_folder: string;
+  chat_jid: string;
+  goal_text: string;
+  status: 'running' | 'completed' | 'failed';
+  plan_json: string | null;
+  run_id: string | null;
+  error: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface GraphNodeRunRow {
   id: string;
   graph_run_id: string;
@@ -3775,6 +3811,61 @@ export function getGraphRun(id: string): GraphRunRow | undefined {
   return db.prepare('SELECT * FROM graph_runs WHERE id = ?').get(id) as
     | GraphRunRow
     | undefined;
+}
+
+// --- team_builds（异步组建任务） ---
+
+/** 创建一条 status='running' 的 team build 任务，返回 id。 */
+export function createTeamBuild(row: {
+  id: string;
+  owner_user_id: string;
+  group_folder: string;
+  chat_jid: string;
+  goal_text: string;
+}): string {
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO team_builds
+      (id, owner_user_id, group_folder, chat_jid, goal_text, status,
+       plan_json, run_id, error, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'running', NULL, NULL, NULL, ?, ?)`,
+  ).run(
+    row.id,
+    row.owner_user_id,
+    row.group_folder,
+    row.chat_jid,
+    row.goal_text,
+    now,
+    now,
+  );
+  return row.id;
+}
+
+export function getTeamBuild(id: string): TeamBuildRow | undefined {
+  return db.prepare('SELECT * FROM team_builds WHERE id = ?').get(id) as
+    | TeamBuildRow
+    | undefined;
+}
+
+/** 后台 buildTeam 成功后回写 plan + runId，置 status='completed'。 */
+export function completeTeamBuild(
+  id: string,
+  result: { plan_json: string; run_id: string },
+): void {
+  db.prepare(
+    `UPDATE team_builds
+     SET status = 'completed', plan_json = ?, run_id = ?, error = NULL, updated_at = ?
+     WHERE id = ?`,
+  ).run(result.plan_json, result.run_id, Date.now(), id);
+}
+
+/** 后台 buildTeam 失败后回写 error，置 status='failed'。 */
+export function failTeamBuild(id: string, error: string): void {
+  db.prepare(
+    `UPDATE team_builds
+     SET status = 'failed', error = ?, updated_at = ?
+     WHERE id = ?`,
+  ).run(error, Date.now(), id);
 }
 
 export function listGraphRuns(
