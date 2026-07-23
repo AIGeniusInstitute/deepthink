@@ -23,5 +23,5 @@
 - 前端 `tsc --noEmit -p web/tsconfig.json` → **0 error**。
 
 ## 待办
-- [ ] 启动开发栈，浏览器 UI 自动化复测（登录 admin/Test12345!）：T1 小任务 / T2 超大任务（验证不再 Request timeout）/ T3 失败 / T4 reset / T5 非owner / T6 404。
-- [ ] 通过后写测试报告并合并到 main。
+- [x] 启动开发栈，HTTP 端到端复测：T1 小任务 / T2 超大任务（POST 553ms 不再 timeout，后台 ~4min completed）/ T6 404 / 401 鉴权 / runId 真实性。全部通过。详见 `docs/test_report/team-async-build/REPORT.md`。
+- [x] 已写测试报告，合并到 main 并 push。
