@@ -88,25 +88,46 @@ export async function convertToPdf(sourcePath: string): Promise<string> {
   try {
     // -env:UserInstallation is required to avoid profile lock conflicts when
     // multiple conversions run concurrently in the same process tree.
-    await execFileP(
-      bin,
-      [
-        '--headless',
-        '--nologo',
-        '--nofirststartwizard',
-        '--norestore',
-        '-env:UserInstallation=file://' + path.join(CACHE_DIR, 'profile'),
-        '--convert-to', 'pdf',
-        '--outdir', tmpOutDir,
-        sourcePath,
-      ],
-      { timeout: CONVERT_TIMEOUT_MS, maxBuffer: MAX_BUFFER },
-    );
+    //
+    // LibreOffice exits 0 even when it fails to load the source file (e.g. the
+    // Impress/Calc module is missing), so we must capture stderr and surface it
+    // — otherwise the caller only sees an opaque "produced no output file".
+    let stdout = '';
+    let stderr = '';
+    try {
+      ({ stdout, stderr } = await execFileP(
+        bin,
+        [
+          '--headless',
+          '--nologo',
+          '--nofirststartwizard',
+          '--norestore',
+          '-env:UserInstallation=file://' + path.join(CACHE_DIR, 'profile'),
+          '--convert-to', 'pdf',
+          '--outdir', tmpOutDir,
+          sourcePath,
+        ],
+        { timeout: CONVERT_TIMEOUT_MS, maxBuffer: MAX_BUFFER },
+      ));
+    } catch (err) {
+      // Non-zero exit: execFile rejects with stderr embedded on .stderr.
+      const detail = (err as { stderr?: string }).stderr || String(err);
+      logger.error({ err, detail }, 'LibreOffice pdf conversion failed (non-zero exit)');
+      throw new Error(`LibreOffice conversion failed: ${detail.slice(0, 500)}`);
+    }
 
     const baseName = path.basename(sourcePath, path.extname(sourcePath));
     const generated = path.join(tmpOutDir, `${baseName}.pdf`);
     if (!fs.existsSync(generated)) {
-      throw new Error('LibreOffice produced no output file');
+      // Exit 0 but no PDF — LibreOffice typically emitted the real reason
+      // (e.g. "Error: source file could not be loaded") on stdout/stderr.
+      const detail = (stderr || stdout || '').trim();
+      logger.error({ detail, sourcePath }, 'LibreOffice produced no output file');
+      throw new Error(
+        detail
+          ? `LibreOffice produced no output file (${detail.slice(0, 500)})`
+          : 'LibreOffice produced no output file',
+      );
     }
     fs.renameSync(generated, cachePath);
     return cachePath;
@@ -158,23 +179,37 @@ export async function convertHtmlToOffice(
   const convertTarget = filter ? `${ext}:${filter}` : ext;
 
   try {
-    await execFileP(
-      bin,
-      [
-        '--headless',
-        '--nologo',
-        '--nofirststartwizard',
-        '--norestore',
-        '-env:UserInstallation=file://' + path.join(CACHE_DIR, 'profile'),
-        '--convert-to', convertTarget,
-        '--outdir', tmpOutDir,
-        srcPath,
-      ],
-      { timeout: CONVERT_TIMEOUT_MS, maxBuffer: MAX_BUFFER },
-    );
+    let stdout = '';
+    let stderr = '';
+    try {
+      ({ stdout, stderr } = await execFileP(
+        bin,
+        [
+          '--headless',
+          '--nologo',
+          '--nofirststartwizard',
+          '--norestore',
+          '-env:UserInstallation=file://' + path.join(CACHE_DIR, 'profile'),
+          '--convert-to', convertTarget,
+          '--outdir', tmpOutDir,
+          srcPath,
+        ],
+        { timeout: CONVERT_TIMEOUT_MS, maxBuffer: MAX_BUFFER },
+      ));
+    } catch (err) {
+      const detail = (err as { stderr?: string }).stderr || String(err);
+      logger.error({ err, detail }, 'LibreOffice html->office conversion failed (non-zero exit)');
+      throw new Error(`LibreOffice conversion failed: ${detail.slice(0, 500)}`);
+    }
     const generated = path.join(tmpOutDir, `source.${ext}`);
     if (!fs.existsSync(generated)) {
-      throw new Error('LibreOffice produced no output file');
+      const detail = (stderr || stdout || '').trim();
+      logger.error({ detail, ext }, 'LibreOffice produced no output file (html->office)');
+      throw new Error(
+        detail
+          ? `LibreOffice produced no output file (${detail.slice(0, 500)})`
+          : 'LibreOffice produced no output file',
+      );
     }
     return fs.readFileSync(generated);
   } finally {
