@@ -2134,7 +2134,247 @@ Use this when the user describes a reusable capability that should be persisted 
         }
       },
     ),
+
+    // ── WebSearch / WebFetch 重写（中国可用）──────────────────────────
+    // 内置 WebSearch/WebFetch 在中国国内不可用（US-only 搜索后端 / 抓取失败）。
+    // 这里用 SDK tool() 注册两个进程内 MCP 工具，配合 index.ts 的 toolAliases
+    // 把模型 emit 的 WebSearch/WebFetch 路由到本实现。详见 docs/tech_solution。
+    tool(
+      'web_search',
+      'Search the web (China-accessible, via Zhipu paas v4 web_search API). Returns titles/content/links/publish_date/media as JSON. Compatible with built-in WebSearch signature.',
+      {
+        query: z.string().describe('The search query (any topic, zh/en ok)'),
+        count: z
+          .number()
+          .optional()
+          .describe('Number of results to return (default 5)'),
+        allowed_domains: z
+          .array(z.string())
+          .optional()
+          .describe('Only include results whose link domain matches one of these'),
+        blocked_domains: z
+          .array(z.string())
+          .optional()
+          .describe('Exclude results whose link domain matches one of these'),
+      },
+      async (args) => {
+        const apiKey = (process.env.ZHIPU_API_KEY || '').trim();
+        if (!apiKey) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({ status: 'error', query: args.query, results: [], error: 'missing ZHIPU_API_KEY' }),
+            }],
+          };
+        }
+        const base = (process.env.ZHIPU_WEB_SEARCH_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4').replace(/\/$/, '');
+        const count = args.count ?? 5;
+        const t0 = Date.now();
+        try {
+          const resp = await fetch(`${base}/web_search`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              search_query: args.query,
+              search_engine: 'search_std',
+              count,
+              content_size: 'medium',
+            }),
+            signal: AbortSignal.timeout(15_000),
+          });
+          if (!resp.ok) {
+            const snippet = await resp.text().catch(() => '');
+            return {
+              content: [{
+                type: 'text' as const,
+                text: JSON.stringify({ status: 'error', query: args.query, results: [], error: `http_${resp.status}: ${snippet.slice(0, 200)}`, latency_ms: Date.now() - t0 }),
+              }],
+            };
+          }
+          const data = (await resp.json()) as Record<string, unknown>;
+          const raw = data.search_result ?? data.data ?? [];
+          const items: Record<string, string>[] = Array.isArray(raw) ? (raw as Record<string, string>[]) : [];
+          let normalized = items.slice(0, count).map((r) => ({
+            title: r.title || '',
+            content: r.content || r.snippet || '',
+            link: r.link || r.url || '',
+            publish_date: r.publish_date || r.date || '',
+            media: r.media || r.source || '',
+          }));
+          normalized = filterByDomain(normalized, args.allowed_domains, args.blocked_domains);
+          const status = normalized.length ? 'ok' : 'empty';
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({ status, query: args.query, results: normalized, latency_ms: Date.now() - t0, error: null }),
+            }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({ status: 'error', query: args.query, results: [], error: err instanceof Error ? `${err.name}: ${err.message}` : String(err), latency_ms: Date.now() - t0 }),
+            }],
+          };
+        }
+      },
+    ),
+
+    tool(
+      'web_fetch',
+      'Fetch a URL and convert the page to Markdown (China-accessible direct fetch; GB18030/GBK charset aware). The calling Agent should answer the `prompt` against the returned markdown. Compatible with built-in WebFetch signature.',
+      {
+        url: z.string().describe('The URL to fetch (http/https)'),
+        prompt: z.string().describe('What to extract or answer from the page content'),
+      },
+      async (args) => {
+        const result = await fetchUrlAsMarkdown(args.url);
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
+      },
+    ),
   );
 
   return tools;
+}
+
+// ── WebFetch helpers ───────────────────────────────────────────────
+
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+function domainOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
+}
+
+/** 按 allowed_domains / blocked_domains 过滤结果（基于 link 域名）。 */
+function filterByDomain<T extends { link: string }>(
+  items: T[],
+  allowed?: string[],
+  blocked?: string[],
+): T[] {
+  let out = items;
+  if (allowed && allowed.length) {
+    const allow = new Set(allowed.map((d) => d.replace(/^www\./, '').toLowerCase()));
+    out = out.filter((it) => {
+      const d = domainOf(it.link).toLowerCase();
+      return allow.has(d) || [...allow].some((a) => d.endsWith(a));
+    });
+  }
+  if (blocked && blocked.length) {
+    const block = new Set(blocked.map((d) => d.replace(/^www\./, '').toLowerCase()));
+    out = out.filter((it) => {
+      const d = domainOf(it.link).toLowerCase();
+      return !block.has(d) && ![...block].some((b) => d.endsWith(b));
+    });
+  }
+  return out;
+}
+
+/** 从 Content-Type 与 HTML meta 嗅探字符集；默认 utf-8。Node 22 支持 gb18030/gbk。 */
+function sniffCharset(contentType: string | null, htmlHead: string): string {
+  const ct = (contentType || '').toLowerCase();
+  let m = ct.match(/charset\s*=\s*['"]?([\w-]+)/);
+  if (m) return m[1];
+  m = htmlHead.match(/<meta[^>]+charset\s*=\s*['"]?([\w-]+)/i);
+  if (m) return m[1];
+  m = htmlHead.match(/<meta[^>]+http-equiv[^>]+content\s*=\s*['"][^'"]*charset\s*=\s*([\w-]+)/i);
+  if (m) return m[1];
+  return 'utf-8';
+}
+
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n: string) => String.fromCodePoint(parseInt(n, 16)));
+}
+
+/** 去除所有 HTML 标签，保留文本。 */
+function stripTags(html: string): string {
+  return html.replace(/<[^>]+>/g, ' ');
+}
+
+/** 最小 HTML→Markdown 转换：去脚本/样式/导航，保留标题/段落/列表/链接/代码。 */
+function htmlToMarkdown(html: string, maxChars = 20000): { title: string; markdown: string } {
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = titleMatch ? decodeHtmlEntities(titleMatch[1].trim()) : '';
+
+  let h = html.replace(/<(script|style|nav|footer|aside|noscript|svg|template|head)\b[\s\S]*?<\/\1>/gi, ' ');
+  h = h.replace(/<!--[\s\S]*?-->/g, ' ');
+
+  h = h
+    .replace(/<h([1-6])\b[^>]*>([\s\S]*?)<\/\1>/gi, (_m, lvl: string, inner: string) => `\n\n${'#'.repeat(Number(lvl))} ${stripTags(inner).trim()}\n\n`)
+    .replace(/<a\b[^>]*href\s*=\s*['"]([^'"]*)['"][^>]*>([\s\S]*?)<\/a>/gi, (_m, href: string, inner: string) => `[${stripTags(inner).trim()}](${href})`)
+    .replace(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi, (_m, inner: string) => `\n\n\`\`\`\n${decodeHtmlEntities(stripTags(inner)).trim()}\n\`\`\`\n\n`)
+    .replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, (_m, inner: string) => `\`${decodeHtmlEntities(stripTags(inner)).trim()}\``)
+    .replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, (_m, inner: string) => `- ${stripTags(inner).trim()}\n`)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|section|article|ul|ol|table|tr|blockquote)\s*>/gi, '\n\n')
+    .replace(/<img\b[^>]*alt\s*=\s*['"]([^'"]*)['"][^>]*\/?>/gi, (_m, alt: string) => `![${alt}]()`);
+
+  let text = stripTags(h);
+  text = decodeHtmlEntities(text);
+  text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+
+  if (text.length > maxChars) text = text.slice(0, maxChars) + '\n...[truncated]';
+  return { title, markdown: text };
+}
+
+/** 抓取 URL 并转为 Markdown。零新依赖，Node 内置 fetch + TextDecoder。 */
+async function fetchUrlAsMarkdown(url: string): Promise<{
+  url: string;
+  status: string;
+  http_status?: number;
+  title?: string;
+  markdown?: string;
+  note?: string;
+  error?: string;
+}> {
+  if (!/^https?:\/\//i.test(url)) {
+    return { url, status: 'error', error: 'invalid url: only http/https supported' };
+  }
+  try {
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': BROWSER_UA,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!resp.ok) {
+      const buf = await resp.arrayBuffer().catch(() => new ArrayBuffer(0));
+      const snippet = new TextDecoder('utf-8').decode(buf).slice(0, 300);
+      return { url, status: 'error', http_status: resp.status, error: `http_${resp.status}`, markdown: snippet };
+    }
+    const buf = await resp.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    // 用 ascii 范围嗅探 meta charset（前 4KB 足够）
+    const headAscii = new TextDecoder('utf-8').decode(bytes.slice(0, 4096)).replace(/\0/g, '');
+    const charset = sniffCharset(resp.headers.get('content-type'), headAscii);
+    let html: string;
+    try {
+      const cs = charset.toLowerCase();
+      html = new TextDecoder(cs === 'gb2312' ? 'gb18030' : cs).decode(buf);
+    } catch {
+      html = new TextDecoder('utf-8').decode(buf);
+    }
+    const { title, markdown } = htmlToMarkdown(html);
+    if (!markdown.trim()) {
+      return { url, status: 'empty', title, markdown: '', note: 'Page content is empty (may require JavaScript rendering). Consider the browser tool.' };
+    }
+    return { url, status: 'ok', title, markdown, note: 'Answer the `prompt` using the markdown above.' };
+  } catch (err) {
+    return { url, status: 'error', error: err instanceof Error ? `${err.name}: ${err.message}` : String(err) };
+  }
 }

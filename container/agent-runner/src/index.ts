@@ -1652,6 +1652,13 @@ async function runQuery(
         systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: systemPromptAppend },
         allowedTools,
         ...(disallowedTools && { disallowedTools }),
+        // 重写内置 WebSearch/WebFetch（中国国内不可用）→ 路由到自实现的
+        // mcp__deepthink__web_search / web_fetch（见 mcp-tools.ts）。
+        // toolAliases 只对模型 emit 的 tool_use 生效（SDK 文档 sdk.d.ts:1358-1382）。
+        toolAliases: {
+          WebSearch: 'mcp__deepthink__web_search',
+          WebFetch: 'mcp__deepthink__web_fetch',
+        },
         thinking: { type: 'adaptive' as const, display: 'summarized' as const },
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
