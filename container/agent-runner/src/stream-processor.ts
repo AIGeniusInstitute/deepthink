@@ -131,8 +131,16 @@ export class StreamEventProcessor {
     this.log = log;
   }
 
+  /** Reminder mechanism hook: fired on each emitted tool_result event so the
+   *  host can count tool steps and periodically re-inject the task goal.
+   *  Optional — undefined when reminders are disabled. */
+  onToolResult?: () => void;
+
   private emitStreamEvent(streamEvent: StreamEvent): void {
     this.emit({ status: 'stream', result: null, streamEvent });
+    if (streamEvent.eventType === 'tool_result') {
+      this.onToolResult?.();
+    }
   }
 
   private normalizeTaskUsage(usage: any): StreamEvent['sdkTaskUsage'] | undefined {

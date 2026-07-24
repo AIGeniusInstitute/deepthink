@@ -22,7 +22,8 @@ export type StreamEventType =
   | 'status' | 'init'
   | 'loop_start' | 'loop_iteration_start' | 'loop_iteration_end'
   | 'loop_goal_check' | 'loop_review_result' | 'loop_end'
-  | 'human_approval_request' | 'human_approval_result';
+  | 'human_approval_request' | 'human_approval_result'
+  | 'reminder_injected';
 
 export type StreamAgentScope = 'main' | 'task' | 'subagent' | 'system';
 export type StreamDisplayLevel = 'primary' | 'detail' | 'debug';
@@ -176,6 +177,21 @@ export interface StreamEvent {
     reviewReason?: string;
     totalTokens?: number;
     totalCostUsd?: number;
+  };
+  /** Reminder mechanism: a reminder was re-injected into the running query's
+   *  context (via MessageStream.push) to counter LLM context decay / goal drift
+   *  in long tasks. Carried on `reminder_injected` events so the chat UI can
+   *  surface the injection log in a dedicated Reminder panel. */
+  reminder?: {
+    reason: 'periodic' | 'compact';
+    /** SDK turn count at injection time (resultCount). */
+    turnIndex: number;
+    /** Tool steps elapsed since the previous periodic reminder. */
+    stepsSinceLast: number;
+    /** Truncated original task objective (first ~500 chars of the prompt). */
+    goalSnippet: string;
+    /** Short excerpt of the injected reminder text. */
+    summary: string;
   };
   /** Trace node metadata for DAG visualization. Persisted to loop_trace_nodes. */
   traceNode?: {

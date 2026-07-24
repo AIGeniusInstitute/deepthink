@@ -32,6 +32,7 @@ import {
   writeGroupsSnapshot,
   writeTasksSnapshot,
 } from './container-runner.js';
+import { buildReminderConfig } from './reminder-config.js';
 import {
   closeDatabase,
   createTask,
@@ -4993,6 +4994,7 @@ async function runAgent(
           isAdminHome,
           images,
           messageTaskId,
+          reminderConfig: buildReminderConfig(group.created_by, prompt),
         },
         onProcessCb,
         wrappedOnOutput,
@@ -5013,6 +5015,7 @@ async function runAgent(
           isAdminHome,
           images,
           messageTaskId,
+          reminderConfig: buildReminderConfig(group.created_by, prompt),
         },
         onProcessCb,
         wrappedOnOutput,

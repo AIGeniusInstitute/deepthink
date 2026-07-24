@@ -1301,6 +1301,7 @@ function setupWebSocket(server: any): WebSocketServer {
               isThinking: snap.isThinking,
               activeHook: snap.activeHook,
               turnId: snap.turnId,
+              reminderLog: snap.reminderLog,
             },
           } satisfies WsMessageOut));
         } catch { /* client not ready */ }
@@ -2259,6 +2260,17 @@ interface StreamingSnapshotEntry {
    *  survives the reconnect instead of silently disappearing. */
   activeHook?: { hookName: string; hookEvent: string } | null;
   turnId?: string;
+  /** Reminder mechanism injection log — restored on WS reconnect so the
+   *  Reminder panel doesn't lose history mid-task. Capped at 50 entries. */
+  reminderLog: Array<{
+    id: string;
+    timestamp: number;
+    reason: 'periodic' | 'compact';
+    turnIndex: number;
+    stepsSinceLast: number;
+    goalSnippet: string;
+    summary: string;
+  }>;
   updatedAt: number;
 }
 
@@ -2419,6 +2431,7 @@ function updateStreamingSnapshot(normalizedJid: string, event: StreamEvent): voi
       taskStates: {},
       systemStatus: null,
       turnId: event.turnId,
+      reminderLog: [],
       updatedAt: Date.now(),
     };
   }
@@ -2571,6 +2584,24 @@ function updateStreamingSnapshot(normalizedJid: string, event: StreamEvent): voi
     case 'todo_update':
       if (event.todos) {
         snap.todos = event.todos.map(t => ({ id: t.id, content: t.content, status: t.status }));
+      }
+      break;
+
+    case 'reminder_injected':
+      if (event.reminder) {
+        const r = event.reminder;
+        snap.reminderLog.push({
+          id: `${event.turnId || ''}-${r.turnIndex}-${r.stepsSinceLast}-${Date.now()}`,
+          timestamp: Date.now(),
+          reason: r.reason,
+          turnIndex: r.turnIndex,
+          stepsSinceLast: r.stepsSinceLast,
+          goalSnippet: r.goalSnippet,
+          summary: r.summary,
+        });
+        if (snap.reminderLog.length > 50) {
+          snap.reminderLog = snap.reminderLog.slice(snap.reminderLog.length - 50);
+        }
       }
       break;
   }

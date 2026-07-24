@@ -41,6 +41,7 @@ import {
   type ContainerInput,
   type ContainerOutput,
 } from './container-runner.js';
+import { buildReminderConfig } from './reminder-config.js';
 import type { StreamEvent } from './stream-event.types.js';
 import type { ExecutionMode, RegisteredGroup } from './types.js';
 import type { ChildProcess } from 'child_process';
@@ -295,6 +296,7 @@ async function runOneIteration(
       isAdminHome,
       turnId: `${ctx.loopRunId}-t${iterationIndex}`,
       userLanguage: ctx.userLanguage ?? owner?.language ?? 'zh-CN',
+      reminderConfig: buildReminderConfig(ctx.ownerUserId, prompt),
     };
 
     const result = await runAgent(

@@ -23,6 +23,7 @@ import { query, HookCallback, PreCompactHookInput, createSdkMcpServer } from '@a
 import { detectImageMimeTypeFromBase64Strict } from './image-detector.js';
 import { pruneProcessedHistoryImagesInTranscript as pruneProcessedHistoryImagesInTranscriptFile } from './history-image-prune.js';
 import { getChannelFromJid } from './channel-prefixes.js';
+import { ReminderEngine } from './reminder-engine.js';
 
 import type {
   ContainerInput,
@@ -719,7 +720,7 @@ function createPreCompactHook(
   isHome: boolean,
   _isAdminHome: boolean,
   disableMemoryLayer: boolean,
-  deps: { emit: (output: ContainerOutput) => void; getFullText: () => string; resetFullText: () => void },
+  deps: { emit: (output: ContainerOutput) => void; getFullText: () => string; resetFullText: () => void; onCompact?: () => void },
 ): HookCallback {
   return async (input, _toolUseId, _context) => {
     const preCompact = input as PreCompactHookInput;
@@ -732,6 +733,13 @@ function createPreCompactHook(
       log(`PreCompact: skipping sub-agent compact (agent_id=${preCompact.agent_id})`);
       return {};
     }
+
+    // ── Reminder: re-inject the task goal right after a main-agent compaction ──
+    // Compaction summarizes early history; the original goal is most at risk of
+    // being lost here, so this is the highest-value event-driven trigger.
+    // stream.push queues a user message the SDK reads at the next turn boundary
+    // (post-compaction), re-anchoring the objective.
+    deps.onCompact?.();
 
     // ── Flush accumulated streaming text as compact_partial ──
     // This ensures users see the partial response even after compaction.
@@ -1473,6 +1481,20 @@ async function runQuery(
 
   const processor = new StreamEventProcessor(emit, log);
 
+  // ── Reminder mechanism ──
+  // Counts tool_result events (via processor.onToolResult) and re-injects the
+  // task goal every intervalSteps + on PreCompact, to counter context decay /
+  // goal drift in long tasks. See docs/tech_solution/reminder-mechanism/.
+  const reminderEngine = new ReminderEngine(
+    containerInput.reminderConfig ?? { enabled: false, intervalSteps: 8, goalSnippet: '' },
+    {
+      emit,
+      push: (text: string) => { stream.push(text); },
+      getTurnCount: () => resultCount,
+    },
+  );
+  processor.onToolResult = () => reminderEngine.onToolResult();
+
   const { isHome, isAdminHome } = normalizeHomeFlags(containerInput);
   const disableMemoryLayer = process.env.DEEPTHINK_DISABLE_MEMORY_LAYER === 'true';
 
@@ -1687,6 +1709,7 @@ async function runQuery(
             emit,
             getFullText: () => processor.getFullText(),
             resetFullText: () => processor.resetFullTextAccumulator(),
+            onCompact: () => reminderEngine.onCompact(),
           })] }]
         },
         agents: PREDEFINED_AGENTS,
