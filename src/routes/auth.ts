@@ -88,6 +88,7 @@ export function toUserPublic(u: User): UserPublic {
     ai_avatar_color: u.ai_avatar_color ?? null,
     ai_avatar_url: u.ai_avatar_url ?? null,
     default_require_mention: u.default_require_mention,
+    reminder_enabled: u.reminder_enabled,
     language: u.language,
     created_at: u.created_at,
     last_login_at: u.last_login_at,
@@ -617,6 +618,9 @@ authRoutes.put('/profile', authMiddleware, async (c) => {
   }
   if (validation.data.default_require_mention !== undefined) {
     updates.default_require_mention = validation.data.default_require_mention;
+  }
+  if (validation.data.reminder_enabled !== undefined) {
+    updates.reminder_enabled = validation.data.reminder_enabled;
   }
   if (validation.data.language !== undefined) {
     updates.language = validation.data.language;

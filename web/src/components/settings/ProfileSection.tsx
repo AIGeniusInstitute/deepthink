@@ -158,6 +158,10 @@ export function ProfileSection() {
   const [defaultRequireMention, setDefaultRequireMention] = useState(false);
   const [imDefaultsSaving, setImDefaultsSaving] = useState(false);
 
+  // Reminder mechanism — default on, user can disable
+  const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [reminderSaving, setReminderSaving] = useState(false);
+
   // Password
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
@@ -174,7 +178,8 @@ export function ProfileSection() {
     setAiAvatarColor(currentUser?.ai_avatar_color ?? null);
     setAiAvatarUrl(currentUser?.ai_avatar_url ?? null);
     setDefaultRequireMention(currentUser?.default_require_mention ?? false);
-  }, [currentUser?.username, currentUser?.display_name, currentUser?.avatar_emoji, currentUser?.avatar_color, currentUser?.avatar_url, currentUser?.ai_name, currentUser?.ai_avatar_emoji, currentUser?.ai_avatar_color, currentUser?.ai_avatar_url, currentUser?.default_require_mention]);
+    setReminderEnabled(currentUser?.reminder_enabled ?? true);
+  }, [currentUser?.username, currentUser?.display_name, currentUser?.avatar_emoji, currentUser?.avatar_color, currentUser?.avatar_url, currentUser?.ai_name, currentUser?.ai_avatar_emoji, currentUser?.ai_avatar_color, currentUser?.ai_avatar_url, currentUser?.default_require_mention, currentUser?.reminder_enabled]);
 
   const handleUpdateProfile = async () => {
     setProfileSaving(true);
@@ -295,6 +300,21 @@ export function ProfileSection() {
       toast.error(getErrorMessage(err, '保存失败'));
     } finally {
       setImDefaultsSaving(false);
+    }
+  };
+
+  const handleToggleReminder = async (next: boolean) => {
+    const prev = reminderEnabled;
+    setReminderEnabled(next);
+    setReminderSaving(true);
+    try {
+      await updateProfile({ reminder_enabled: next });
+      toast.success(next ? 'Reminder 已开启' : 'Reminder 已关闭');
+    } catch (err) {
+      setReminderEnabled(prev);
+      toast.error(getErrorMessage(err, '保存失败'));
+    } finally {
+      setReminderSaving(false);
     }
   };
 
@@ -486,6 +506,24 @@ export function ProfileSection() {
             disabled={imDefaultsSaving}
             onCheckedChange={handleToggleDefaultRequireMention}
             aria-label="新群默认需要 @机器人"
+          />
+        </div>
+      </Section>
+
+      {/* ── 3.6 Reminder Mechanism ── */}
+      <Section icon={Bell} title="Reminder 机制" desc="长任务执行时周期性向 Agent 重新注入任务目标，防止上下文遗忘与目标偏离。注入记录在对话右侧 Reminder 面板查看。">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <Label className="text-sm text-foreground">开启 Reminder</Label>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              默认开启。关闭后，你的 Agent 运行不再注入目标提醒，Reminder 面板仍可查看历史记录。
+            </p>
+          </div>
+          <Switch
+            checked={reminderEnabled}
+            disabled={reminderSaving}
+            onCheckedChange={handleToggleReminder}
+            aria-label="开启 Reminder"
           />
         </div>
       </Section>

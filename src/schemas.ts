@@ -486,6 +486,7 @@ export const ProfileUpdateSchema = z.object({
     .nullable()
     .optional(),
   default_require_mention: z.boolean().optional(),
+  reminder_enabled: z.boolean().optional(),
   language: z.enum(LANGUAGE_CODES as [string, ...string[]]).optional(),
 });
 

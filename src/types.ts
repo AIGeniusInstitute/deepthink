@@ -322,6 +322,13 @@ export interface User {
    */
   default_require_mention: boolean;
   /**
+   * Per-user toggle for the Agent Reminder mechanism (periodic goal
+   * re-injection in long tasks). true (default) enables reminders; false
+   * disables injection for this user's agent runs. Surfaced in the chat UI
+   * Reminder panel and the profile settings.
+   */
+  reminder_enabled: boolean;
+  /**
    * User's preferred UI and Agent response language (BCP-47-ish code).
    * Defaults to 'zh-CN'. Must be one of SUPPORTED_LANGUAGES codes.
    */
@@ -350,6 +357,8 @@ export interface UserPublic {
   ai_avatar_color: string | null;
   ai_avatar_url: string | null;
   default_require_mention: boolean;
+  /** Per-user toggle for the Agent Reminder mechanism. */
+  reminder_enabled: boolean;
   /** User's preferred UI and Agent response language. */
   language: string;
   created_at: string;
@@ -607,6 +616,15 @@ export type WsMessageOut =
         isThinking?: boolean;
         activeHook?: { hookName: string; hookEvent: string } | null;
         turnId?: string;
+        reminderLog?: Array<{
+          id: string;
+          timestamp: number;
+          reason: 'periodic' | 'compact';
+          turnIndex: number;
+          stepsSinceLast: number;
+          goalSnippet: string;
+          summary: string;
+        }>;
       };
     }
   // --- Sandbox real-time channel ---

@@ -308,6 +308,15 @@ export interface ContainerInput {
    */
   graphRunId?: string;
   graphNodeId?: string;
+  /** Reminder mechanism config. When set and enabled, the agent-runner
+   *  periodically re-injects the task goal (via MessageStream.push) to counter
+   *  context decay in long tasks, and emits reminder_injected stream events
+   *  for the chat UI's Reminder panel. Optional — undefined disables injection. */
+  reminderConfig?: {
+    enabled: boolean;
+    intervalSteps: number;
+    goalSnippet: string;
+  };
 }
 
 export interface ContainerOutput {

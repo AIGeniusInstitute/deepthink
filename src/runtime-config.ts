@@ -3113,6 +3113,62 @@ export function saveAppearanceConfig(
   };
 }
 
+// ─── Reminder mechanism config (plain JSON) ─────────────────────
+// Global default cadence for the Agent Reminder mechanism. The per-user
+// on/off toggle lives on users.reminder_enabled (db.ts); this file only
+// holds the global step interval and a default-enabled flag used when the
+// user has not explicitly toggled. Editable via config/reminder.json.
+
+const REMINDER_CONFIG_FILE = path.join(CLAUDE_CONFIG_DIR, 'reminder.json');
+
+export interface ReminderGlobalConfig {
+  /** Global default for whether reminders are on for users who haven't toggled.
+   *  The per-user reminder_enabled column overrides this. */
+  enabled: boolean;
+  /** Tool steps between periodic reminder injections. */
+  intervalSteps: number;
+}
+
+const DEFAULT_REMINDER_CONFIG: ReminderGlobalConfig = {
+  enabled: true,
+  intervalSteps: 8,
+};
+
+export function getReminderConfig(): ReminderGlobalConfig {
+  try {
+    if (!fs.existsSync(REMINDER_CONFIG_FILE)) {
+      return { ...DEFAULT_REMINDER_CONFIG };
+    }
+    const raw = JSON.parse(
+      fs.readFileSync(REMINDER_CONFIG_FILE, 'utf-8'),
+    ) as Record<string, unknown>;
+    return {
+      enabled: typeof raw.enabled === 'boolean' ? raw.enabled : DEFAULT_REMINDER_CONFIG.enabled,
+      intervalSteps:
+        typeof raw.intervalSteps === 'number' && Number.isFinite(raw.intervalSteps) && (raw.intervalSteps as number) > 0
+          ? Math.floor(raw.intervalSteps as number)
+          : DEFAULT_REMINDER_CONFIG.intervalSteps,
+    };
+  } catch (err) {
+    logger.warn({ err }, 'Failed to read reminder config, returning defaults');
+    return { ...DEFAULT_REMINDER_CONFIG };
+  }
+}
+
+export function saveReminderConfig(next: Partial<ReminderGlobalConfig>): ReminderGlobalConfig {
+  const existing = getReminderConfig();
+  const config: ReminderGlobalConfig & { updatedAt: string } = {
+    enabled: next.enabled ?? existing.enabled,
+    intervalSteps: next.intervalSteps ?? existing.intervalSteps,
+    updatedAt: new Date().toISOString(),
+  };
+  fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
+  const tmp = `${REMINDER_CONFIG_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+  fs.renameSync(tmp, REMINDER_CONFIG_FILE);
+  return { enabled: config.enabled, intervalSteps: config.intervalSteps };
+}
+
 // ─── Per-user IM config (AES-256-GCM encrypted) ─────────────────
 
 const USER_IM_CONFIG_DIR = path.join(DATA_DIR, 'config', 'user-im');

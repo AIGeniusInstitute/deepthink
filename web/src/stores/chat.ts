@@ -61,6 +61,27 @@ export interface StreamingTimelineEvent {
   kind: 'tool' | 'skill' | 'hook' | 'status' | 'task' | 'memory' | 'debug' | 'context' | 'permission';
 }
 
+/** A single Reminder injection record, surfaced in the chat Reminder panel. */
+export interface ReminderLogEntry {
+  id: string;
+  timestamp: number;
+  reason: 'periodic' | 'compact';
+  turnIndex: number;
+  stepsSinceLast: number;
+  goalSnippet: string;
+  summary: string;
+}
+
+/** Live Reminder mechanism status for the current streaming run. */
+export interface ReminderStatus {
+  enabled: boolean;
+  intervalSteps: number;
+  stepsSinceLast: number;
+  lastReason?: 'periodic' | 'compact';
+  lastAt?: number;
+  injections: number;
+}
+
 export interface StreamingTraceEvent {
   id: string;
   timestamp: number;
@@ -114,6 +135,8 @@ export interface StreamSnapshotData {
   isThinking?: boolean;
   activeHook?: { hookName: string; hookEvent: string } | null;
   turnId?: string;
+  reminderLog?: ReminderLogEntry[];
+  reminderStatus?: ReminderStatus;
 }
 
 export interface StreamingState {
@@ -141,6 +164,13 @@ export interface StreamingState {
   systemStatus: string | null;
   recentEvents: StreamingTimelineEvent[];
   traceEvents: StreamingTraceEvent[];
+  /** Reminder mechanism injection log (most recent last, capped at 50). */
+  reminderLog: ReminderLogEntry[];
+  /** Reminder mechanism live status for the current run. */
+  reminderStatus?: ReminderStatus;
+  /** Tool steps since the last periodic reminder — drives the "remaining
+   *  steps" indicator in the Reminder panel. Reset on each periodic injection. */
+  toolStepsSinceReminder: number;
   taskStates: Record<string, StreamingTaskRuntimeState>;
   contextAudit?: StreamEvent['contextAudit'];
   todos?: Array<{ id: string; content: string; status: string }>;
@@ -338,7 +368,7 @@ const DEFAULT_STREAMING_STATE: StreamingState = {
   sessionId: undefined,
   partialText: '', thinkingText: '', isThinking: false,
   activeTools: [], activeHook: null, systemStatus: null, recentEvents: [],
-  traceEvents: [], taskStates: {},
+  traceEvents: [], taskStates: {}, reminderLog: [], toolStepsSinceReminder: 0,
 };
 
 /**
@@ -444,6 +474,8 @@ function saveStreamingToSession(chatJid: string, state: StreamingState | undefin
           todos: state.todos,
           systemStatus: state.systemStatus,
           turnId: state.turnId,
+          reminderLog: state.reminderLog?.slice(-50),
+          reminderStatus: state.reminderStatus,
           ts: Date.now(),
         };
       } else {
@@ -490,6 +522,9 @@ function restoreStreamingFromSession(chatJid: string): StreamingState | null {
       todos: entry.todos,
       systemStatus: entry.systemStatus || null,
       turnId: entry.turnId,
+      reminderLog: entry.reminderLog || [],
+      reminderStatus: entry.reminderStatus,
+      toolStepsSinceReminder: entry.toolStepsSinceReminder || 0,
     };
   } catch { return null; }
 }
@@ -972,6 +1007,14 @@ function applyStreamEvent(
           updateTaskRuntime(prev, next, event);
         }
         break;
+    case 'tool_result':
+      // Reminder mechanism: count completed tool steps to drive the "remaining
+      // steps" indicator. Sub-agent (parentToolUseId set) results are excluded
+      // so only main-agent progress counts toward the cadence.
+      if (!event.parentToolUseId) {
+        next.toolStepsSinceReminder = (prev.toolStepsSinceReminder || 0) + 1;
+      }
+      break;
     case 'tool_progress': {
       const existing = prev.activeTools.find(t => t.toolUseId === event.toolUseId);
         if (existing) {
@@ -1095,6 +1138,48 @@ function applyStreamEvent(
           next.recentEvents = pushEvent(prev.recentEvents, 'context', `Agent Context: ${event.contextAudit.warnings[0]}`);
         }
         break;
+    case 'reminder_injected': {
+      const r = event.reminder;
+      if (r) {
+        const id = `${event.turnId || ''}-${r.turnIndex}-${r.stepsSinceLast}-${Date.now()}`;
+        const entry: ReminderLogEntry = {
+          id,
+          timestamp: Date.now(),
+          reason: r.reason,
+          turnIndex: r.turnIndex,
+          stepsSinceLast: r.stepsSinceLast,
+          goalSnippet: r.goalSnippet,
+          summary: r.summary,
+        };
+        const prevLog = prev.reminderLog || [];
+        const nextLog = [...prevLog, entry];
+        next.reminderLog = nextLog.length > 50 ? nextLog.slice(nextLog.length - 50) : nextLog;
+        const prevStatus = prev.reminderStatus;
+        // A periodic event fires exactly when stepsSinceLast hits the interval,
+        // so the event's stepsSinceLast IS the configured interval (engine
+        // emits pre-reset). Use it to learn the interval on first sight.
+        const intervalSteps =
+          prevStatus?.intervalSteps ||
+          (r.reason === 'periodic' ? r.stepsSinceLast : 0);
+        next.reminderStatus = {
+          enabled: prevStatus?.enabled ?? true,
+          intervalSteps,
+          stepsSinceLast: r.reason === 'periodic' ? 0 : (prevStatus?.stepsSinceLast ?? 0),
+          lastReason: r.reason,
+          lastAt: entry.timestamp,
+          injections: (prevStatus?.injections ?? 0) + 1,
+        };
+        if (r.reason === 'periodic') {
+          next.toolStepsSinceReminder = 0;
+        }
+        next.recentEvents = pushEvent(
+          prev.recentEvents,
+          'status',
+          `🔔 Reminder 注入（${r.reason === 'compact' ? '压缩后' : '周期'}，turn ${r.turnIndex}，${r.stepsSinceLast} 步）`,
+        );
+      }
+      break;
+    }
     case 'usage':
       // Token usage is handled at handleStreamEvent level (direct message table update).
       // No streaming state mutation needed.
@@ -3068,6 +3153,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isThinking: snapshot.isThinking ?? false,
       activeHook: snapshot.activeHook ?? null,
       turnId: snapshot.turnId,
+      reminderLog: (snapshot.reminderLog || []) as ReminderLogEntry[],
+      reminderStatus: snapshot.reminderStatus,
+      toolStepsSinceReminder: 0,
     };
 
     if (agentId) {
