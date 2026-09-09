@@ -1235,6 +1235,9 @@ function applyTurnMounts(
     }
     if (pieces.length > 0) {
       base.systemPrompt = (base.systemPrompt ? base.systemPrompt + '\n' : '') + pieces.join('\n');
+      logger.info({ skillCount: pieces.length, skillIds: turnMounts.skills }, 'applyTurnMounts: skills injected into systemPrompt');
+    } else {
+      logger.warn({ skillIds: turnMounts.skills, rowsFound: skillRows.length }, 'applyTurnMounts: no skill content found for requested skills');
     }
   }
 

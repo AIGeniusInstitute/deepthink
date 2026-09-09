@@ -3785,6 +3785,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // different chat (e.g. web message before the Discord one arrived).
   const currentSourceJid =
     missedMessages[missedMessages.length - 1]?.source_jid || chatJid;
+  // Per-turn mounts (skills/MCP/KB dropdown selections) bridged in-memory
+  // from handleWebUserMessage. The home group dispatches via runAgent (not
+  // processAgentConversation), so we must pop + forward here too.
+  const turnMounts = lastProcessed?.id
+    ? popPendingTurnMounts(lastProcessed.id)
+    : undefined;
   try {
     output = await runAgent(
       effectiveGroup,
@@ -4511,6 +4517,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       imagesForAgent,
       messageTaskId,
       currentSourceJid,
+      turnMounts,
     );
   } finally {
     runEnded = true;
@@ -5036,6 +5043,7 @@ async function runAgent(
   images?: Array<{ data: string; mimeType?: string }>,
   messageTaskId?: string,
   currentSourceJid?: string,
+  turnMounts?: SelectedMounts,
 ): Promise<{ status: 'success' | 'error' | 'closed'; error?: string }> {
   const isHome = !!group.is_home;
   // For the agent-runner: isMain means this is an admin home container (full privileges)
@@ -5163,6 +5171,7 @@ async function runAgent(
         engine: group.engine,
         workspaceGlobal: distWorkspaceGlobal,
         workspaceMemory: distWorkspaceMemory,
+        turnMounts,
       };
 
       // Register the onOutput handler for this group's distributed output.
@@ -5218,6 +5227,7 @@ async function runAgent(
           images,
           messageTaskId,
           reminderConfig: buildReminderConfig(group.created_by, prompt),
+          turnMounts,
         },
         onProcessCb,
         wrappedOnOutput,
@@ -5239,6 +5249,7 @@ async function runAgent(
           images,
           messageTaskId,
           reminderConfig: buildReminderConfig(group.created_by, prompt),
+          turnMounts,
         },
         onProcessCb,
         wrappedOnOutput,

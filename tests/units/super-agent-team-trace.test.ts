@@ -32,11 +32,11 @@ afterAll(() => {
 });
 
 describe('super-agent-team C1: schema v53 trace tables', () => {
-  test('schema_version is 58', () => {
+  test('schema_version is 61', () => {
     const row = getDb()
       .prepare('SELECT value FROM router_state WHERE key = ?')
       .get('schema_version') as { value: string } | undefined;
-    expect(row?.value).toBe('58');
+    expect(row?.value).toBe('61');
   });
 
   test('chat_trace_nodes has graph columns', () => {
