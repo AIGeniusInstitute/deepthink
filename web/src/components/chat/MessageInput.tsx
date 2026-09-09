@@ -54,6 +54,11 @@ interface MessageInputProps {
   disabled?: boolean;
   onResetSession?: () => void;
   onToggleTerminal?: () => void;
+  /**
+   * 外部预填充信号（如点击办公技能快捷按钮）。
+   * nonce 变化时把 text 追加到输入框并聚焦光标。
+   */
+  prefillSignal?: { text: string; nonce: number } | null;
 }
 
 export function MessageInput({
@@ -62,6 +67,7 @@ export function MessageInput({
   disabled = false,
   onResetSession,
   onToggleTerminal,
+  prefillSignal,
 }: MessageInputProps) {
   const [content, setContent] = useState('');
   const [showActions, setShowActions] = useState(false);
@@ -148,6 +154,28 @@ export function MessageInput({
       }
     };
   }, []);
+
+  // External prefill (office skill quick button click)
+  useEffect(() => {
+    if (!prefillSignal || prefillSignal.nonce === 0) return;
+    setContent((prev) => {
+      const trimmed = prev.trim();
+      if (trimmed) {
+        return `${trimmed}\n\n${prefillSignal.text}`;
+      }
+      return prefillSignal.text;
+    });
+    // focus + move cursor to end
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (ta) {
+        ta.focus();
+        const end = ta.value.length;
+        ta.setSelectionRange(end, end);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillSignal?.nonce]);
 
   // Debounced draft save
   const debouncedSaveDraft = useCallback(

@@ -37,6 +37,7 @@ import {
   getOpencodeConfig,
   getPiConfig,
 } from './runtime-config.js';
+import type { SelectedMounts } from './web-context.js';
 
 import { providerPool } from './provider-pool.js';
 import {
@@ -56,6 +57,7 @@ import {
   getAgentDefinition,
   listAgentMounts,
   getKnowledgeBase,
+  getSkillContents,
 } from './db.js';
 import { DEFAULT_LANGUAGE } from './i18n-languages.js';
 import { isApiError } from './agent-output-parser.js';
@@ -329,6 +331,10 @@ export interface ContainerInput {
   maxTurns?: number;
   /** 全托管硬刹车上限：累计 token 用量到 maxTokens 即停止。默认 1,000,000。 */
   maxTokens?: number;
+  /** Per-turn mounts (skills/MCP/KB) selected in the web chat dropdowns.
+   *  Merged into agentDefinition at cold-start: skills→systemPrompt content
+   *  (DB-stored, no disk SKILL.md in container), MCP/KB→mounts array. */
+  turnMounts?: SelectedMounts;
 }
 
 export interface ContainerOutput {
@@ -1187,6 +1193,106 @@ function loadGroupAgentDefinition(
 }
 
 /**
+ * Merge per-turn mounts (selected in the web chat dropdowns) into the agent
+ * definition for a single cold-start turn.
+ *
+ * - Skills: DB-stored content (no disk SKILL.md in container) → append to
+ *   systemPrompt. This is the only viable path for DB-backed builtin office
+ *   skills, since the agent-runner `skillsOption` whitelist needs on-disk
+ *   SKILL.md files that don't exist in the container.
+ * - MCP servers: resolve config via loadUserMcpServers → append to mounts.
+ * - Knowledge bases: ownership-checked via getKnowledgeBase → append to mounts.
+ *
+ * Returns a NEW agentDefinition (does not mutate the input). Mounts deduped by
+ * (resourceType, resourceId) to avoid double-mounting if already in agent_mounts.
+ */
+function applyTurnMounts(
+  agentDef: ContainerInput['agentDefinition'] | undefined,
+  turnMounts: SelectedMounts | undefined,
+  ownerUserId: string | undefined,
+): ContainerInput['agentDefinition'] | undefined {
+  if (!turnMounts) return agentDef;
+  const hasSkills = !!turnMounts.skills?.length;
+  const hasMcp = !!turnMounts.mcpServers?.length;
+  const hasKb = !!turnMounts.kbIds?.length;
+  if (!hasSkills && !hasMcp && !hasKb) return agentDef;
+
+  const base = agentDef
+    ? { ...agentDef, mounts: agentDef.mounts ? [...agentDef.mounts] : [] }
+    : { id: 'turn-mounts', systemPrompt: undefined, model: undefined, mounts: [] as NonNullable<ContainerInput['agentDefinition']>['mounts'] };
+
+  // Dedupe key set from existing mounts
+  const existingKeys = new Set(base.mounts.map((m) => `${m.resourceType}:${m.resourceId}`));
+
+  // Skills → systemPrompt content injection
+  if (hasSkills && turnMounts.skills) {
+    const skillRows = getSkillContents(turnMounts.skills);
+    const pieces: string[] = [];
+    for (const s of skillRows) {
+      if (s.content && s.content.trim()) {
+        pieces.push(`\n\n<skill name="${s.name}">\n${s.content.trim()}\n</skill>`);
+      }
+    }
+    if (pieces.length > 0) {
+      base.systemPrompt = (base.systemPrompt ? base.systemPrompt + '\n' : '') + pieces.join('\n');
+    }
+  }
+
+  // MCP servers → mounts array
+  if (hasMcp && turnMounts.mcpServers && ownerUserId) {
+    const userMcpServers = loadUserMcpServers(ownerUserId);
+    for (const mcpId of turnMounts.mcpServers) {
+      const key = `mcp_server:${mcpId}`;
+      if (existingKeys.has(key)) continue;
+      const config = userMcpServers[mcpId];
+      if (config) {
+        const type =
+          typeof config.type === 'string'
+            ? config.type
+            : config.url
+              ? 'http'
+              : 'stdio';
+        base.mounts.push({
+          resourceType: 'mcp_server',
+          resourceId: mcpId,
+          resourceName: mcpId,
+          mcpConfig: {
+            type,
+            command: typeof config.command === 'string' ? config.command : undefined,
+            args: Array.isArray(config.args) ? (config.args as string[]) : undefined,
+            env:
+              config.env && typeof config.env === 'object'
+                ? (config.env as Record<string, string>)
+                : undefined,
+            url: typeof config.url === 'string' ? config.url : undefined,
+          },
+        });
+      }
+    }
+  }
+
+  // Knowledge bases → mounts array
+  if (hasKb && turnMounts.kbIds && ownerUserId) {
+    for (const kbId of turnMounts.kbIds) {
+      const key = `knowledge_base:${kbId}`;
+      if (existingKeys.has(key)) continue;
+      const kb = getKnowledgeBase(kbId, ownerUserId);
+      if (kb) {
+        base.mounts.push({
+          resourceType: 'knowledge_base',
+          resourceId: kbId,
+          resourceName: kb.name ?? '(KB)',
+          kbId,
+          kbName: kb.name,
+        });
+      }
+    }
+  }
+
+  return base;
+}
+
+/**
  * Agent PaaS: 写入 project-level CLAUDE.md 到工作区目录。
  *
  * 背景：admin 用户的测试对话组 / 生产组绑定 Agent 后，syncHostClaudeContext 会把
@@ -1397,8 +1503,9 @@ export async function runContainerAgent(
         | 'atomcode'
         | 'codex'
         | 'opencode';
-      const dockerAgentDef = loadGroupAgentDefinition(
-        group.agentDefId,
+      const dockerAgentDef = applyTurnMounts(
+        loadGroupAgentDefinition(group.agentDefId, group.created_by),
+        input.turnMounts,
         group.created_by,
       );
       writeAgentProjectClaudeMd(group, dockerAgentDef, input.autonomous);
@@ -2357,8 +2464,9 @@ export async function runHostAgent(
                 ? (getPiSessionId(group.folder, input.agentId || '') ??
                   input.sessionId)
                 : input.sessionId;
-      const hostAgentDef = loadGroupAgentDefinition(
-        group.agentDefId,
+      const hostAgentDef = applyTurnMounts(
+        loadGroupAgentDefinition(group.agentDefId, group.created_by),
+        input.turnMounts,
         group.created_by,
       );
       writeAgentProjectClaudeMd(group, hostAgentDef, input.autonomous);

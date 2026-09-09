@@ -3,8 +3,10 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useChatStore } from '../../stores/chat';
 import { useAuthStore } from '../../stores/auth';
+import { useChatMountsStore } from '../../stores/chat-mounts';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
+import { ChatToolbar } from './ChatToolbar';
 import { FilePanel } from './FilePanel';
 import { ContainerEnvPanel } from './ContainerEnvPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -30,7 +32,6 @@ import { TopicSidebar } from './TopicSidebar';
 import { showToast } from '../../utils/toast';
 import { getWorkspaceLastAgent, setWorkspaceLastAgent } from '../../utils/workspaceLastAgent';
 import { SloganRotator, isDefaultHomeName } from './SloganRotator';
-import { LoopModeSwitcher, LoopForm, type LoopMode } from './LoopModeSwitcher';
 import { SupervisorToggle } from './SupervisorToggle';
 import { AutonomousToggle } from './AutonomousToggle';
 import { AutonomousBanner } from './AutonomousBanner';
@@ -74,7 +75,6 @@ export function ChatView({ groupJid, onBack, headerLeft }: ChatViewProps) {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('files');
   const [panelOpen, setPanelOpen] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [loopMode, setLoopMode] = useState<LoopMode>('chat');
   const [resetLoading, setResetLoading] = useState(false);
   const [resetAgentId, setResetAgentId] = useState<string | null>(null);
   // Desktop: visible controls panel height, mounted controls terminal lifecycle.
@@ -427,9 +427,14 @@ export function ChatView({ groupJid, onBack, headerLeft }: ChatViewProps) {
   }, [groupJid, handleStreamEvent, handleWsNewMessage, handleStreamSnapshot]);
 
   const [scrollTrigger, setScrollTrigger] = useState(0);
+  const [prefillSignal, setPrefillSignal] = useState<{ text: string; nonce: number } | null>(null);
 
   const handleSend = async (content: string, attachments?: Array<{ data: string; mimeType: string }>) => {
-    const ok = await sendMessage(groupJid, content, attachments);
+    const mounts = useChatMountsStore.getState().getMounts(groupJid);
+    const selectedMounts = (mounts.skillIds.length || mounts.mcpIds.length || mounts.kbIds.length)
+      ? { skills: mounts.skillIds.length ? mounts.skillIds : undefined, mcpServers: mounts.mcpIds.length ? mounts.mcpIds : undefined, kbIds: mounts.kbIds.length ? mounts.kbIds : undefined }
+      : undefined;
+    const ok = await sendMessage(groupJid, content, attachments, selectedMounts);
     // 只有发送成功时才触发滚动；失败时保留当前视图位置，避免用户上下文切换。
     if (ok) setScrollTrigger(n => n + 1);
     return ok;
@@ -810,21 +815,20 @@ export function ChatView({ groupJid, onBack, headerLeft }: ChatViewProps) {
                 onInterrupt={mainInterrupted ? undefined : () => interruptQuery(groupJid)}
                 onSend={(content) => handleSend(content)}
               />
-              <LoopModeSwitcher mode={loopMode} onChange={setLoopMode} />
-              {loopMode === 'chat' ? (
-                <MessageInput
-                  onSend={handleSend}
-                  groupJid={groupJid}
-                  onResetSession={canModifyWorkspaceConfig ? () => { setResetAgentId(null); setShowResetConfirm(true); } : undefined}
-                  onToggleTerminal={canUseTerminal ? handleTerminalToggle : undefined}
-                />
-              ) : (
-                <LoopForm
-                  mode={loopMode}
-                  onSend={(cmd) => handleSend(cmd)}
-                  onCancel={() => setLoopMode('chat')}
-                />
-              )}
+              <ChatToolbar
+                groupJid={groupJid}
+                onPickQuickSkill={(skillId, prompt) => {
+                  useChatMountsStore.getState().setSkills(groupJid, [skillId]);
+                  setPrefillSignal({ text: prompt, nonce: Date.now() });
+                }}
+              />
+              <MessageInput
+                onSend={handleSend}
+                groupJid={groupJid}
+                onResetSession={canModifyWorkspaceConfig ? () => { setResetAgentId(null); setShowResetConfirm(true); } : undefined}
+                onToggleTerminal={canUseTerminal ? handleTerminalToggle : undefined}
+                prefillSignal={prefillSignal}
+              />
             </>
           )}
         </div>

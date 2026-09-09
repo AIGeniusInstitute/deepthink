@@ -5,7 +5,7 @@ export interface Skill {
   id: string;
   name: string;
   description: string;
-  source: 'user' | 'project' | 'external';
+  source: 'user' | 'project' | 'external' | 'builtin';
   enabled: boolean;
   packageName?: string;
   installedAt?: string;
@@ -14,6 +14,11 @@ export interface Skill {
   argumentHint: string | null;
   updatedAt: string;
   files: Array<{ name: string; type: 'file' | 'directory'; size: number }>;
+  // 内置办公技能快捷指令元数据（仅 source='builtin'）
+  quickLabel?: string;
+  quickEmoji?: string;
+  quickPrompt?: string;
+  content?: string;
 }
 
 export interface SkillDetail extends Skill {

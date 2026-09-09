@@ -1,16 +1,41 @@
-# DeepThink Server — Docker Compose（生产单机部署）
+# DeepThink Server — Docker Compose（生产单机部署，含 PostgreSQL）
 # 一键启动：./deploy/docker/deploy.sh --port 9999 --apikey sk-ant-xxx
 # 手动启动：docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env up -d --build
+#
+# 数据持久化：PG 数据盘 + DeepThink 数据盘均 bind-mount 到本机 ./data/，
+#   重新部署容器数据全部保留（down 不删，除非手动 rm -rf ./data）。
 
 services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: deepthink-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:-deepthink}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-deepthink123}
+      POSTGRES_DB: ${PG_DB:-deepthink}
+      TZ: Asia/Shanghai
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    volumes:
+      - ./data/pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-deepthink} -d ${PG_DB:-deepthink}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   deepthink:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.server
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "${HOST_PORT:-9999}:9898"
     volumes:
-      - deepthink-data:/data
+      - ./data/deepthink:/data
     env_file:
       - ./deploy/docker/.env
     environment:
@@ -18,6 +43,7 @@ services:
       - DEEPTHINK_DATA_DIR=/data
       - TZ=${TZ:-Asia/Shanghai}
       - TRUST_PROXY=${TRUST_PROXY:-true}
+      - DATABASE_URL=postgresql://${PG_USER:-deepthink}:${PG_PASSWORD:-deepthink123}@postgres:5432/${PG_DB:-deepthink}
       # WEB_SESSION_SECRET / ANTHROPIC_API_KEY 经 .env 注入（见 deploy/docker/.env）
     restart: unless-stopped
     healthcheck:
@@ -25,8 +51,4 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 15s
-
-volumes:
-  deepthink-data:
-    driver: local
+      start_period: 30s
