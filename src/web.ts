@@ -27,6 +27,7 @@ import {
   type WebDeps,
   type Variables,
   type WsClientInfo,
+  type SelectedMounts,
   setWebDeps,
   getWebDeps,
   wsClients,
@@ -430,7 +431,10 @@ app.post('/api/messages', authMiddleware, async (c) => {
     attachments,
     authUser.id,
     authUser.display_name || authUser.username,
-    { autonomous: validation.data.autonomous ?? undefined },
+    {
+      autonomous: validation.data.autonomous ?? undefined,
+      selectedMounts: validation.data.selectedMounts,
+    },
   );
   if (!result.ok) return c.json({ error: result.error }, result.status);
   return c.json({
@@ -448,7 +452,7 @@ async function handleWebUserMessage(
   attachments?: Array<{ type: 'image'; data: string; mimeType?: string }>,
   userId = 'web-user',
   displayName = 'Web',
-  opts?: { autonomous?: boolean | null },
+  opts?: { autonomous?: boolean | null; selectedMounts?: SelectedMounts },
 ): Promise<
   | {
       ok: true;
@@ -680,8 +684,16 @@ async function handleWebUserMessage(
     content,
     timestamp,
     false,
-    { attachments: attachmentsStr, meta: { autonomous: autonomousForRun || undefined } },
+    { attachments: attachmentsStr, meta: { autonomous: autonomousForRun || undefined, selectedMounts: opts?.selectedMounts || undefined } },
   );
+
+  // Bridge per-turn mounts (skills/MCP/KB dropdown selections) to the
+  // cold-start path via an in-memory map keyed by message id. processGroupMessages
+  // reads + clears it when constructing ContainerInput. IPC-inject (active
+  // runner) can't apply per-turn mounts — same limitation as `autonomous`.
+  if (opts?.selectedMounts) {
+    deps.setPendingTurnMounts?.(messageId, opts?.selectedMounts);
+  }
 
   broadcastNewMessage(chatJid, {
     id: messageId,
@@ -939,7 +951,7 @@ async function handleAgentConversationMessage(
   userId: string,
   displayName: string,
   attachments?: Array<{ type: 'image'; data: string; mimeType?: string }>,
-  opts?: { autonomous?: boolean | null },
+  opts?: { autonomous?: boolean | null; selectedMounts?: SelectedMounts },
 ): Promise<void> {
   if (!deps) return;
 

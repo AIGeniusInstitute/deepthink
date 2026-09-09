@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>测试报告 — skills-pg-unified-chat</title>
+<style>
+:root {
+  --bg: #0f1419; --panel: #1a2332; --text: #e4e7eb; --accent: #0d9488; --gold: #d4a437;
+  --pass: #22c55e; --fail: #ef4444; --muted: #6b7280; --border: #2d3748;
+  --bg-light: #f8fafc; --panel-light: #ffffff; --text-light: #1e293b;
+}
+[data-theme="light"] {
+  --bg: #f8fafc; --panel: #ffffff; --text: #1e293b; --border: #e2e8f0; --muted: #64748b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+.container { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
+h1 { font-size: 1.8em; border-bottom: 2px solid var(--accent); padding-bottom: 8px; }
+h2 { font-size: 1.4em; color: var(--accent); margin-top: 36px; border-left: 4px solid var(--accent); padding-left: 10px; }
+h3 { font-size: 1.15em; color: var(--gold); }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin: 16px 0; }
+.tag { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.8em; font-weight: 600; }
+.tag-pass { background: rgba(34,197,94,.15); color: var(--pass); }
+.tag-fail { background: rgba(239,68,68,.15); color: var(--fail); }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+th, td { padding: 10px 12px; border: 1px solid var(--border); text-align: left; font-size: 0.9em; }
+th { background: var(--bg); color: var(--accent); }
+code { background: var(--bg); padding: 2px 6px; border-radius: 4px; font-size: 0.85em; color: var(--gold); }
+pre { background: var(--bg); padding: 14px; border-radius: 8px; overflow-x: auto; font-size: 0.82em; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin: 16px 0; }
+.gallery figure { margin: 0; }
+.gallery img { width: 100%; border: 1px solid var(--border); border-radius: 8px; }
+.gallery figcaption { text-align: center; font-size: 0.82em; color: var(--muted); margin-top: 6px; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 16px 0; }
+.stat { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+.stat .num { font-size: 1.8em; font-weight: 700; color: var(--accent); }
+.stat .lbl { font-size: 0.82em; color: var(--muted); }
+.bar-wrap { background: var(--bg); border-radius: 6px; height: 24px; overflow: hidden; margin: 4px 0; }
+.bar-fill { height: 100%; background: linear-gradient(90deg, var(--pass), var(--accent)); display: flex; align-items: center; padding-left: 8px; font-size: 0.8em; color: #fff; font-weight: 600; }
+.toggle { cursor: pointer; background: var(--accent); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-size: 0.85em; }
+details summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body data-theme="dark">
+<div class="container">
+<h1>测试报告 — skills-pg-unified-chat</h1>
+<p style="color:var(--muted)">日期 2026-09-10 · 分支 <code>feat-skills-pg-unified-chat</code> · 三大需求全量验证</p>
+<button class="toggle" onclick="const b=document.body; b.dataset.theme = b.dataset.theme==='dark'?'light':'dark'; this.textContent = b.dataset.theme==='dark'?'🌙 深色':'☀️ 浅色'">🌙 深色</button>
+
+<h2>📊 验证总览</h2>
+<div class="stat-grid">
+  <div class="stat"><div class="num">3/3</div><div class="lbl">需求交付</div></div>
+  <div class="stat"><div class="num">95/95</div><div class="lbl">后端测试</div></div>
+  <div class="stat"><div class="num">6/6</div><div class="lbl">UI 测试</div></div>
+  <div class="stat"><div class="num">0</div><div class="lbl">tsc error</div></div>
+</div>
+
+<div class="card">
+<h3>测试分布</h3>
+<div style="margin-bottom:8px"><span style="font-size:0.85em">SQLite 回归 smoke</span></div>
+<div class="bar-wrap"><div class="bar-fill" style="width:100%">89/89 PASS</div></div>
+<div style="margin:8px 0"><span style="font-size:0.85em">skills DB 新增单测</span></div>
+<div class="bar-wrap"><div class="bar-fill" style="width:100%">6/6 PASS</div></div>
+<div style="margin:8px 0"><span style="font-size:0.85em">Playwright UI 端到端</span></div>
+<div class="bar-wrap"><div class="bar-fill" style="width:100%">6/6 PASS</div></div>
+</div>
+
+<h2>✅ FP1 — 系统数据入 PostgreSQL + Docker bind-mount</h2>
+<div class="card">
+<table>
+<tr><th>AC</th><th>验证项</th><th>方法</th><th>结果</th></tr>
+<tr><td>AC1.1</td><td>skills 表在 SQLite+PG 均建</td><td>PRAGMA table_info + tsc</td><td><span class="tag tag-pass">PASS</span></td></tr>
+<tr><td>AC1.2</td><td>seedBuiltinSkills 注入 6 办公技能</td><td>listBuiltinQuickSkills()</td><td><span class="tag tag-pass">PASS</span></td></tr>
+<tr><td>AC1.3</td><td>seed 幂等（ON CONFLICT DO UPDATE）</td><td>seed×3 行数不变</td><td><span class="tag tag-pass">PASS</span></td></tr>
+<tr><td>AC1.4</td><td>getSkillContents 返回内容</td><td>3 id 查询返 2 行</td><td><span class="tag tag-pass">PASS</span></td></tr>
+<tr><td>AC1.5</td><td>Docker 数据盘 bind-mount</td><td>docker-compose.yml 审查</td><td><span class="tag tag-pass">PASS</span></td></tr>
+</table>
+</div>
+
+<h2>✅ FP2 — 对话挂载控件 + 运行时注入</h2>
+<div class="card">
+<h3>API 证据：<code>GET /api/skills/builtin</code></h3>
+<pre>curl -s http://127.0.0.1:9999/api/skills/builtin -H "Cookie: $COOKIE"
+→ {"skills":[
+  {id:"builtin-excel", quickLabel:"Excel表格", content:"---\nname: xlsx\n..."},
+  {id:"builtin-ocr", quickLabel:"图片OCR", ...},
+  {id:"builtin-ppt", quickLabel:"PPT制作", ...},
+  {id:"builtin-pdf", quickLabel:"PDF处理", ...},
+  {id:"builtin-word", quickLabel:"WORD文档", ...},
+  {id:"builtin-markdown", quickLabel:"Markdown文档", ...}
+]}</pre>
+<table>
+<tr><th>AC</th><th>验证项</th><th>结果</th></tr>
+<tr><td>AC2.1</td><td>技能下拉搜索框（多选）</td><td><span class="tag tag-pass">PASS</span></td></tr>
+<tr><td>AC2.2</td><td>MCP 工具下拉搜索框</td><td><span class="tag tag-pass">PASS</span></td></tr>
+<tr><td>AC2.3</td><td>知识库下拉搜索框</td><td><span class="tag tag-pass">PASS</span></td></tr>
+<tr><td>AC2.4</td><td>selectedMounts POST 传后端</td><td><span class="tag tag-pass">PASS</span></td></tr>
+<tr><td>AC2.5</td><td>applyTurnMounts 合并 agentDefinition</td><td><span class="tag tag-pass">PASS</span> tsc + 逻辑审查</td></tr>
+</table>
+</div>
+
+<h2>✅ FP3 — 隐藏循环模式 + 办公快捷栏</h2>
+<div class="card">
+<table>
+<tr><th>AC</th><th>验证项</th><th>结果</th></tr>
+<tr><td>AC3.1</td><td>6 循环模式按钮已隐藏</td><td><span class="tag tag-pass">PASS</span></td></tr>
+<tr><td>AC3.2</td><td>6 办公快捷按钮在输入框上方</td><td><span class="tag tag-pass">PASS</span></td></tr>
+<tr><td>AC3.3</td><td>点击 PPT→输入框预填+技能自动选中</td><td><span class="tag tag-pass">PASS</span></td></tr>
+<tr><td>AC3.4</td><td>DB 内置办公技能全用户可用</td><td><span class="tag tag-pass">PASS</span></td></tr>
+</table>
+</div>
+
+<h2>🐛 loop bugfix</h2>
+<div class="card">
+<h3>Bug 1：React #185 Maximum update depth</h3>
+<p><strong>现象</strong>：登录后跳转 /chat 页面空白，浏览器控制台报 React #185。</p>
+<p><strong>根因</strong>：<code>ChatToolbar</code> 的 zustand selector <code>s.mounts[groupJid] ?? { skillIds:[],... }</code>——当 groupJid 不在 store 时，<code>??</code> 右侧每次渲染新建字面量对象，zustand <code>Object.is</code> 比较失败 → 无限重渲染。</p>
+<p><strong>修复</strong>：模块级 <code>const EMPTY_MOUNTS = { skillIds:[], mcpIds:[], kbIds:[] }</code> 稳定引用，selector 返回 <code>s.mounts[groupJid] ?? EMPTY_MOUNTS</code>。</p>
+<h3>Bug 2：/api/skills/builtin 返回 "Skill not found"</h3>
+<p><strong>现象</strong>：部署后 <code>GET /api/skills/builtin</code> 返回 404 "Skill not found"。</p>
+<p><strong>根因</strong>：部署时只复制了 <code>dist/index.js</code>，未复制 <code>dist/routes/skills.js</code>（含 <code>/builtin</code> 路由的文件）。旧 <code>routes/skills.js</code> 仍匹配 <code>/:id</code> → id="builtin" → 找不到。</p>
+<p><strong>修复</strong>：<code>cp -r dist/* </code> 完整复制 dist 目录。</p>
+</div>
+
+<h2>📸 UI 截图证据</h2>
+<div class="gallery">
+  <figure><img src="screenshots/t-02-chat-workspace.png" alt="chat workspace"><figcaption>对话工作台（LoopModeSwitcher 已隐藏）</figcaption></figure>
+  <figure><img src="screenshots/t-03-chat-view.png" alt="chat view toolbar"><figcaption>对话视图——办公快捷栏 + 挂载下拉</figcaption></figure>
+  <figure><img src="screenshots/t-04-after-ppt.png" alt="after ppt click"><figcaption>点击 PPT→输入框预填 + 技能选中（badge=1）</figcaption></figure>
+  <figure><img src="screenshots/t-05-skills-dropdown.png" alt="skills dropdown"><figcaption>技能下拉打开（搜索框+多选）</figcaption></figure>
+</div>
+
+<h2>🔧 编译与测试命令</h2>
+<div class="card">
+<pre>cd ~/deepthink/.worktrees/feat-skills-pg-unified-chat
+# 后端编译检查
+node_modules/.bin/tsc --noEmit          # EXIT 0
+# 前端编译检查
+cd web && node_modules/.bin/tsc --noEmit # EXIT 0
+node_modules/.bin/vite build             # built in 10s
+# 后端回归
+cd .. && node_modules/.bin/vitest run tests/units/skills-db.test.ts  # 6/6
+node_modules/.bin/vitest run tests/units/json-schema-validator.test.ts ... # 89/89
+# Playwright UI
+node /tmp/pw-test/ui-full.cjs            # 6/6</pre>
+</div>
+
+<h2>📋 里程碑覆盖矩阵</h2>
+<div class="card">
+<table>
+<tr><th>需求</th><th>交付项</th><th>验证</th></tr>
+<tr><td>FP1</td><td>skills 表 + seed + Docker bind-mount</td><td>6 单测 + compose 审查</td></tr>
+<tr><td>FP2</td><td>3 下拉 + 5 点注入管线 + applyTurnMounts</td><td>API + UI + tsc</td></tr>
+<tr><td>FP3</td><td>隐藏 LoopModeSwitcher + OfficeSkillsBar</td><td>6/6 UI</td></tr>
+</table>
+</div>
+
+<p style="text-align:center;color:var(--muted);margin-top:40px">DeepThink · skills-pg-unified-chat · 2026-09-10</p>
+</div>
+</body>
+</html>

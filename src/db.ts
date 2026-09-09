@@ -3,6 +3,7 @@ import { createRequire } from 'module';
 import Database, { isPostgresBackend } from './sqlite-compat.js';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 import { STORE_DIR, GROUPS_DIR, DATA_DIR } from './config.js';
 import { logger } from './logger.js';
@@ -207,6 +208,10 @@ interface StoredMessageMeta {
    *  Web "全托管" button (per-message override). At cold-start, this overrides
    *  the per-group config to set containerInput.autonomous = true. */
   autonomous?: boolean | null;
+  /** Per-turn mount selection (skills/MCP/KB) from the web chat dropdowns.
+   *  NOT persisted to a column — bridged in-memory via setPendingTurnMounts.
+   *  Present here only so the meta object type-checks when passed through. */
+  selectedMounts?: { skills?: string[]; mcpServers?: string[]; kbIds?: string[] } | null;
 }
 
 function hasColumn(tableName: string, columnName: string): boolean {
@@ -2505,6 +2510,46 @@ export function initDatabase(): void {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_collaborations_owner ON collaborations(owner_user_id, created_at DESC);
+
+    -- v61: skills — 技能源入 PostgreSQL（此前技能纯文件系统 ~/.claude/skills）。
+    -- 本表是技能元数据 + SKILL.md 全文的真相源；scope='builtin'(user_id NULL)
+    -- 为系统内置办公技能，所有用户可见。运行时由对话挂载控件选中后注入
+    -- system_prompt。文件系统技能路径仍保留（discoverSkills 不变），本表与
+    -- 文件系统并行：内置技能以本表为准，用户技能仍可来自文件。
+    CREATE TABLE IF NOT EXISTS skills (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      content TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'general',
+      scope TEXT NOT NULL DEFAULT 'user'
+        CHECK(scope IN ('builtin','user','project')),
+      enabled INTEGER NOT NULL DEFAULT 1,
+      source TEXT NOT NULL DEFAULT 'manual',
+      allowed_tools TEXT NOT NULL DEFAULT '',
+      quick_label TEXT,
+      quick_emoji TEXT,
+      quick_prompt TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_skills_user ON skills(user_id);
+    CREATE INDEX IF NOT EXISTS idx_skills_scope ON skills(scope, enabled);
+
+    -- v61: workspace_artifacts — 工作区产物元数据入 PG。大 blob 留 object-store
+    -- (MinIO/S3)，本表存 ref 路径；小文本产物可内联 content_ref。
+    CREATE TABLE IF NOT EXISTS workspace_artifacts (
+      id TEXT PRIMARY KEY,
+      group_folder TEXT NOT NULL,
+      user_id TEXT,
+      name TEXT NOT NULL,
+      artifact_type TEXT NOT NULL DEFAULT 'file',
+      content_ref TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_artifacts_group ON workspace_artifacts(group_folder, created_at DESC);
   `);
 
   // PostgreSQL: FK constraints are stripped at CREATE TABLE time by
@@ -2522,10 +2567,19 @@ export function initDatabase(): void {
     }
   }
 
-  const SCHEMA_VERSION = '60';
+  const SCHEMA_VERSION = '61';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
+
+  // v61: seed 6 内置办公技能到 skills 表（幂等）。内容取自 ~/.claude/skills
+  // 现成 SKILL.md（pptx/xlsx/pdf/docx/markdown-mermaid-writing），OCR 新写。
+  // 每个带 quick_label/quick_emoji/quick_prompt 供对话输入框快捷指令按钮。
+  try {
+    seedBuiltinSkills();
+  } catch (err) {
+    logger.warn({ err }, 'seedBuiltinSkills failed (non-blocking)');
+  }
 }
 
 /**
@@ -10161,6 +10215,178 @@ export function getSkillVersion(
     )
     .get(skillId, userId, version) as SkillVersionRow | undefined;
   return row ?? null;
+}
+
+// ─── Skills 表 (v61) — 技能源入 PostgreSQL ──────────────────────────
+
+export type SkillRow = {
+  id: string;
+  user_id: string | null;
+  name: string;
+  description: string;
+  content: string;
+  category: string;
+  scope: 'builtin' | 'user' | 'project';
+  enabled: number;
+  source: string;
+  allowed_tools: string;
+  quick_label: string | null;
+  quick_emoji: string | null;
+  quick_prompt: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+// 内置办公技能的 OCR SKILL.md（无现成文件，内联）
+const OCR_SKILL_MD = `---
+name: image-ocr
+description: 图片文字识别(OCR)。用 tesseract 或在线 OCR API 把图片中的文字提取为可编辑文本，支持中英文、表格、扫描件。
+allowed-tools: Read Write Edit Bash
+---
+
+# 图片 OCR
+
+## 何时使用
+- 需要从图片/扫描件/截图里提取文字
+- 把纸质文档照片转成可编辑 Markdown/Word
+- 识别图片中的表格
+
+## 流程
+1. 确认图片路径（本地文件或 URL）
+2. 优先使用本地 tesseract：\`tesseract <img> stdout -l chi_sim+eng\`
+3. 若 tesseract 未装或效果差，回退到在线 OCR API（需用户提供 key 或走平台网关）
+4. 输出为 Markdown，保留段落与表格结构，标注识别置信度低的片段
+5. 询问用户是否需要导出为 .docx/.txt
+
+## 注意
+- 涉及隐私/敏感内容的图片不要上传第三方服务，优先本地 tesseract
+- 表格 OCR 用 \`--psm 6\` 提升结构识别
+`;
+
+type BuiltinSkillSeed = {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  allowed_tools: string;
+  quick_label: string;
+  quick_emoji: string;
+  quick_prompt: string;
+  // 从 ~/.claude/skills/<dir>/SKILL.md 读内容；dir 为空则用 inline
+  source_dir?: string;
+  inline_content?: string;
+};
+
+const BUILTIN_SKILL_SEEDS: BuiltinSkillSeed[] = [
+  {
+    id: 'builtin-ppt', name: 'ppt', category: 'office',
+    description: 'PPT 制作技能。生成与编辑 PowerPoint 演示文稿（.pptx），支持多页、图表、母版。',
+    allowed_tools: 'Read Write Edit Bash', quick_label: 'PPT制作', quick_emoji: '📊',
+    quick_prompt: '请用 PPT制作 技能，帮我做一份关于「」的 5 页汇报演示，要求结构清晰、含要点与图表建议。',
+    source_dir: 'pptx',
+  },
+  {
+    id: 'builtin-excel', name: 'excel', category: 'office',
+    description: 'Excel 表格技能。生成与处理 .xlsx 工作簿，公式、图表、数据透视。',
+    allowed_tools: 'Read Write Edit Bash', quick_label: 'Excel表格', quick_emoji: '📈',
+    quick_prompt: '请用 Excel表格 技能，帮我做一个「」数据表，含表头、公式与示例数据。',
+    source_dir: 'xlsx',
+  },
+  {
+    id: 'builtin-pdf', name: 'pdf', category: 'office',
+    description: 'PDF 处理技能。PDF 读取、合并、拆分、转文本、生成。',
+    allowed_tools: 'Read Write Edit Bash', quick_label: 'PDF处理', quick_emoji: '📄',
+    quick_prompt: '请用 PDF处理 技能，帮我「」（读取/合并/拆分/转文本）。',
+    source_dir: 'pdf',
+  },
+  {
+    id: 'builtin-ocr', name: 'image-ocr', category: 'office',
+    description: '图片 OCR 技能。从图片/扫描件/截图提取文字（中英文、表格）。',
+    allowed_tools: 'Read Write Edit Bash', quick_label: '图片OCR', quick_emoji: '🔍',
+    quick_prompt: '请用 图片OCR 技能，识别这张图片中的文字并输出为 Markdown：',
+    inline_content: OCR_SKILL_MD,
+  },
+  {
+    id: 'builtin-word', name: 'word', category: 'office',
+    description: 'WORD 文档技能。生成与编辑 .docx，支持样式、目录、表格。',
+    allowed_tools: 'Read Write Edit Bash', quick_label: 'WORD文档', quick_emoji: '📝',
+    quick_prompt: '请用 WORD文档 技能，帮我写一份关于「」的文档，导出为 .docx。',
+    source_dir: 'docx',
+  },
+  {
+    id: 'builtin-markdown', name: 'markdown', category: 'office',
+    description: 'Markdown 文档技能。撰写、渲染、导出 Markdown，含 mermaid 图表。',
+    allowed_tools: 'Read Write Edit Bash', quick_label: 'Markdown文档', quick_emoji: '📝',
+    quick_prompt: '请用 Markdown文档 技能，帮我撰写关于「」的 Markdown 文档。',
+    source_dir: 'markdown-mermaid-writing',
+  },
+];
+
+function readBuiltinSkillContent(seed: BuiltinSkillSeed): string {
+  if (seed.inline_content) return seed.inline_content;
+  if (seed.source_dir) {
+    const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
+    const candidates = [
+      path.join(home, '.claude', 'skills', seed.source_dir, 'SKILL.md'),
+      path.join(home, '.claude', 'skills', seed.source_dir, 'skill.md'),
+    ];
+    for (const p of candidates) {
+      try {
+        if (fs.existsSync(p)) return fs.readFileSync(p, 'utf-8');
+      } catch {
+        // try next
+      }
+    }
+  }
+  // fallback stub
+  return `---\nname: ${seed.name}\ndescription: ${seed.description}\nallowed-tools: ${seed.allowed_tools}\n---\n# ${seed.quick_label}\n\n${seed.description}\n`;
+}
+
+export function seedBuiltinSkills(): void {
+  for (const seed of BUILTIN_SKILL_SEEDS) {
+    const content = readBuiltinSkillContent(seed);
+    db.prepare(
+      `INSERT INTO skills (id, user_id, name, description, content, category, scope, enabled, source, allowed_tools, quick_label, quick_emoji, quick_prompt, created_at, updated_at)
+       VALUES (?, NULL, ?, ?, ?, ?, 'builtin', 1, 'seed', ?, ?, ?, ?, datetime('now'), datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET
+         content=excluded.content, description=excluded.description,
+         quick_label=excluded.quick_label, quick_emoji=excluded.quick_emoji,
+         quick_prompt=excluded.quick_prompt, updated_at=datetime('now')`,
+    ).run(seed.id, seed.name, seed.description, content, seed.category, seed.allowed_tools, seed.quick_label, seed.quick_emoji, seed.quick_prompt);
+  }
+}
+
+// 列出对用户可见的技能：builtin(全部用户) + 自己的 user 技能
+export function listSkillsForUser(userId: string): SkillRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM skills WHERE scope='builtin' OR user_id=? ORDER BY (scope='builtin') DESC, name ASC`,
+    )
+    .all(userId) as SkillRow[];
+}
+
+// 快捷指令按钮用的内置技能
+export function listBuiltinQuickSkills(): SkillRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM skills WHERE scope='builtin' AND quick_label IS NOT NULL ORDER BY name ASC`,
+    )
+    .all() as SkillRow[];
+}
+
+export function getSkillById(id: string): SkillRow | null {
+  const row = db.prepare('SELECT * FROM skills WHERE id = ?').get(id) as SkillRow | undefined;
+  return row ?? null;
+}
+
+// 取多个技能的内容（对话挂载注入用）
+export function getSkillContents(ids: string[]): Array<{ id: string; name: string; content: string }> {
+  if (ids.length === 0) return [];
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = db
+    .prepare(`SELECT id, name, content FROM skills WHERE id IN (${placeholders})`)
+    .all(...ids) as Array<{ id: string; name: string; content: string }>;
+  return rows;
 }
 
 // ─── Agent Service 开放平台：模型定价 ──────────────────────────

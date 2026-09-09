@@ -12,6 +12,7 @@ const SOURCE_LABELS: Record<Skill['source'], string> = {
   user: '用户级',
   project: '项目级',
   external: '宿主机',
+  builtin: '内置',
 };
 
 export function SkillCard({ skill, selected, onSelect }: SkillCardProps) {

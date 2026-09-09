@@ -1,11 +1,12 @@
 # DeepThink 本地持久化存储栈 — docker-compose
 # 启动: docker compose -f deploy/local/docker-compose.yml up -d
 # 包含: PostgreSQL(pgvector 向量扩展) + Redis(AOF 持久化) + MinIO(S3 对象存储)
-# 数据持久化: 三个 named volume (pg/redis/minio),重启容器不丢。
+# 数据持久化: 三个数据盘均 bind-mount 到本机 ./data/{pg,redis,minio}，
+#   重新部署容器数据全部保留（down 不删卷，除非手动 rm -rf ./data）。
 # 端口: PG=5432  Redis=6380(避开本机 6379)  MinIO API=9000 Console=9001
 #
 # 说明: DeepThink 向量检索用 pgvector(PG 内嵌),全文检索用 pg_trgm(PG 内嵌),
-#       不需要独立的 Milvus / Elasticsearch。三者即可覆盖全部持久化需求。
+#       不需要独立的 Mililus / Elasticsearch。三者即可覆盖全部持久化需求。
 
 services:
   postgres:
@@ -20,7 +21,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - ./data/pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U deepthink -d deepthink"]
       interval: 5s
@@ -35,7 +36,7 @@ services:
     ports:
       - "6380:6379"
     volumes:
-      - redis_data:/data
+      - ./data/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -55,7 +56,7 @@ services:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - minio_data:/data
+      - ./data/minio:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -78,7 +79,5 @@ services:
       "
     restart: "no"
 
-volumes:
-  pg_data:
-  redis_data:
-  minio_data:
+# bind-mount 数据盘挂在本机 ./data/ 下，确保重新部署数据不丢
+# （删除 named volumes 段，改用 host bind-mount，目录不存在时 compose 自动创建）

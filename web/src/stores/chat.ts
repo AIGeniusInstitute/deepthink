@@ -351,7 +351,7 @@ interface ChatState {
   selectGroup: (jid: string) => void;
   loadMessages: (jid: string, loadMore?: boolean) => Promise<void>;
   refreshMessages: (jid: string) => Promise<void>;
-  sendMessage: (jid: string, content: string, attachments?: Array<{ data: string; mimeType: string }>) => Promise<boolean>;
+  sendMessage: (jid: string, content: string, attachments?: Array<{ data: string; mimeType: string }>, selectedMounts?: { skills?: string[]; mcpServers?: string[]; kbIds?: string[] }) => Promise<boolean>;
   stopGroup: (jid: string) => Promise<boolean>;
   interruptQuery: (jid: string) => Promise<boolean>;
   resetSession: (jid: string, agentId?: string) => Promise<boolean>;
@@ -1495,16 +1495,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: async (jid: string, content: string, attachments?: Array<{ data: string; mimeType: string }>) => {
+  sendMessage: async (jid: string, content: string, attachments?: Array<{ data: string; mimeType: string }>, selectedMounts?: { skills?: string[]; mcpServers?: string[]; kbIds?: string[] }) => {
     try {
       // streaming 状态由以下 3 条路径正确清理，sendMessage 不应无条件清空：
       // 1. handleWsNewMessage 收到 is_from_me 消息时
       // 2. agent_reply WebSocket 事件时
       // 3. status:interrupted 事件时
 
-      const body: { chatJid: string; content: string; attachments?: Array<{ type: 'image'; data: string; mimeType: string }> } = { chatJid: jid, content };
+      const body: { chatJid: string; content: string; attachments?: Array<{ type: 'image'; data: string; mimeType: string }>; selectedMounts?: { skills?: string[]; mcpServers?: string[]; kbIds?: string[] } } = { chatJid: jid, content };
       if (attachments && attachments.length > 0) {
         body.attachments = attachments.map(att => ({ type: 'image', ...att }));
+      }
+      if (selectedMounts && (selectedMounts.skills?.length || selectedMounts.mcpServers?.length || selectedMounts.kbIds?.length)) {
+        body.selectedMounts = selectedMounts;
       }
 
       type ClearedResponse = { success: true; cleared: true };

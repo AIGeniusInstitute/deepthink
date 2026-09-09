@@ -41,6 +41,8 @@ import {
   createSkillVersion,
   listSkillVersions,
   getSkillVersion,
+  listSkillsForUser,
+  listBuiltinQuickSkills,
 } from '../db.js';
 import { logger } from '../logger.js';
 
@@ -61,7 +63,7 @@ export interface Skill {
   id: string;
   name: string;
   description: string;
-  source: 'user' | 'project' | 'external';
+  source: 'user' | 'project' | 'external' | 'builtin';
   enabled: boolean;
   packageName?: string;
   installedAt?: string;
@@ -70,6 +72,11 @@ export interface Skill {
   argumentHint: string | null;
   updatedAt: string;
   files: Array<{ name: string; type: 'file' | 'directory'; size: number }>;
+  // 内置技能快捷指令元数据（仅 source='builtin'）
+  quickLabel?: string;
+  quickEmoji?: string;
+  quickPrompt?: string;
+  content?: string;
 }
 
 export interface SkillDetail extends Skill {
@@ -197,6 +204,33 @@ export function discoverSkills(userId: string, userRole?: string): Skill[] {
     if (!seen.has(skill.id)) {
       seen.add(skill.id);
       result.push(skill);
+    }
+  }
+
+  // 内置办公技能（来自 PostgreSQL skills 表，scope='builtin'）— 所有用户可见。
+  // 文件系统技能优先（同 id 时不去重覆盖），仅追加 DB 独有的。
+  const builtinSkills = listSkillsForUser(userId)
+    .filter((r) => r.scope === 'builtin')
+    .map((r): Skill => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      source: 'builtin',
+      enabled: r.enabled === 1,
+      userInvocable: true,
+      allowedTools: r.allowed_tools ? r.allowed_tools.split(/[\s,]+/).filter(Boolean) : [],
+      argumentHint: null,
+      updatedAt: r.updated_at,
+      files: [],
+      quickLabel: r.quick_label ?? undefined,
+      quickEmoji: r.quick_emoji ?? undefined,
+      quickPrompt: r.quick_prompt ?? undefined,
+      content: r.content,
+    }));
+  for (const bs of builtinSkills) {
+    if (!seen.has(bs.id)) {
+      seen.add(bs.id);
+      result.push(bs);
     }
   }
   return result;
@@ -538,6 +572,28 @@ async function withSkillInstallLock<T>(fn: () => Promise<T>): Promise<T> {
 skillsRoutes.get('/', authMiddleware, (c) => {
   const authUser = c.get('user') as AuthUser;
   const skills = discoverSkills(authUser.id, authUser.role);
+  return c.json({ skills });
+});
+
+// 内置办公技能快捷指令（6 个）— 供对话输入框快捷按钮 + 技能下拉
+skillsRoutes.get('/builtin', authMiddleware, (c) => {
+  const rows = listBuiltinQuickSkills();
+  const skills = rows.map((r): Skill => ({
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    source: 'builtin',
+    enabled: r.enabled === 1,
+    userInvocable: true,
+    allowedTools: r.allowed_tools ? r.allowed_tools.split(/[\s,]+/).filter(Boolean) : [],
+    argumentHint: null,
+    updatedAt: r.updated_at,
+    files: [],
+    quickLabel: r.quick_label ?? undefined,
+    quickEmoji: r.quick_emoji ?? undefined,
+    quickPrompt: r.quick_prompt ?? undefined,
+    content: r.content,
+  }));
   return c.json({ skills });
 });
 

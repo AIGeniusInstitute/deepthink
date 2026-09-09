@@ -277,7 +277,29 @@ export interface WebDeps {
    * to `created_by` instead of being treated as the runtime owner.
    */
   getUserById?: (id: string) => RuntimeOwnerCandidateUser | null | undefined;
+  /**
+   * Per-turn mounts selected in the web chat UI (skills/MCP/KB dropdowns).
+   * Keyed by message id; consumed once by processGroupMessages on cold-start.
+   * In-memory only (web-UI sourced messages) — no DB persistence needed.
+   */
+  setPendingTurnMounts?: (
+    msgId: string,
+    mounts: { skills?: string[]; mcpServers?: string[]; kbIds?: string[] } | undefined,
+  ) => void;
 }
+
+/**
+ * Per-turn mount selection (skills / MCP servers / knowledge bases) chosen
+ * in the web chat dropdowns. Injected into the agent definition for a single
+ * cold-start turn — skills via systemPrompt content, MCP/KB via the mounts
+ * array (reusing the agent_mounts channel).
+ */
+export type SelectedMounts = {
+  skills?: string[];
+  mcpServers?: string[];
+  kbIds?: string[];
+};
+
 
 export type Variables = {
   user: AuthUser;

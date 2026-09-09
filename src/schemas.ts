@@ -152,6 +152,17 @@ export const MessageCreateSchema = z
      *  false/undefined: 走默认监督者模式（若 per-group autonomous=true 则仍为全托管）。
      *  null: 显式关闭本消息的全托管（即使 group 级开启，本条消息按监督者模式执行）。 */
     autonomous: z.boolean().nullable().optional(),
+    /** 对话挂载控件选中的技能/MCP/知识库（per-turn 注入）。
+     *  skills: 选中技能 id 列表（内容注入 system_prompt）；
+     *  mcpServers: 选中 MCP server id（走 agentDefinition.mounts）；
+     *  kbIds: 选中知识库 id（走 kb_search 工具）。仅冷启动路径生效。 */
+    selectedMounts: z
+      .object({
+        skills: z.array(z.string()).optional(),
+        mcpServers: z.array(z.string()).optional(),
+        kbIds: z.array(z.string()).optional(),
+      })
+      .optional(),
   })
   .superRefine((data, ctx) => {
     const hasContent = data.content.trim().length > 0;

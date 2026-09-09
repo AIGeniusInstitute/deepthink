@@ -146,7 +146,7 @@ import {
   getUserContextIsolationConfig,
 } from './im-context-isolation.js';
 import { canSendCrossGroupMessage as canSendCrossGroupMessagePure } from './cross-group-acl.js';
-import { invalidateSessionCache, getWebDeps } from './web-context.js';
+import { invalidateSessionCache, getWebDeps, type SelectedMounts } from './web-context.js';
 import {
   getFeishuProviderConfigWithSource,
   getTelegramProviderConfig,
@@ -950,6 +950,17 @@ function mergeHeldUsage(
 // activeRouteUpdaters（用户消息注入时必经），Sub-Agent 注入点不走 route updater，
 // 由 web.ts / 消息循环在注入成功回调里显式触发。
 const activeHeldCardFinalizers = new Map<string, () => void>();
+
+// ── Per-turn mounts bridge (web chat dropdowns → processGroupMessages) ──
+// In-memory only; keyed by user message id. Set by handleWebUserMessage via
+// WebDeps.setPendingTurnMounts, popped once by processGroupMessages. Not
+// persisted to DB — selectedMounts is a web-UI-only, per-turn concern.
+const pendingTurnMounts = new Map<string, SelectedMounts>();
+function popPendingTurnMounts(msgId: string): SelectedMounts | undefined {
+  const m = pendingTurnMounts.get(msgId);
+  if (m) pendingTurnMounts.delete(msgId);
+  return m;
+}
 
 // ── IPC send_message 跨重试去重 ──
 // 错误退避重试会把整个 prompt 从头重跑，agent 在失败前已执行的 send_message
@@ -8669,6 +8680,12 @@ async function processAgentConversation(
       }
     }
 
+    // Per-turn mounts (skills/MCP/KB) selected in the web chat dropdowns.
+    // Bridged in-memory from handleWebUserMessage via setPendingTurnMounts.
+    const turnMounts = lastProcessed?.id
+      ? popPendingTurnMounts(lastProcessed.id)
+      : undefined;
+
     const containerInput: ContainerInput = {
       prompt,
       sessionId,
@@ -8682,6 +8699,7 @@ async function processAgentConversation(
       agentName: agent.name,
       images: imagesForAgent,
       autonomous: autonomousForRun || undefined,
+      turnMounts,
     };
 
     // Write tasks/groups snapshots
@@ -11990,6 +12008,12 @@ async function main(): Promise<void> {
     // :id/orchestrate can run a user-created orchestrator on its linked workers
     // with full GraphDeps in scope. See src/agent-orchestration/orchestrator-runner.ts.
     webDeps.runOrchestrator = (input) => runOrchestrator(input, graphDeps);
+
+    // Per-turn mounts bridge: web chat dropdowns → processGroupMessages.
+    webDeps.setPendingTurnMounts = (msgId, mounts) => {
+      if (mounts) pendingTurnMounts.set(msgId, mounts);
+      else pendingTurnMounts.delete(msgId);
+    };
   }
 
   startIpcWatcher();
