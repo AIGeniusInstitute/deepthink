@@ -3,124 +3,134 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>测试报告: Agent 对话挂载上下文修复</title>
+<title>测试报告：Agent 对话挂载上下文修复</title>
 <style>
 :root { --bg:#0d1117; --panel:#161b22; --text:#c9d1d9; --accent:#58a6ff; --gold:#d29922; --green:#3fb950; --red:#f85149; --border:#30363d; }
-.light { --bg:#ffffff; --panel:#f6f8fa; --text:#1f2328; --accent:#0969da; --gold:#9a6700; --green:#1a7f37; --red:#cf222e; --border:#d0d7de; }
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); line-height:1.6; }
-.container { max-width:960px; margin:0 auto; padding:24px 16px 80px; }
-h1 { font-size:1.8em; border-bottom:2px solid var(--accent); padding-bottom:8px; margin-bottom:8px; }
-h2 { font-size:1.3em; color:var(--accent); margin:24px 0 12px; border-bottom:1px solid var(--border); padding-bottom:4px; }
-h3 { font-size:1.1em; margin:16px 0 8px; }
-.meta { color:var(--gold); font-size:0.85em; margin-bottom:24px; }
-.summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:12px; margin:16px 0; }
-.stat { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:12px; text-align:center; }
-.stat .num { font-size:1.8em; font-weight:700; }
-.stat .label { font-size:0.75em; color:var(--gold); margin-top:4px; }
-.pass { color:var(--green); }
-.fail { color:var(--red); }
+[data-theme="light"] { --bg:#f6f8fa; --panel:#ffffff; --text:#24292f; --accent:#0969da; --gold:#9a6700; --green:#1a7f37; --red:#cf222e; --border:#d0d7de; }
+body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); line-height:1.6; }
+.container { max-width:960px; margin:0 auto; padding:24px; }
+h1 { color:var(--accent); border-bottom:2px solid var(--border); padding-bottom:8px; }
+h2 { color:var(--gold); margin-top:32px; }
+h3 { color:var(--accent); }
 table { width:100%; border-collapse:collapse; margin:12px 0; }
 th,td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
 th { background:var(--panel); color:var(--accent); }
-tr:nth-child(even) { background:var(--panel); }
-pre { background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:12px; overflow-x:auto; font-size:0.85em; }
-code { background:var(--panel); padding:2px 6px; border-radius:3px; font-size:0.85em; }
-.log { background:#1a1a2e; color:#7ec8e3; border-radius:6px; padding:12px; font-family:monospace; font-size:0.8em; white-space:pre-wrap; }
-.bug-list { list-style:none; }
-.bug-list li { background:var(--panel); border:1px solid var(--border); border-left:3px solid var(--red); border-radius:6px; padding:12px; margin:8px 0; }
-.bug-list .fix { border-left-color:var(--green); }
-.bug-list .num { color:var(--gold); font-weight:700; }
-.screenshot { border:1px solid var(--border); border-radius:8px; margin:12px 0; max-width:100%; }
-.screenshot img { width:100%; border-radius:8px; }
-.screenshot .cap { font-size:0.8em; color:var(--gold); padding:4px 8px; }
-.toggle { cursor:pointer; color:var(--accent); user-select:none; }
-.toggle:hover { text-decoration:underline; }
-.hidden { display:none; }
+.pass { color:var(--green); font-weight:bold; }
+.fail { color:var(--red); font-weight:bold; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px; margin:12px 0; }
+code { background:var(--panel); padding:2px 6px; border-radius:4px; font-size:0.9em; color:var(--gold); }
+pre { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:12px; overflow-x:auto; }
+.summary { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin:24px 0; }
+.stat { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px; text-align:center; }
+.stat .num { font-size:2em; font-weight:bold; }
+.stat .label { color:var(--text); opacity:0.7; font-size:0.85em; }
 </style>
 </head>
-<body>
+<body data-theme="dark">
 <div class="container">
-<h1>测试报告: Agent 对话挂载上下文修复</h1>
-<div class="meta">日期: 2026-09-10 | 分支: fix/chat-mounts-context | 环境: http://127.0.0.1:9999</div>
+
+<h1>测试报告：Agent 对话挂载上下文修复</h1>
+<p><strong>分支：</strong>fix/chat-mounts-context &nbsp;|&nbsp; <strong>日期：</strong>2026-09-10</p>
 
 <div class="summary">
-  <div class="stat"><div class="num pass">8</div><div class="label">AC 全通过</div></div>
-  <div class="stat"><div class="num pass">6</div><div class="label">Bug 修复</div></div>
-  <div class="stat"><div class="num pass">7</div><div class="label">代码改动</div></div>
-  <div class="stat"><div class="num pass">1694</div><div class="label">回归测试通过</div></div>
-  <div class="stat"><div class="num pass">0</div><div class="label">tsc error</div></div>
+<div class="stat"><div class="num" style="color:var(--green)">6</div><div class="label">Bug 修复</div></div>
+<div class="stat"><div class="num" style="color:var(--green)">8</div><div class="label">验收用例</div></div>
+<div class="stat"><div class="num" style="color:var(--green)">8/8</div><div class="label">通过率</div></div>
 </div>
 
-<h2>Bug 清单与修复</h2>
-<ul class="bug-list">
-  <li class="fix"><span class="num">Bug 1</span> — <b>getSkillContents 只查 DB</b>：用户技能存在磁盘 SKILL.md，不在 DB skills 表中 → 新增 <code>getSkillContentsForTurn()</code> 磁盘回退</li>
-  <li class="fix"><span class="num">Bug 2</span> — <b>WS handler 丢弃 selectedMounts</b>：safeParse 不传 selectedMounts → 补传</li>
-  <li class="fix"><span class="num">Bug 3</span> — <b>handleAgentConversationMessage 不桥接 mounts</b>：不调 setPendingTurnMounts → 补调</li>
-  <li class="fix"><span class="num">Bug 4</span> — <b>IPC 注入路径不支持 mounts</b>：活跃 runner 跳过 mounts → hasTurnMounts 时强制冷启动</li>
-  <li class="fix"><span class="num">Bug 5</span> — <b>Agent 子对话无 ChatToolbar</b>：ChatView agent 分支不渲染 → 插入 ChatToolbar</li>
-  <li class="fix"><span class="num">Bug 6</span> — <b>sendAgentMessage 不传 selectedMounts</b>：WS 消息体不含 → 加参数</li>
-</ul>
+<h2>1. Bug 根因分析</h2>
 
-<h2>验收标准 (AC) 矩阵</h2>
+<div class="card">
+<h3>Bug 1（最关键）：getSkillContents 只查 DB，用户技能存在磁盘</h3>
+<p><strong>根因：</strong><code>applyTurnMounts()</code> 调用 <code>getSkillContents(ids)</code> 查询 DB <code>skills</code> 表，但用户创建的技能存储在磁盘 <code>SKILL.md</code> 文件中，不在 DB 里。只有 builtin 技能在 DB。</p>
+<p><strong>修复：</strong>新增 <code>getSkillContentsForTurn(ids, userId)</code> 函数，DB 查询未命中时从磁盘 <code>getSkillContentPath</code> 读取 <code>SKILL.md</code> 内容。</p>
+</div>
+
+<div class="card">
+<h3>Bug 2：WebSocket handler 丢弃 selectedMounts</h3>
+<p><strong>根因：</strong>WS <code>send_message</code> handler 构建校验对象时不含 <code>selectedMounts</code> 字段。</p>
+<p><strong>修复：</strong><code>safeParse</code> 加 <code>selectedMounts</code>，解构后传给两个 handler。</p>
+</div>
+
+<div class="card">
+<h3>Bug 3：handleAgentConversationMessage 不桥接 mounts</h3>
+<p><strong>根因：</strong>函数签名有 <code>selectedMounts</code> 参数但从不调用 <code>setPendingTurnMounts</code>，冷启动 <code>processAgentConversation</code> <code>popPendingTurnMounts</code> 永远返回 undefined。</p>
+<p><strong>修复：</strong>在 <code>storeMessageDirect</code> 后调 <code>deps.setPendingTurnMounts(messageId, opts.selectedMounts)</code>。</p>
+</div>
+
+<div class="card">
+<h3>Bug 4：IPC 注入路径不支持 per-turn mounts</h3>
+<p><strong>根因：</strong>当 agent 已活跃时，<code>queue.sendMessage</code> 只通过 stdin 注入文本，mounts 只在冷启动时通过 <code>ContainerInput</code> 应用。</p>
+<p><strong>修复：</strong>当 <code>hasTurnMounts</code> 为 true 时，跳过 IPC 注入（返回 <code>'no_active'</code>），走冷启动路径。<code>processAgentConversation</code> 从 DB 回放消息不丢失上下文。</p>
+</div>
+
+<div class="card">
+<h3>Bug 5：Agent 子对话无 ChatToolbar</h3>
+<p><strong>根因：</strong><code>ChatView.tsx</code> agent 子对话分支（780 行）只渲染 MessageList + MessageInput，无 ChatToolbar。</p>
+<p><strong>修复：</strong>在 MessageList 和 MessageInput 之间插入 ChatToolbar。</p>
+</div>
+
+<div class="card">
+<h3>Bug 6：sendAgentMessage 不传 selectedMounts</h3>
+<p><strong>根因：</strong><code>sendAgentMessage</code> 通过 WS 发送 <code>{ type, chatJid, content, agentId, attachments }</code>，不含 <code>selectedMounts</code>。</p>
+<p><strong>修复：</strong>加 <code>selectedMounts?</code> 参数，WS 消息体含 <code>selectedMounts</code>。ChatView agent 子对话 onSend 读 <code>useChatMountsStore</code> 传入。</p>
+</div>
+
+<h2>2. 验收用例</h2>
+
 <table>
-  <tr><th>AC</th><th>验收标准</th><th>验证方法</th><th>结果</th></tr>
-  <tr><td>AC1</td><td>主对话 ChatToolbar 存在，技能列表含 test-mount-skill</td><td>playwright 浏览器</td><td class="pass">✅ PASS</td></tr>
-  <tr><td>AC2</td><td>Agent 子对话有 ChatToolbar（技能/MCP/知识库三下拉）</td><td>playwright 浏览器</td><td class="pass">✅ PASS</td></tr>
-  <tr><td>AC3</td><td>主对话技能挂载到上下文</td><td>server log "skills injected"</td><td class="pass">✅ PASS</td></tr>
-  <tr><td>AC4</td><td>技能下拉搜索功能正常</td><td>playwright 输入 "test" 过滤</td><td class="pass">✅ PASS</td></tr>
-  <tr><td>AC5</td><td>Agent 子对话技能挂载到上下文</td><td>server log + agent 回复</td><td class="pass">✅ PASS</td></tr>
-  <tr><td>AC6</td><td>Agent 回复符合技能定义内容</td><td>"技能已加载成功！…"</td><td class="pass">✅ PASS</td></tr>
-  <tr><td>AC7</td><td>MCP 工具挂载（代码路径验证）</td><td>mcp_server mount 到 mounts 数组</td><td class="pass">✅ PASS</td></tr>
-  <tr><td>AC8</td><td>知识库挂载（代码路径验证）</td><td>knowledge_base mount 到 mounts 数组</td><td class="pass">✅ PASS</td></tr>
+<tr><th>#</th><th>用例</th><th>验证方法</th><th>结果</th></tr>
+<tr><td>AC1</td><td>磁盘技能注入 systemPrompt</td><td>POST /api/messages 带 selectedMounts.skills=["test-mount-skill"]（磁盘用户技能）→ 服务器日志</td><td class="pass">PASS</td></tr>
+<tr><td>AC2</td><td>Agent 子对话 ChatToolbar 渲染</td><td>playwright 打开 agent 子对话 → DOM 检测技能/MCP/KB 三个下拉</td><td class="pass">PASS</td></tr>
+<tr><td>AC3</td><td>Agent 子对话发消息带 mounts</td><td>localStorage 设 mounts → agent 子对话发消息 → 服务器日志 applyTurnMounts 触发</td><td class="pass">PASS</td></tr>
+<tr><td>AC4</td><td>IPC 注入路径强制冷启动</td><td>agent 活跃时选技能发消息 → hasTurnMounts 跳过 IPC → 冷启动 applyTurnMounts</td><td class="pass">PASS</td></tr>
+<tr><td>AC5</td><td>MCP server 挂载</td><td>POST /api/messages 带 mcpServers=["zhipu_web_search"] → 日志 mcpMounted=1</td><td class="pass">PASS</td></tr>
+<tr><td>AC6</td><td>知识库挂载</td><td>创建 KB → POST /api/messages 带 kbIds → 日志 kbMounted=1</td><td class="pass">PASS</td></tr>
+<tr><td>AC7</td><td>三合一挂载</td><td>同时选技能+MCP+KB → 日志 skillCount=1 + mcpMounted=1 + kbMounted=1 + totalMounts=2</td><td class="pass">PASS</td></tr>
+<tr><td>AC8</td><td>TypeScript 编译</td><td>前后端 tsc --noEmit exit 0</td><td class="pass">PASS</td></tr>
 </table>
 
-<h2>关键证据</h2>
+<h2>3. 日志证据</h2>
 
-<h3>AC5+AC6: Agent 子对话技能注入日志</h3>
-<div class="log">[21:26:53.347] INFO: applyTurnMounts: skills injected into systemPrompt
+<pre>
+// AC1: 磁盘技能注入（主对话）
+[2026-09-10 22:00:09.997] INFO: applyTurnMounts: skills injected into systemPrompt
     skillCount: 1
     skillIds: ["test-mount-skill"]
-[21:26:57.225] INFO: Agent output: 技能已加载成功！这是一个测试技能，用于验证挂载机制。
-    group: "测试: 资深 AI Agent 平台架构师"</div>
-<p>Agent 在子对话中选中 test-mount-skill 技能后发送"测试技能"，agent 回复了技能中定义的精确内容，证明：
-磁盘 SKILL.md → getSkillContentsForTurn 读取 → applyTurnMounts 注入 systemPrompt → agent 遵循技能指令回复。</p>
 
-<h3>AC1+AC2: ChatToolbar 浏览器验证</h3>
-<div class="screenshot">
-  <div class="cap">Agent 子对话 ChatToolbar（技能/MCP/知识库三下拉）</div>
-  <img src="screenshots/10-agent-tab-clicked.png" alt="Agent sub-conversation with ChatToolbar">
-</div>
-<div class="screenshot">
-  <div class="cap">技能下拉展开，test-mount-skill 可见</div>
-  <img src="screenshots/20-agent-skill-dropdown.png" alt="Skills dropdown in agent sub-conversation">
-</div>
-<div class="screenshot">
-  <div class="cap">选中技能后发送消息</div>
-  <img src="screenshots/23-agent-msg-sent.png" alt="Message sent with skill selected">
-</div>
-<div class="screenshot">
-  <div class="cap">主对话技能搜索过滤</div>
-  <img src="screenshots/06-skills-search.png" alt="Skills search filter">
+// AC3: Agent 子对话触发（证明 WS→handler→setPendingTurnMounts→冷启动 全链路通）
+[2026-09-10 21:28:34.378] INFO: applyTurnMounts: skills injected into systemPrompt
+    skillCount: 1
+    skillIds: ["test-mount-skill"]
+
+// AC5+AC6+AC7: 三合一挂载
+[2026-09-10 22:00:34.003] INFO: applyTurnMounts: skills injected into systemPrompt
+    skillCount: 1
+    skillIds: ["test-mount-skill"]
+[2026-09-10 22:00:34.003] INFO: applyTurnMounts: MCP/KB mounts appended
+    mcpMounted: 1
+    kbMounted: 1
+    totalMounts: 2
+</pre>
+
+<h2>4. 浏览器验证</h2>
+
+<div class="card">
+<p><strong>AC2 浏览器测试结果：</strong></p>
+<ul>
+<li>主对话 ChatToolbar：技能/MCP/KB 三个下拉均渲染 ✅</li>
+<li>Agent 子对话 ChatToolbar：技能=1, MCP=1, KB=2（修复前为 0，无 ChatToolbar）✅</li>
+</ul>
 </div>
 
-<h3>零回归: vitest 1694/1694</h3>
-<div class="log">Test Files  1 failed | 142 passed | 4 skipped (147)
-     Tests  1 failed | 1694 passed | 16 skipped (1711)
-  Duration  6.91s</div>
-<p>1 个失败为 feishu-card.test.ts 超时（pre-existing flaky test，与本次改动无关）。</p>
+<h2>5. 改动文件清单</h2>
 
-<h3>tsc 编译: 后端+前端 0 error</h3>
-<div class="log">Backend:  npx tsc --noEmit → EXIT_CODE=0
-Frontend: npx tsc --noEmit → EXIT_CODE=0</div>
-
-<h2>改动文件清单</h2>
 <table>
-  <tr><th>文件</th><th>改动</th></tr>
-  <tr><td>src/container-runner.ts</td><td>+getSkillContentsForTurn() 磁盘回退 + import</td></tr>
-  <tr><td>src/web.ts</td><td>WS safeParse 补传 selectedMounts + handleAgentConv 桥接 setPendingTurnMounts + hasTurnMounts 强制冷启动×2</td></tr>
-  <tr><td>web/src/components/chat/ChatView.tsx</td><td>Agent 子对话插入 ChatToolbar + onSend 读 mounts</td></tr>
-  <tr><td>web/src/stores/chat.ts</td><td>sendAgentMessage 加 selectedMounts 参数+传 WS</td></tr>
+<tr><th>文件</th><th>改动</th></tr>
+<tr><td><code>src/container-runner.ts</code></td><td>+getSkillContentsForTurn() 磁盘回退 + MCP/KB 日志 + import</td></tr>
+<tr><td><code>src/web.ts</code></td><td>WS handler 提取 selectedMounts + handleAgentConversationMessage 桥接 + hasTurnMounts 强制冷启动</td></tr>
+<tr><td><code>web/src/components/chat/ChatView.tsx</code></td><td>Agent 子对话加 ChatToolbar + onSend 读 mounts</td></tr>
+<tr><td><code>web/src/stores/chat.ts</code></td><td>sendAgentMessage 加 selectedMounts 参数 + WS 消息体</td></tr>
 </table>
 
 </div>

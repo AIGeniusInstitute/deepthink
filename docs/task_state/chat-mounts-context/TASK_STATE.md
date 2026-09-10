@@ -1,30 +1,26 @@
-# 任务状态: Agent 对话挂载上下文修复
+# TASK STATE: Agent 对话挂载上下文修复
 
-## 状态: 已完成全部编码和测试
+## 状态：全部完成
 
-### 已完成的改动（7 处）
+### 改动清单（7 处）
 
-| # | 改动 | 文件 | 状态 |
+| # | 文件 | 改动 | 状态 |
 |---|------|------|------|
-| 1 | getSkillContentsForTurn 磁盘回退 | container-runner.ts | ✅ |
-| 2 | Agent 子对话添加 ChatToolbar | ChatView.tsx | ✅ |
-| 3 | sendAgentMessage 传 selectedMounts | chat.ts (store 接口+实现) | ✅ |
-| 4 | ChatView agent onSend 读 mounts | ChatView.tsx | ✅ |
-| 5 | WS handler 提取 selectedMounts | web.ts | ✅ |
-| 6 | handleAgentConversationMessage 桥接 mounts | web.ts | ✅ |
-| 7 | IPC 注入路径强制冷启动 | web.ts (两处) | ✅ |
+| 1 | `src/container-runner.ts` | 新增 `getSkillContentsForTurn()` 磁盘回退 + import `getSkillContentPath`/`parseFrontmatter` | ✅ |
+| 2 | `src/container-runner.ts` | `applyTurnMounts` 调用改 `getSkillContentsForTurn` + MCP/KB 日志 | ✅ |
+| 3 | `web/src/components/chat/ChatView.tsx` | Agent 子对话添加 ChatToolbar + onSend 读 mounts | ✅ |
+| 4 | `web/src/stores/chat.ts` | `sendAgentMessage` 加 `selectedMounts` 参数 + WS 消息体 | ✅ |
+| 5 | `src/web.ts` | WS handler 提取 `selectedMounts` 传给两个 handler | ✅ |
+| 6 | `src/web.ts` | `handleAgentConversationMessage` 调 `setPendingTurnMounts` | ✅ |
+| 7 | `src/web.ts` | 两条路径 `hasTurnMounts` 时强制冷启动 | ✅ |
 
 ### 验证结果
 
-| AC | 验收标准 | 结果 |
-|----|---------|------|
-| AC1 | 主对话 ChatToolbar 存在，技能列表含 test-mount-skill | ✅ PASS |
-| AC2 | Agent 子对话有 ChatToolbar（技能/MCP/知识库） | ✅ PASS |
-| AC3 | 主对话技能挂载到上下文（日志 "skills injected"） | ✅ PASS |
-| AC4 | 技能下拉搜索功能正常 | ✅ PASS |
-| AC5 | Agent 子对话技能挂载到上下文 | ✅ PASS |
-| AC6 | Agent 回复符合技能定义内容 | ✅ PASS |
-| AC7 | MCP 工具挂载（代码路径已验证） | ✅ PASS |
-| AC8 | 知识库挂载（代码路径已验证，无 KB 数据） | ✅ PASS |
-| 零回归 | 1694/1694 vitest 通过 | ✅ PASS |
-| tsc | 后端+前端 0 error | ✅ PASS |
+- 后端 tsc: 0 error 0 warning ✅
+- 前端 tsc: 0 error ✅
+- Bug 1 验证: 日志 `skills injected` skillCount=1 skillIds=["test-mount-skill"] ✅
+- Bug 5 验证: 浏览器确认 agent 子对话有 ChatToolbar (技能/MCP/KB 三个下拉) ✅
+- Bug 2/3/4/6 验证: agent 子对话发消息触发 `applyTurnMounts` ✅
+- MCP 验证: 日志 `MCP/KB mounts appended` mcpMounted=1 ✅
+- KB 验证: 日志 `MCP/KB mounts appended` kbMounted=1 ✅
+- 三合一验证: skillCount=1 + mcpMounted=1 + kbMounted=1 + totalMounts=2 ✅

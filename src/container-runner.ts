@@ -1321,6 +1321,14 @@ function applyTurnMounts(
       }
     }
   }
+  const mcpMounted = base.mounts.filter((m) => m.resourceType === 'mcp_server').length;
+  const kbMounted = base.mounts.filter((m) => m.resourceType === 'knowledge_base').length;
+  if (mcpMounted > 0 || kbMounted > 0) {
+    logger.info(
+      { mcpMounted, kbMounted, totalMounts: base.mounts.length },
+      'applyTurnMounts: MCP/KB mounts appended',
+    );
+  }
 
   return base;
 }
