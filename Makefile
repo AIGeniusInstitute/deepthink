@@ -321,6 +321,7 @@ _stop-port: ## (内部) 按端口停止：SIGTERM -> 验证 -> SIGKILL 升级
 # 用法：make stop-prod PORT=9999
 stop-prod: ## 停止指定端口的隔离实例（PORT 必填，写停止标记后杀端口监听进程，不自动重启）
 	@if [ "$(origin PORT)" != "command line" ]; then echo "❌ 用法: make stop-prod PORT=9999"; exit 1; fi
+	@mkdir -p "$(CURDIR)/logs"
 	@touch "$(CURDIR)/logs/deepthink-$(PORT).stop"
 	@$(MAKE) --no-print-directory _stop-port PORT=$(PORT)
 
