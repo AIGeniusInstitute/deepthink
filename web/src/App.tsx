@@ -36,6 +36,9 @@ const SandboxPage = lazy(() => import('./pages/SandboxPage').then(m => ({ defaul
 const EnginesPage = lazy(() => import('./pages/EnginesPage').then(m => ({ default: m.EnginesPage })));
 const ToolsOverviewPage = lazy(() => import('./pages/ToolsOverviewPage').then(m => ({ default: m.ToolsOverviewPage })));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
+const StaffEmployeesPage = lazy(() => import('./pages/StaffEmployeesPage').then(m => ({ default: m.StaffEmployeesPage })));
+const StaffTeamsPage = lazy(() => import('./pages/StaffTeamsPage').then(m => ({ default: m.StaffTeamsPage })));
+const StaffTeamDetailPage = lazy(() => import('./pages/StaffTeamDetailPage').then(m => ({ default: m.StaffTeamDetailPage })));
 
 export function App() {
   const Router = shouldUseHashRouter() ? HashRouter : BrowserRouter;
@@ -102,6 +105,9 @@ export function App() {
           <Route path="/sandbox" element={<Suspense fallback={null}><SandboxPage /></Suspense>} />
           <Route path="/engines" element={<Suspense fallback={null}><EnginesPage /></Suspense>} />
           <Route path="/tools" element={<Suspense fallback={null}><ToolsOverviewPage /></Suspense>} />
+          <Route path="/staff-employees" element={<Suspense fallback={null}><StaffEmployeesPage /></Suspense>} />
+          <Route path="/staff-teams" element={<Suspense fallback={null}><StaffTeamsPage /></Suspense>} />
+          <Route path="/staff-teams/:id" element={<Suspense fallback={null}><StaffTeamDetailPage /></Suspense>} />
           <Route path="/settings" element={<Suspense fallback={null}><SettingsPage /></Suspense>} />
           <Route
             path="/users"

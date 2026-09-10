@@ -2550,6 +2550,95 @@ export function initDatabase(): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_artifacts_group ON workspace_artifacts(group_folder, created_at DESC);
+
+    -- v62: 企业数字员工多人协作工作台 — 6 表
+    -- sw_employees: 数字员工元数据（角色/部门/人设/模型/技能/KB/工具绑定）
+    -- sw_teams: 持久化团队（区别于一次性 collaborations graph run）
+    -- sw_members: 团队成员（leader/member）
+    -- sw_tasks: 任务状态机（pending→in_progress→review→done/rework）
+    -- sw_blackboard: 团队共享黑板（知识沉淀）
+    -- sw_events: 审计日志（INSERT-only）
+    CREATE TABLE IF NOT EXISTS sw_employees (
+      id TEXT PRIMARY KEY,
+      owner_user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT '',
+      department TEXT NOT NULL DEFAULT '',
+      avatar_emoji TEXT NOT NULL DEFAULT '🤖',
+      persona_prompt TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      skills_json TEXT NOT NULL DEFAULT '[]',
+      knowledge_bases_json TEXT NOT NULL DEFAULT '[]',
+      tools_json TEXT NOT NULL DEFAULT '[]',
+      agent_definition_id TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_staff_emp_owner ON sw_employees(owner_user_id);
+    CREATE INDEX IF NOT EXISTS idx_staff_emp_status ON sw_employees(status);
+
+    CREATE TABLE IF NOT EXISTS sw_teams (
+      id TEXT PRIMARY KEY,
+      owner_user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_staff_team_owner ON sw_teams(owner_user_id);
+
+    CREATE TABLE IF NOT EXISTS sw_members (
+      team_id TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      added_at TEXT NOT NULL,
+      added_by TEXT NOT NULL,
+      PRIMARY KEY (team_id, employee_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS sw_tasks (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      assignee_employee_id TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      priority TEXT NOT NULL DEFAULT 'medium',
+      parent_task_id TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_staff_task_team ON sw_tasks(team_id);
+    CREATE INDEX IF NOT EXISTS idx_staff_task_status ON sw_tasks(status);
+
+    CREATE TABLE IF NOT EXISTS sw_blackboard (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      tags_json TEXT NOT NULL DEFAULT '[]',
+      source_employee_id TEXT,
+      source_task_id TEXT,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      archived INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_staff_bb_team ON sw_blackboard(team_id, archived);
+
+    CREATE TABLE IF NOT EXISTS sw_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      team_id TEXT NOT NULL,
+      task_id TEXT,
+      employee_id TEXT,
+      event_type TEXT NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      actor_user_id TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_staff_evt_team ON sw_events(team_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_staff_evt_task ON sw_events(task_id, created_at DESC);
   `);
 
   // PostgreSQL: FK constraints are stripped at CREATE TABLE time by
@@ -2567,7 +2656,7 @@ export function initDatabase(): void {
     }
   }
 
-  const SCHEMA_VERSION = '61';
+  const SCHEMA_VERSION = '63';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -12273,4 +12362,329 @@ export function listToolCallAuditLog(opts: {
       .get(...params) as { c: number }
   ).c;
   return { rows, total };
+}
+
+// ============================================================
+// v62: 企业数字员工多人协作工作台 — CRUD
+// ============================================================
+
+// --- Staff Employees ---
+
+export interface StaffEmployeeRow {
+  id: string;
+  owner_user_id: string;
+  name: string;
+  role: string;
+  department: string;
+  avatar_emoji: string;
+  persona_prompt: string;
+  model: string;
+  skills_json: string;
+  knowledge_bases_json: string;
+  tools_json: string;
+  agent_definition_id: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function createStaffEmployee(input: {
+  ownerUserId: string;
+  name: string;
+  role: string;
+  department?: string;
+  avatarEmoji?: string;
+  personaPrompt?: string;
+  model?: string;
+  skillsJson?: string;
+  knowledgeBasesJson?: string;
+  toolsJson?: string;
+  agentDefinitionId?: string;
+}): string {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO sw_employees
+      (id, owner_user_id, name, role, department, avatar_emoji, persona_prompt, model,
+       skills_json, knowledge_bases_json, tools_json, agent_definition_id, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+  ).run(
+    id, input.ownerUserId, input.name, input.role,
+    input.department ?? '', input.avatarEmoji ?? '🤖', input.personaPrompt ?? '',
+    input.model ?? '', input.skillsJson ?? '[]', input.knowledgeBasesJson ?? '[]',
+    input.toolsJson ?? '[]', input.agentDefinitionId ?? null, now, now,
+  );
+  return id;
+}
+
+export function getStaffEmployee(id: string): StaffEmployeeRow | undefined {
+  return db.prepare('SELECT * FROM sw_employees WHERE id = ?').get(id) as StaffEmployeeRow | undefined;
+}
+
+export function listStaffEmployees(ownerUserId: string, includeInactive: boolean): StaffEmployeeRow[] {
+  const sql = includeInactive
+    ? 'SELECT * FROM sw_employees WHERE owner_user_id = ? ORDER BY created_at DESC'
+    : 'SELECT * FROM sw_employees WHERE owner_user_id = ? AND status = \'active\' ORDER BY created_at DESC';
+  return db.prepare(sql).all(ownerUserId) as StaffEmployeeRow[];
+}
+
+export function updateStaffEmployee(id: string, fields: Partial<{
+  name: string; role: string; department: string; avatar_emoji: string;
+  persona_prompt: string; model: string; skills_json: string;
+  knowledge_bases_json: string; tools_json: string; agent_definition_id: string | null;
+  status: string;
+}>): void {
+  const allowed = ['name', 'role', 'department', 'avatar_emoji', 'persona_prompt',
+    'model', 'skills_json', 'knowledge_bases_json', 'tools_json', 'agent_definition_id', 'status'];
+  const sets: string[] = [];
+  const params: (string | null)[] = [];
+  for (const [k, v] of Object.entries(fields)) {
+    if (allowed.includes(k)) { sets.push(`${k} = ?`); params.push(v ?? null); }
+  }
+  if (sets.length === 0) return;
+  sets.push('updated_at = ?');
+  params.push(new Date().toISOString());
+  params.push(id);
+  db.prepare(`UPDATE sw_employees SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+}
+
+export function softDeleteStaffEmployee(id: string): void {
+  db.prepare('UPDATE sw_employees SET status = \'inactive\', updated_at = ? WHERE id = ?')
+    .run(new Date().toISOString(), id);
+}
+
+// --- Staff Teams ---
+
+export interface StaffTeamRow {
+  id: string;
+  owner_user_id: string;
+  name: string;
+  description: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function createStaffTeam(input: {
+  ownerUserId: string; name: string; description?: string;
+}): string {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO sw_teams (id, owner_user_id, name, description, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'active', ?, ?)`,
+  ).run(id, input.ownerUserId, input.name, input.description ?? '', now, now);
+  return id;
+}
+
+export function getStaffTeam(id: string): StaffTeamRow | undefined {
+  return db.prepare('SELECT * FROM sw_teams WHERE id = ?').get(id) as StaffTeamRow | undefined;
+}
+
+export function listStaffTeams(ownerUserId: string): StaffTeamRow[] {
+  return db.prepare('SELECT * FROM sw_teams WHERE owner_user_id = ? AND status = \'active\' ORDER BY created_at DESC')
+    .all(ownerUserId) as StaffTeamRow[];
+}
+
+export function updateStaffTeam(id: string, fields: Partial<{ name: string; description: string }>): void {
+  const sets: string[] = [];
+  const params: string[] = [];
+  if (fields.name !== undefined) { sets.push('name = ?'); params.push(fields.name); }
+  if (fields.description !== undefined) { sets.push('description = ?'); params.push(fields.description); }
+  if (sets.length === 0) return;
+  sets.push('updated_at = ?');
+  params.push(new Date().toISOString());
+  params.push(id);
+  db.prepare(`UPDATE sw_teams SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+}
+
+export function deleteStaffTeam(id: string): void {
+  db.prepare('DELETE FROM sw_blackboard WHERE team_id = ?').run(id);
+  db.prepare('DELETE FROM sw_events WHERE team_id = ?').run(id);
+  db.prepare('DELETE FROM sw_tasks WHERE team_id = ?').run(id);
+  db.prepare('DELETE FROM sw_members WHERE team_id = ?').run(id);
+  db.prepare('DELETE FROM sw_teams WHERE id = ?').run(id);
+}
+
+// --- Staff Team Members ---
+
+export interface StaffTeamMemberRow {
+  team_id: string;
+  employee_id: string;
+  role: string;
+  added_at: string;
+  added_by: string;
+}
+
+export function addStaffTeamMember(input: {
+  teamId: string; employeeId: string; role: string; addedBy: string;
+}): void {
+  db.prepare(
+    'INSERT OR REPLACE INTO sw_members (team_id, employee_id, role, added_at, added_by) VALUES (?, ?, ?, ?, ?)',
+  ).run(input.teamId, input.employeeId, input.role, new Date().toISOString(), input.addedBy);
+}
+
+export function removeStaffTeamMember(teamId: string, employeeId: string): void {
+  db.prepare('DELETE FROM sw_members WHERE team_id = ? AND employee_id = ?').run(teamId, employeeId);
+}
+
+export function listStaffTeamMembers(teamId: string): StaffTeamMemberRow[] {
+  return db.prepare('SELECT * FROM sw_members WHERE team_id = ?').all(teamId) as StaffTeamMemberRow[];
+}
+
+// --- Staff Team Tasks ---
+
+export interface StaffTeamTaskRow {
+  id: string;
+  team_id: string;
+  title: string;
+  description: string;
+  assignee_employee_id: string | null;
+  status: string;
+  priority: string;
+  parent_task_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+const TASK_TRANSITIONS: Record<string, string[]> = {
+  pending: ['in_progress'],
+  in_progress: ['review'],
+  review: ['done', 'rework'],
+  rework: ['in_progress'],
+  done: [],
+};
+
+export function isValidTaskTransition(from: string, to: string): boolean {
+  return (TASK_TRANSITIONS[from] ?? []).includes(to);
+}
+
+export function createStaffTeamTask(input: {
+  teamId: string; title: string; description?: string;
+  assigneeEmployeeId?: string | null; priority?: string;
+  parentTaskId?: string | null; createdBy: string;
+}): string {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO sw_tasks
+      (id, team_id, title, description, assignee_employee_id, status, priority, parent_task_id, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`,
+  ).run(id, input.teamId, input.title, input.description ?? '',
+    input.assigneeEmployeeId ?? null, input.priority ?? 'medium',
+    input.parentTaskId ?? null, input.createdBy, now, now);
+  return id;
+}
+
+export function getStaffTeamTask(id: string): StaffTeamTaskRow | undefined {
+  return db.prepare('SELECT * FROM sw_tasks WHERE id = ?').get(id) as StaffTeamTaskRow | undefined;
+}
+
+export function listStaffTeamTasks(teamId: string): StaffTeamTaskRow[] {
+  return db.prepare('SELECT * FROM sw_tasks WHERE team_id = ? ORDER BY created_at DESC')
+    .all(teamId) as StaffTeamTaskRow[];
+}
+
+export function updateStaffTaskStatus(id: string, status: string): void {
+  db.prepare('UPDATE sw_tasks SET status = ?, updated_at = ? WHERE id = ?')
+    .run(status, new Date().toISOString(), id);
+}
+
+export function updateStaffTask(id: string, fields: Partial<{
+  title: string; description: string; assignee_employee_id: string | null;
+  priority: string; parent_task_id: string | null;
+}>): void {
+  const allowed = ['title', 'description', 'assignee_employee_id', 'priority', 'parent_task_id'];
+  const sets: string[] = [];
+  const params: (string | null)[] = [];
+  for (const [k, v] of Object.entries(fields)) {
+    if (allowed.includes(k)) { sets.push(`${k} = ?`); params.push(v ?? null); }
+  }
+  if (sets.length === 0) return;
+  sets.push('updated_at = ?');
+  params.push(new Date().toISOString());
+  params.push(id);
+  db.prepare(`UPDATE sw_tasks SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+}
+
+// --- Staff Team Blackboard ---
+
+export interface StaffBlackboardRow {
+  id: string;
+  team_id: string;
+  content: string;
+  tags_json: string;
+  source_employee_id: string | null;
+  source_task_id: string | null;
+  pinned: number;
+  archived: number;
+  created_at: string;
+}
+
+export function createStaffBlackboardEntry(input: {
+  teamId: string; content: string; tagsJson?: string;
+  sourceEmployeeId?: string | null; sourceTaskId?: string | null;
+}): string {
+  const id = crypto.randomUUID();
+  db.prepare(
+    `INSERT INTO sw_blackboard (id, team_id, content, tags_json, source_employee_id, source_task_id, pinned, archived, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+  ).run(id, input.teamId, input.content, input.tagsJson ?? '[]',
+    input.sourceEmployeeId ?? null, input.sourceTaskId ?? null, new Date().toISOString());
+  return id;
+}
+
+export function listStaffBlackboard(teamId: string, includeArchived: boolean): StaffBlackboardRow[] {
+  const sql = includeArchived
+    ? 'SELECT * FROM sw_blackboard WHERE team_id = ? ORDER BY pinned DESC, created_at DESC'
+    : 'SELECT * FROM sw_blackboard WHERE team_id = ? AND archived = 0 ORDER BY pinned DESC, created_at DESC';
+  return db.prepare(sql).all(teamId) as StaffBlackboardRow[];
+}
+
+export function updateStaffBlackboardEntry(id: string, fields: Partial<{
+  pinned: number; archived: number; content: string;
+}>): void {
+  const sets: string[] = [];
+  const params: (string | number)[] = [];
+  if (fields.pinned !== undefined) { sets.push('pinned = ?'); params.push(fields.pinned); }
+  if (fields.archived !== undefined) { sets.push('archived = ?'); params.push(fields.archived); }
+  if (fields.content !== undefined) { sets.push('content = ?'); params.push(fields.content); }
+  if (sets.length === 0) return;
+  params.push(id);
+  db.prepare(`UPDATE sw_blackboard SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+}
+
+// --- Staff Team Events (INSERT-only audit log) ---
+
+export interface StaffTeamEventRow {
+  id: number;
+  team_id: string;
+  task_id: string | null;
+  employee_id: string | null;
+  event_type: string;
+  payload_json: string;
+  actor_user_id: string;
+  created_at: string;
+}
+
+export function addStaffTeamEvent(input: {
+  teamId: string; taskId?: string | null; employeeId?: string | null;
+  eventType: string; payloadJson?: string; actorUserId: string;
+}): void {
+  db.prepare(
+    `INSERT INTO sw_events (team_id, task_id, employee_id, event_type, payload_json, actor_user_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(input.teamId, input.taskId ?? null, input.employeeId ?? null,
+    input.eventType, input.payloadJson ?? '{}', input.actorUserId, new Date().toISOString());
+}
+
+export function listStaffTeamEvents(teamId: string, limit: number = 50): StaffTeamEventRow[] {
+  return db.prepare('SELECT * FROM sw_events WHERE team_id = ? ORDER BY created_at DESC LIMIT ?')
+    .all(teamId, limit) as StaffTeamEventRow[];
+}
+
+export function listStaffTaskEvents(taskId: string): StaffTeamEventRow[] {
+  return db.prepare('SELECT * FROM sw_events WHERE task_id = ? ORDER BY created_at ASC')
+    .all(taskId) as StaffTeamEventRow[];
 }

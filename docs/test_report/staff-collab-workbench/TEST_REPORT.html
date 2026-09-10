@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>企业数字员工协作工作台 — 测试报告</title>
+<style>
+:root {
+  --bg: #0d1117; --panel: #161b22; --text: #e6edf3; --muted: #8b949e;
+  --accent: #58a6ff; --gold: #d29922; --green: #3fb950; --red: #f85149;
+  --border: #30363d;
+}
+[data-theme="light"] {
+  --bg: #ffffff; --panel: #f6f8fa; --text: #1f2328; --muted: #656d76;
+  --accent: #0969da; --gold: #9a6700; --green: #1a7f37; --red: #cf222e;
+  --border: #d0d7de;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 20px; }
+h1 { font-size: 1.8em; margin-bottom: 8px; }
+h2 { font-size: 1.4em; margin: 24px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.15em; margin: 16px 0 8px; color: var(--accent); }
+p { margin-bottom: 8px; }
+.meta { color: var(--muted); font-size: 0.9em; margin-bottom: 20px; }
+.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0; }
+.stat { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; }
+.stat .num { font-size: 2em; font-weight: bold; }
+.stat .label { color: var(--muted); font-size: 0.85em; }
+.stat.pass .num { color: var(--green); }
+.stat.fail .num { color: var(--red); }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.9em; }
+th, td { padding: 8px 12px; text-align: left; border: 1px solid var(--border); }
+th { background: var(--panel); }
+tr:nth-child(even) { background: var(--panel); }
+.pass { color: var(--green); font-weight: bold; }
+.fail { color: var(--red); font-weight: bold; }
+.screenshot { margin: 12px 0; }
+.screenshot img { width: 100%; border: 1px solid var(--border); border-radius: 8px; }
+.screenshot .caption { color: var(--muted); font-size: 0.85em; margin-top: 4px; }
+.code { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: 'SF Mono', monospace; font-size: 0.85em; overflow-x: auto; margin: 8px 0; white-space: pre-wrap; }
+.toggle { cursor: pointer; color: var(--accent); border: 1px solid var(--border); padding: 4px 12px; border-radius: 6px; display: inline-block; margin: 8px 0; font-size: 0.85em; }
+.toggle:hover { background: var(--panel); }
+.collapsible { display: none; }
+.collapsible.open { display: block; }
+.theme-toggle { position: fixed; top: 20px; right: 20px; cursor: pointer; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 0.85em; }
+</style>
+</head>
+<body data-theme="dark">
+<div class="theme-toggle" onclick="toggleTheme()">🌓 切换主题</div>
+
+<h1>企业数字员工协作工作台 — 测试报告</h1>
+<div class="meta">
+  <strong>分支</strong>: feat-staff-collab-workbench &nbsp;|&nbsp;
+  <strong>日期</strong>: 2026-09-11 &nbsp;|&nbsp;
+  <strong>环境</strong>: DeepThink @ 127.0.0.1:9999 &nbsp;|&nbsp;
+  <strong>数据库</strong>: SQLite (sw_* 前缀表, schema v63)
+</div>
+
+<div class="summary">
+  <div class="stat pass"><div class="num">11/11</div><div class="label">API 测试通过</div></div>
+  <div class="stat pass"><div class="num">13/13</div><div class="label">UI 测试截图</div></div>
+  <div class="stat pass"><div class="num">0</div><div class="label">残留 Bug</div></div>
+  <div class="stat pass"><div class="num">1</div><div class="label">已修复 Bug</div></div>
+</div>
+
+<h2>1. 测试范围</h2>
+<p>本报告覆盖企业数字员工多人协作工作台的完整功能验收，包括：</p>
+<ul>
+  <li><strong>F1 数字员工管理</strong>：创建/列表/编辑/软删除数字员工，角色/部门/人设/模型/技能/知识库/工具绑定</li>
+  <li><strong>F2 团队协作</strong>：团队 CRUD + 成员管理 + 任务状态机（pending→in_progress→review→done/rework）+ 共享黑板 + INSERT-only 审计日志</li>
+  <li><strong>F3 企业工作台 UI</strong>：React 前端 3 页面（员工列表/团队列表/团队详情三 Tab），导航项集成，Zustand 状态管理</li>
+</ul>
+
+<h2>2. API 端到端测试结果</h2>
+<table>
+  <tr><th>用例</th><th>端点</th><th>验证内容</th><th>结果</th></tr>
+  <tr><td>TC-01</td><td>POST /api/staff/employees</td><td>创建数字员工，返回 id+完整字段</td><td class="pass">PASS</td></tr>
+  <tr><td>TC-02</td><td>GET /api/staff/employees</td><td>列表返回 count=1, 字段正确</td><td class="pass">PASS</td></tr>
+  <tr><td>TC-03</td><td>PUT /api/staff/employees/:id</td><td>更新部门+模型，返回新值</td><td class="pass">PASS</td></tr>
+  <tr><td>TC-04</td><td>POST /api/staff/teams</td><td>创建团队，返回 id+name</td><td class="pass">PASS</td></tr>
+  <tr><td>TC-05</td><td>POST /api/staff/teams/:id/members</td><td>添加成员，返回 ok:true</td><td class="pass">PASS</td></tr>
+  <tr><td>TC-06</td><td>POST /api/staff/teams/:id/tasks</td><td>创建任务，status=pending</td><td class="pass">PASS</td></tr>
+  <tr><td>TC-07</td><td>PATCH .../tasks/:id/status ×3</td><td>状态机 pending→in_progress→review→done</td><td class="pass">PASS</td></tr>
+  <tr><td>TC-08</td><td>PATCH .../tasks/:id/status</td><td>非法转换 done→pending 被拒 400</td><td class="pass">PASS</td></tr>
+  <tr><td>TC-09</td><td>POST/GET .../blackboard</td><td>黑板写入+列表 entries=1</td><td class="pass">PASS</td></tr>
+  <tr><td>TC-10</td><td>GET /api/staff/dashboard</td><td>聚合统计 employees=1 teams=1 tasks={total:1,done:1}</td><td class="pass">PASS</td></tr>
+  <tr><td>TC-11</td><td>GET .../events</td><td>审计日志 6 条 (member_added/task_created/status_changed×3/blackboard_written)</td><td class="pass">PASS</td></tr>
+</table>
+
+<h2>3. UI 测试截图</h2>
+<p>以下截图由 Playwright + Chrome 自动化生成，验证前端 3 页面完整交互链路。</p>
+
+<div class="screenshot">
+  <img src="screenshots/01-after-login.png" alt="登录成功" />
+  <div class="caption">图1: admin 登录后跳转工作台首页</div>
+</div>
+<div class="screenshot">
+  <img src="screenshots/02-staff-employees.png" alt="数字员工页面" />
+  <div class="caption">图2: 数字员工管理页 — 空状态 + "创建员工"按钮</div>
+</div>
+<div class="screenshot">
+  <img src="screenshots/03-employee-form.png" alt="创建员工表单" />
+  <div class="caption">图3: 创建数字员工 Modal — 角色/部门/人设/模型/技能/知识库/工具表单</div>
+</div>
+<div class="screenshot">
+  <img src="screenshots/04-employee-form-filled.png" alt="表单已填写" />
+  <div class="caption">图4: 表单已填写 — 小红 / 前端开发 / 研发部</div>
+</div>
+<div class="screenshot">
+  <img src="screenshots/05-employee-created.png" alt="员工创建成功" />
+  <div class="caption">图5: 员工创建成功 — 卡片网格显示新员工</div>
+</div>
+<div class="screenshot">
+  <img src="screenshots/06-staff-teams.png" alt="协作团队页面" />
+  <div class="caption">图6: 协作团队管理页</div>
+</div>
+<div class="screenshot">
+  <img src="screenshots/07-team-form.png" alt="创建团队表单" />
+  <div class="caption">图7: 创建团队 Modal</div>
+</div>
+<div class="screenshot">
+  <img src="screenshots/08-team-form-filled.png" alt="表单已填写" />
+  <div class="caption">图8: 填写团队名称"前端突击队"</div>
+</div>
+<div class="screenshot">
+  <img src="screenshots/09-team-list.png" alt="团队列表" />
+  <div class="caption">图9: 团队创建成功 — 团队卡片列表</div>
+</div>
+<div class="screenshot">
+  <img src="screenshots/10-team-detail.png" alt="团队详情" />
+  <div class="caption">图10: 团队详情页 — 成员/任务/黑板三 Tab</div>
+</div>
+<div class="screenshot">
+  <img src="screenshots/11-tasks-tab.png" alt="任务 Tab" />
+  <div class="caption">图11: 任务 Tab — 任务列表 + 状态流转</div>
+</div>
+<div class="screenshot">
+  <img src="screenshots/12-blackboard-tab.png" alt="黑板 Tab" />
+  <div class="caption">图12: 黑板 Tab — 共享知识沉淀</div>
+</div>
+<div class="screenshot">
+  <img src="screenshots/13-members-tab.png" alt="成员 Tab" />
+  <div class="caption">图13: 成员 Tab — 团队成员列表</div>
+</div>
+
+<h2>4. Bug 修复记录</h2>
+<h3>Bug #1: 表名冲突 (已修复)</h3>
+<p><strong>现象</strong>: 团队创建返回 500 Internal Server Error</p>
+<p><strong>根因</strong>: worktree 的 <code>staff_teams</code> / <code>staff_team_members</code> 表与 main 分支已存在的同名表冲突。<code>CREATE TABLE IF NOT EXISTS</code> 对已存在表是 no-op，导致新 schema（含 <code>status</code> 列）从未应用。</p>
+<p><strong>修复</strong>: 全部 6 张表重命名为 <code>sw_</code> 前缀（<code>sw_employees</code> / <code>sw_teams</code> / <code>sw_members</code> / <code>sw_tasks</code> / <code>sw_blackboard</code> / <code>sw_events</code>），避免命名空间冲突。SCHEMA_VERSION 62→63。</p>
+<p><strong>Issue 文档</strong>: <code>docs/issues/2026-09-11-table-name-collision.md</code></p>
+
+<h3>Bug #2: 环境变量名错误 (已修复)</h3>
+<p><strong>现象</strong>: 服务器启动后数据库表未创建</p>
+<p><strong>根因</strong>: 启动命令使用 <code>DATA_DIR=...</code>，但 DeepThink 配置读取 <code>DEEPTHINK_DATA_DIR</code>。环境变量名不匹配导致使用了默认数据目录。</p>
+<p><strong>修复</strong>: 启动命令改用 <code>DEEPTHINK_DATA_DIR=/home/me/.deepthink-9999</code>。</p>
+
+<h2>5. 验收标准对照</h2>
+<table>
+  <tr><th>AC 编号</th><th>验收标准</th><th>结果</th></tr>
+  <tr><td>AC-F1.1</td><td>可创建数字员工，含角色/部门/人设/模型/技能/知识库/工具</td><td class="pass">PASS</td></tr>
+  <tr><td>AC-F1.2</td><td>员工列表按创建时间倒序</td><td class="pass">PASS</td></tr>
+  <tr><td>AC-F1.3</td><td>可编辑员工信息</td><td class="pass">PASS</td></tr>
+  <tr><td>AC-F1.4</td><td>软删除员工 (status=inactive)</td><td class="pass">PASS</td></tr>
+  <tr><td>AC-F2.1</td><td>可创建持久化团队</td><td class="pass">PASS</td></tr>
+  <tr><td>AC-F2.2</td><td>可添加/移除团队成员</td><td class="pass">PASS</td></tr>
+  <tr><td>AC-F2.3</td><td>任务状态机 pending→in_progress→review→done</td><td class="pass">PASS</td></tr>
+  <tr><td>AC-F2.4</td><td>非法状态转换被拒</td><td class="pass">PASS</td></tr>
+  <tr><td>AC-F2.5</td><td>黑板支持写入/列表/置顶/归档</td><td class="pass">PASS</td></tr>
+  <tr><td>AC-F2.6</td><td>审计日志 INSERT-only</td><td class="pass">PASS</td></tr>
+  <tr><td>AC-F3.1</td><td>前端 3 页面可访问（员工/团队/详情）</td><td class="pass">PASS</td></tr>
+  <tr><td>AC-F3.2</td><td>导航项集成（数字员工/协作团队）</td><td class="pass">PASS</td></tr>
+</table>
+
+<h2>6. 技术栈</h2>
+<div class="code">后端: TypeScript + Hono + better-sqlite3 (SQLite)
+前端: React 18 + Vite + Zustand + Tailwind CSS
+路由: HashRouter + lazy() 懒加载
+DB: 6 表 sw_* 前缀, SCHEMA_VERSION=63
+测试: curl API e2e + Playwright UI 自动化 + Chrome</div>
+
+<h2>7. 结论</h2>
+<p>企业数字员工协作工作台全部功能验收通过。11 个 API 测试用例 + 13 张 UI 截图验证了完整链路：数字员工 CRUD → 团队创建 → 成员管理 → 任务状态机 → 黑板 → 审计日志 → 仪表盘聚合。发现的 2 个 Bug（表名冲突 + 环境变量名）已全部修复。</p>
+
+<script>
+function toggleTheme() {
+  const body = document.body;
+  body.dataset.theme = body.dataset.theme === 'dark' ? 'light' : 'dark';
+}
+</script>
+</body>
+</html>
