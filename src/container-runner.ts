@@ -63,6 +63,8 @@ import { DEFAULT_LANGUAGE } from './i18n-languages.js';
 import { isApiError } from './agent-output-parser.js';
 import type { ClaudeProviderConfig } from './runtime-config.js';
 import { loadUserMcpServers } from './mcp-utils.js';
+import { getSkillContentPath } from './skill-content-utils.js';
+import { parseFrontmatter } from './skill-utils.js';
 import {
   getUserRuntimeRoot,
   loadUserPlugins,
@@ -1193,10 +1195,38 @@ function loadGroupAgentDefinition(
 }
 
 /**
+ * Fetch skill contents for per-turn mount injection. Falls back to disk
+ * (SKILL.md files) for user/project skills that are NOT stored in the DB
+ * `skills` table (only builtin skills live there).
+ */
+function getSkillContentsForTurn(
+  ids: string[],
+  userId?: string,
+): Array<{ id: string; name: string; content: string }> {
+  const dbRows = getSkillContents(ids);
+  const found = new Set(dbRows.map((r) => r.id));
+  const missing = ids.filter((id) => !found.has(id));
+  if (missing.length === 0 || !userId) return dbRows;
+  for (const id of missing) {
+    const skillPath = getSkillContentPath(userId, id);
+    if (skillPath && fs.existsSync(skillPath)) {
+      try {
+        const content = fs.readFileSync(skillPath, 'utf-8');
+        const frontmatter = parseFrontmatter(content);
+        dbRows.push({ id, name: frontmatter.name || id, content });
+      } catch {
+        // ignore read errors
+      }
+    }
+  }
+  return dbRows;
+}
+
+/**
  * Merge per-turn mounts (selected in the web chat dropdowns) into the agent
  * definition for a single cold-start turn.
  *
- * - Skills: DB-stored content (no disk SKILL.md in container) → append to
+ * - Skills: DB-stored content + disk SKILL.md fallback → append to
  *   systemPrompt. This is the only viable path for DB-backed builtin office
  *   skills, since the agent-runner `skillsOption` whitelist needs on-disk
  *   SKILL.md files that don't exist in the container.
@@ -1226,7 +1256,7 @@ function applyTurnMounts(
 
   // Skills → systemPrompt content injection
   if (hasSkills && turnMounts.skills) {
-    const skillRows = getSkillContents(turnMounts.skills);
+    const skillRows = getSkillContentsForTurn(turnMounts.skills, ownerUserId);
     const pieces: string[] = [];
     for (const s of skillRows) {
       if (s.content && s.content.trim()) {

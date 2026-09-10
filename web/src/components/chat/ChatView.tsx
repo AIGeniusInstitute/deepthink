@@ -791,9 +791,20 @@ export function ChatView({ groupJid, onBack, headerLeft }: ChatViewProps) {
                 onInterrupt={agentStreaming[activeAgentTab]?.interrupted ? undefined : () => interruptQuery(`${groupJid}#agent:${activeAgentTab}`)}
                 agentId={activeAgentTab}
               />
+              <ChatToolbar
+                groupJid={groupJid}
+                onPickQuickSkill={(skillId, prompt) => {
+                  useChatMountsStore.getState().setSkills(groupJid, [skillId]);
+                  setPrefillSignal({ text: prompt, nonce: Date.now() });
+                }}
+              />
               <MessageInput
                 onSend={(content, attachments) => {
-                  const ok = sendAgentMessage(groupJid, activeAgentTab, content, attachments);
+                  const mounts = useChatMountsStore.getState().getMounts(groupJid);
+                  const selectedMounts = (mounts.skillIds.length || mounts.mcpIds.length || mounts.kbIds.length)
+                    ? { skills: mounts.skillIds.length ? mounts.skillIds : undefined, mcpServers: mounts.mcpIds.length ? mounts.mcpIds : undefined, kbIds: mounts.kbIds.length ? mounts.kbIds : undefined }
+                    : undefined;
+                  const ok = sendAgentMessage(groupJid, activeAgentTab, content, attachments, selectedMounts);
                   if (ok) setScrollTrigger(n => n + 1);
                   return ok;
                 }}

@@ -871,10 +871,20 @@ async function handleWebUserMessage(
   // IPC-inject the message into the running agent process.  For home groups,
   // the reply route is dynamically updated via activeRouteUpdaters so we no
   // longer need to kill and restart the process (#99).
+  // When per-turn mounts (skills/MCP/KB) are selected, bypass IPC inject and
+  // force cold-start so applyTurnMounts() can inject them into the agent
+  // definition. IPC inject can't apply per-turn mounts.
+  const hasTurnMounts = !!(
+    opts?.selectedMounts?.skills?.length ||
+    opts?.selectedMounts?.mcpServers?.length ||
+    opts?.selectedMounts?.kbIds?.length
+  );
   let pipedToActive = false;
   const images = toAgentImages(normalizedAttachments);
   const updateRoute = deps.updateReplyRoute;
-  const sendResult = deps.queue.sendMessage(
+  const sendResult = hasTurnMounts
+    ? 'no_active' as const
+    : deps.queue.sendMessage(
     chatJid,
     formatted,
     images,
@@ -991,8 +1001,13 @@ async function handleAgentConversationMessage(
     content,
     timestamp,
     false,
-    { attachments: attachmentsStr, meta: { autonomous: opts?.autonomous === true ? true : (opts?.autonomous === false || opts?.autonomous === null ? false : undefined) } },
+    { attachments: attachmentsStr, meta: { autonomous: opts?.autonomous === true ? true : (opts?.autonomous === false || opts?.autonomous === null ? false : undefined), selectedMounts: opts?.selectedMounts || undefined } },
   );
+  // Bridge per-turn mounts to the cold-start path (mirrors handleWebUserMessage).
+  // processAgentConversation pops via popPendingTurnMounts(lastProcessed.id).
+  if (opts?.selectedMounts) {
+    deps.setPendingTurnMounts?.(messageId, opts.selectedMounts);
+  }
   updateAgentContextInfo(agentId, { last_active_at: timestamp });
 
   // Auto-title: show a quick placeholder derived from the first user message.
@@ -1145,10 +1160,20 @@ async function handleAgentConversationMessage(
     shared,
   );
 
-  // Try to pipe into running agent process
+  // Try to pipe into running agent process.
+  // When per-turn mounts are selected, bypass IPC inject and force cold-start
+  // so applyTurnMounts() can inject skills/MCP/KB. IPC inject can't apply
+  // per-turn mounts (same limitation as `autonomous`).
+  const hasTurnMounts = !!(
+    opts?.selectedMounts?.skills?.length ||
+    opts?.selectedMounts?.mcpServers?.length ||
+    opts?.selectedMounts?.kbIds?.length
+  );
   const agentImages = toAgentImages(normalizedAttachments);
   const finalizeHeld = deps.finalizeHeldCard;
-  const agentSendResult = deps.queue.sendMessage(
+  const agentSendResult = hasTurnMounts
+    ? 'no_active' as const
+    : deps.queue.sendMessage(
     virtualChatJid,
     formatted,
     agentImages,
@@ -1484,6 +1509,7 @@ function setupWebSocket(server: any): WebSocketServer {
             content: msg.content,
             attachments: msg.attachments,
             autonomous: (msg as { autonomous?: boolean | null }).autonomous ?? undefined,
+            selectedMounts: (msg as { selectedMounts?: SelectedMounts }).selectedMounts ?? undefined,
           });
           if (!wsValidation.success) {
             sendWsError('消息格式无效', msg.chatJid);
@@ -1493,7 +1519,7 @@ function setupWebSocket(server: any): WebSocketServer {
             );
             return;
           }
-          const { chatJid, content, attachments, autonomous: wsAutonomous } = wsValidation.data;
+          const { chatJid, content, attachments, autonomous: wsAutonomous, selectedMounts: wsSelectedMounts } = wsValidation.data;
           const agentId = (msg as { agentId?: string }).agentId;
 
           // 群组访问权限检查
@@ -1646,7 +1672,7 @@ function setupWebSocket(server: any): WebSocketServer {
               session.user_id,
               session.display_name || session.username,
               attachments,
-              { autonomous: wsAutonomous ?? undefined },
+              { autonomous: wsAutonomous ?? undefined, selectedMounts: wsSelectedMounts ?? undefined },
             );
             return;
           }
@@ -1657,7 +1683,7 @@ function setupWebSocket(server: any): WebSocketServer {
             attachments,
             session.user_id,
             session.display_name || session.username,
-            { autonomous: wsAutonomous ?? undefined },
+            { autonomous: wsAutonomous ?? undefined, selectedMounts: wsSelectedMounts ?? undefined },
           );
           if (!result.ok) {
             logger.warn(
