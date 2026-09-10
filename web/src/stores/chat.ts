@@ -381,7 +381,7 @@ interface ChatState {
   renameConversation: (jid: string, agentId: string, name: string) => Promise<boolean>;
   loadAgentMessages: (jid: string, agentId: string, loadMore?: boolean) => Promise<void>;
   hydrateAgentMessages: (jid: string, agentId: string) => Promise<void>;
-  sendAgentMessage: (jid: string, agentId: string, content: string, attachments?: Array<{ data: string; mimeType: string }>) => boolean;
+  sendAgentMessage: (jid: string, agentId: string, content: string, attachments?: Array<{ data: string; mimeType: string }>, selectedMounts?: { skills?: string[]; mcpServers?: string[]; kbIds?: string[] }) => boolean;
   refreshAgentMessages: (jid: string, agentId: string) => Promise<void>;
   // Runner state sync
   handleRunnerState: (chatJid: string, state: string) => void;
@@ -3039,14 +3039,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
   },
 
-  sendAgentMessage: (jid, agentId, content, attachments?) => {
+  sendAgentMessage: (jid: string, agentId: string, content: string, attachments?: Array<{ data: string; mimeType: string }>, selectedMounts?: { skills?: string[]; mcpServers?: string[]; kbIds?: string[] }) => {
     // Send via WebSocket with agentId.
     // NOTE: 先尝试 ws.send，成功后再清 agentStreaming / 置 agentWaiting，
     // 避免失败时 UI 进入"等待中但消息没发出"的不一致状态。
     const normalizedAttachments = attachments && attachments.length > 0
       ? attachments.map(att => ({ type: 'image' as const, ...att }))
       : undefined;
-    const sent = wsManager.send({ type: 'send_message', chatJid: jid, content, agentId, attachments: normalizedAttachments });
+    const wsMsg: Record<string, unknown> = { type: 'send_message', chatJid: jid, content, agentId, attachments: normalizedAttachments };
+    if (selectedMounts && (selectedMounts.skills?.length || selectedMounts.mcpServers?.length || selectedMounts.kbIds?.length)) {
+      wsMsg.selectedMounts = selectedMounts;
+    }
+    const sent = wsManager.send(wsMsg);
     if (!sent) {
       showToast('发送失败', 'WebSocket 未连接，输入已保留，请稍后重试');
       return false;
