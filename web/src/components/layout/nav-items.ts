@@ -1,7 +1,8 @@
-import { MessageCircle, Puzzle, User, BookOpen, Bot, Server, KeyRound, Users, Briefcase } from 'lucide-react';
+import { MessageCircle, Puzzle, User, BookOpen, Bot, Server, KeyRound, Users, Briefcase, FolderOpen } from 'lucide-react';
 
 export const baseNavItems = [
   { path: '/chat', icon: MessageCircle, label: '工作台' },
+  { path: '/disk', icon: FolderOpen, label: '网盘' },
   { path: '/agents', icon: Bot, label: 'Agent' },
   { path: '/skills', icon: Puzzle, label: 'Skill' },
   { path: '/mcp-servers', icon: Server, label: 'MCP' },

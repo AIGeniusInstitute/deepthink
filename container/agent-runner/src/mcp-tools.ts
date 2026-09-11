@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
 import { formatIsoLocal } from './utils.js';
+import { randomUUID } from 'crypto';
 
 /** Context required by MCP tools. Passed at construction time. */
 export interface McpContext {
@@ -299,6 +300,42 @@ export function buildSendMessageData(
 /**
  * Create all DeepThink MCP tool definitions for in-process SDK MCP server.
  */
+// ─── AgentNet Disk helpers（workspace 内安全路径解析 + 返回封装） ───
+function resolveDiskPath(
+  ctx: McpContext,
+  relPath: string,
+): { ok: true; path: string } | { ok: false; error: string } {
+  const root = ctx.workspaceGroup;
+  if (!relPath || relPath === '.' || relPath === '/') {
+    return { ok: true, path: root };
+  }
+  const safeRoot = root.endsWith(path.sep) ? root : root + path.sep;
+  const resolved = path.resolve(root, path.normalize(relPath));
+  if (resolved !== root && !resolved.startsWith(safeRoot)) {
+    return { ok: false, error: 'Path traversal detected' };
+  }
+  return { ok: true, path: resolved };
+}
+
+function diskOk(text: string) {
+  return { content: [{ type: 'text' as const, text }] };
+}
+function diskErr(text: string) {
+  return { content: [{ type: 'text' as const, text }], isError: true };
+}
+function isPrintable(buf: Buffer): boolean {
+  const sample = buf.subarray(0, Math.min(buf.length, 4096));
+  let nonText = 0;
+  for (const b of sample) {
+    if (b === 0) return false;
+    if (b < 0x09 || (b > 0x0d && b < 0x20 && b !== 0x1b)) nonText++;
+  }
+  return nonText / sample.length < 0.1;
+}
+function randomUUIDStr(): string {
+  return randomUUID();
+}
+
 export function createMcpTools(ctx: McpContext): SdkMcpToolDefinition<any>[] {
   // Capture the group folder for Redis IPC routing + kick off the Redis
   // bridge (idempotent). In non-distributed mode this is a no-op and the
@@ -1296,9 +1333,241 @@ Returns null if the current chat is a DM (DMs do not belong to a server). Only w
         }
       },
     ),
-  ];
 
-  // Skill 安装/卸载仅限主容器（与 memory_* 工具一致）
+    // ─── AgentNet Disk：网盘文件操作工具（直接 fs 操作 workspace） ───
+    // disk_list — 列出目录内容
+    tool(
+      'disk_list',
+      'List files and folders in the workspace disk. Returns name/path/type/size/modifiedAt for each entry.',
+      {
+        folder_id: z
+          .string()
+          .optional()
+          .describe('Directory relative path (empty = root)'),
+      },
+      async (args) => {
+        try {
+          const dir = (args.folder_id || '').trim();
+          const abs = resolveDiskPath(ctx, dir);
+          if (!abs.ok) return diskErr(abs.error!);
+          if (!fs.existsSync(abs.path!)) {
+            return diskOk('Directory empty or not found.');
+          }
+          const st = fs.statSync(abs.path!);
+          if (!st.isDirectory()) return diskErr('Path is not a directory');
+          const entries = fs.readdirSync(abs.path!, { withFileTypes: true });
+          const result = [];
+          for (const e of entries) {
+            if (e.name.startsWith('.') && (e.name === '.trash' || e.name === '.versions' || e.name === '.claude')) continue;
+            if (e.name === 'logs' || e.name === 'conversations' || e.name === 'node_modules' || e.name === '.git') continue;
+            const full = path.join(abs.path!, e.name);
+            try {
+              const s = fs.statSync(full);
+              result.push({
+                name: e.name,
+                path: path.join(dir, e.name),
+                type: s.isDirectory() ? 'directory' : 'file',
+                size: s.size,
+                modifiedAt: s.mtime.toISOString(),
+              });
+            } catch { /* skip */ }
+          }
+          result.sort((a, b) => (a.type !== b.type ? (a.type === 'directory' ? -1 : 1) : a.name.localeCompare(b.name)));
+          return diskOk(JSON.stringify(result, null, 2));
+        } catch (err: any) {
+          return diskErr(`disk_list failed: ${err.message}`);
+        }
+      },
+    ),
+
+    // disk_upload — 上传/保存文件内容
+    tool(
+      'disk_upload',
+      'Save content to a file in the workspace disk. Supports text content or base64-encoded binary (prefix with "base64:").',
+      {
+        folder_id: z.string().describe('Target directory relative path (empty = root)'),
+        file_name: z.string().describe('File name (no path separators)'),
+        content: z.string().describe('File content: text, or "base64:<data>" for binary'),
+      },
+      async (args) => {
+        try {
+          if (/[\\/:]/.test(args.file_name)) return diskErr('file_name must not contain path separators');
+          const dir = (args.folder_id || '').trim();
+          const absDir = resolveDiskPath(ctx, dir);
+          if (!absDir.ok) return diskErr(absDir.error!);
+          if (!fs.existsSync(absDir.path!)) fs.mkdirSync(absDir.path!, { recursive: true });
+          const target = path.join(absDir.path!, args.file_name);
+          const safeRoot = ctx.workspaceGroup.endsWith(path.sep) ? ctx.workspaceGroup : ctx.workspaceGroup + path.sep;
+          if (target !== ctx.workspaceGroup && !target.startsWith(safeRoot)) return diskErr('path outside workspace');
+          if (args.content.startsWith('base64:')) {
+            fs.writeFileSync(target, Buffer.from(args.content.slice(7), 'base64'));
+          } else {
+            fs.writeFileSync(target, args.content, 'utf-8');
+          }
+          return diskOk(`Saved ${args.file_name} (${Buffer.byteLength(args.content)} bytes input)`);
+        } catch (err: any) {
+          return diskErr(`disk_upload failed: ${err.message}`);
+        }
+      },
+    ),
+
+    // disk_download — 读取文件内容
+    tool(
+      'disk_download',
+      'Read file content from the workspace disk. Text files return content; binary files return base64.',
+      {
+        file_id: z.string().describe('File relative path'),
+      },
+      async (args) => {
+        try {
+          const abs = resolveDiskPath(ctx, args.file_id);
+          if (!abs.ok) return diskErr(abs.error!);
+          if (!fs.existsSync(abs.path!)) return diskErr('File not found');
+          const st = fs.statSync(abs.path!);
+          if (st.isDirectory()) return diskErr('Path is a directory');
+          if (st.size > 5 * 1024 * 1024) return diskErr('File too large (max 5MB for disk_download)');
+          const buf = fs.readFileSync(abs.path!);
+          const ext = path.extname(args.file_id).slice(1).toLowerCase();
+          const textExts = new Set(['txt', 'md', 'markdown', 'json', 'js', 'ts', 'jsx', 'tsx', 'css', 'html', 'htm', 'xml', 'py', 'go', 'rs', 'java', 'sh', 'yml', 'yaml', 'csv', 'tsv', 'log', 'sql', 'env', 'ini', 'toml']);
+          if (textExts.has(ext) || (st.size < 512 * 1024 && isPrintable(buf))) {
+            return diskOk(buf.toString('utf-8'));
+          }
+          return diskOk(`base64:${buf.toString('base64')}`);
+        } catch (err: any) {
+          return diskErr(`disk_download failed: ${err.message}`);
+        }
+      },
+    ),
+
+    // disk_create_folder — 创建文件夹
+    tool(
+      'disk_create_folder',
+      'Create a new folder in the workspace disk.',
+      {
+        parent_id: z.string().describe('Parent directory relative path (empty = root)'),
+        name: z.string().describe('Folder name (no path separators)'),
+      },
+      async (args) => {
+        try {
+          if (/[\\/:]/.test(args.name)) return diskErr('name must not contain path separators');
+          const parent = (args.parent_id || '').trim();
+          const absParent = resolveDiskPath(ctx, parent);
+          if (!absParent.ok) return diskErr(absParent.error!);
+          if (!fs.existsSync(absParent.path!)) fs.mkdirSync(absParent.path!, { recursive: true });
+          const target = path.join(absParent.path!, args.name);
+          if (fs.existsSync(target)) return diskErr('Folder already exists');
+          fs.mkdirSync(target, { recursive: true });
+          return diskOk(`Created folder ${args.name}`);
+        } catch (err: any) {
+          return diskErr(`disk_create_folder failed: ${err.message}`);
+        }
+      },
+    ),
+
+    // disk_search — 搜索文件
+    tool(
+      'disk_search',
+      'Search files in the workspace disk by filename keyword. Returns matching files with paths.',
+      {
+        keyword: z.string().describe('Search keyword (matches filename, case-insensitive)'),
+        file_type: z.string().optional().describe('Optional extension filter (e.g. "md", "pdf")'),
+      },
+      async (args) => {
+        try {
+          const q = (args.keyword || '').toLowerCase().trim();
+          if (!q) return diskOk('Empty keyword.');
+          const typeFilter = args.file_type ? args.file_type.toLowerCase().replace(/^\./, '') : null;
+          const results: Array<{ name: string; path: string; size: number; modifiedAt: string }> = [];
+          const skip = new Set(['logs', 'conversations', 'node_modules', '.git', '.claude', '.trash', '.versions']);
+          const walk = (dir: string, depth: number) => {
+            if (depth > 20 || results.length >= 200) return;
+            let entries: fs.Dirent[];
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+            for (const e of entries) {
+              if (results.length >= 200) return;
+              if (e.isSymbolicLink() || skip.has(e.name)) continue;
+              const full = path.join(dir, e.name);
+              const rel = path.relative(ctx.workspaceGroup, full);
+              if (e.name.toLowerCase().includes(q)) {
+                if (typeFilter && path.extname(e.name).slice(1).toLowerCase() !== typeFilter) {
+                  // still descend folders, skip this file
+                } else {
+                  try {
+                    const s = fs.statSync(full);
+                    if (s.isFile() || (s.isDirectory() && !typeFilter)) {
+                      results.push({ name: e.name, path: rel, size: s.size, modifiedAt: s.mtime.toISOString() });
+                    }
+                  } catch { /* skip */ }
+                }
+              }
+              if (e.isDirectory()) walk(full, depth + 1);
+            }
+          };
+          walk(ctx.workspaceGroup, 0);
+          results.sort((a, b) => a.name.localeCompare(b.name));
+          return diskOk(JSON.stringify(results, null, 2));
+        } catch (err: any) {
+          return diskErr(`disk_search failed: ${err.message}`);
+        }
+      },
+    ),
+
+    // disk_move — 移动文件/文件夹
+    tool(
+      'disk_move',
+      'Move a file or folder to another directory in the workspace disk.',
+      {
+        source: z.string().describe('Source relative path'),
+        target_dir: z.string().describe('Target directory relative path (empty = root)'),
+      },
+      async (args) => {
+        try {
+          const src = resolveDiskPath(ctx, args.source);
+          if (!src.ok) return diskErr(src.error!);
+          if (!fs.existsSync(src.path!)) return diskErr('Source not found');
+          const tDir = resolveDiskPath(ctx, args.target_dir || '');
+          if (!tDir.ok) return diskErr(tDir.error!);
+          if (!fs.existsSync(tDir.path!)) fs.mkdirSync(tDir.path!, { recursive: true });
+          const name = path.basename(src.path!);
+          const dest = path.join(tDir.path!, name);
+          if (fs.existsSync(dest)) return diskErr('File with same name already exists in target');
+          // prevent moving into own subdir
+          const rel = path.relative(path.resolve(src.path!), path.resolve(tDir.path!));
+          if (rel === '' || !rel.startsWith('..')) return diskErr('Cannot move into own subdirectory');
+          fs.renameSync(src.path!, dest);
+          return diskOk(`Moved ${name} to ${args.target_dir || 'root'}`);
+        } catch (err: any) {
+          return diskErr(`disk_move failed: ${err.message}`);
+        }
+      },
+    ),
+
+    // disk_delete — 删除（软删除到 .trash）
+    tool(
+      'disk_delete',
+      'Delete a file or folder from the workspace disk (moves to .trash, recoverable).',
+      {
+        file_id: z.string().describe('File or folder relative path'),
+      },
+      async (args) => {
+        try {
+          const abs = resolveDiskPath(ctx, args.file_id);
+          if (!abs.ok) return diskErr(abs.error!);
+          if (!fs.existsSync(abs.path!)) return diskErr('File not found');
+          const root = ctx.workspaceGroup;
+          if (path.resolve(abs.path!) === path.resolve(root)) return diskErr('Cannot delete root');
+          const trashRoot = path.join(root, '.trash');
+          const trashId = randomUUIDStr();
+          const trashDir = path.join(trashRoot, trashId);
+          fs.mkdirSync(trashDir, { recursive: true });
+          fs.renameSync(abs.path!, path.join(trashDir, path.basename(abs.path!)));
+          return diskOk(`Deleted ${args.file_id} (moved to trash, id=${trashId})`);
+        } catch (err: any) {
+          return diskErr(`disk_delete failed: ${err.message}`);
+        }
+      },
+    ),
+  ];
   if (ctx.isHome) {
     tools.push(
       // --- install_skill ---

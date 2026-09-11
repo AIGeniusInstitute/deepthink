@@ -20,7 +20,19 @@ import {
   getGroupStorageUsage,
   invalidateGroupStorageUsage,
   getFileRoot,
+  moveToTrash,
+  purgeTrashItem,
+  emptyTrash,
+  restoreFromTrash,
+  saveVersionSnapshot,
+  pruneVersionSnapshots,
+  searchFiles,
+  moveFile,
+  renameFile,
+  readVersionContent,
 } from '../file-manager.js';
+import { getDb } from '../db.js';
+import { randomUUID } from 'node:crypto';
 import { checkStorageLimit, isBillingEnabled } from '../billing.js';
 import { MAX_FILE_SIZE_MB } from '../config.js';
 import { execFile } from 'node:child_process';
@@ -31,6 +43,51 @@ import { promisify } from 'node:util';
 import { convertToPdf, isConvertibleToPdf, isLibreOfficeAvailable, convertHtmlToOffice } from '../office-converter.js';
 
 const execFileAsync = promisify(execFile);
+
+const VERSION_KEEP = 20;
+
+/**
+ * 在覆盖写入前为文件保存一个版本快照（旧内容存档）。
+ * best-effort：失败只 warn 不阻断业务写入。
+ */
+function recordVersionSnapshot(
+  groupFolder: string,
+  relPath: string,
+  rootOverride: string | undefined,
+  userId: string,
+  mimeType?: string,
+): void {
+  try {
+    const snap = saveVersionSnapshot(groupFolder, relPath, rootOverride);
+    if (!snap) return; // 新文件 / 目录，无旧内容可快照
+    getDb().prepare(
+      `INSERT INTO file_versions (id, group_folder, file_path, version_num, content_ref, size_bytes, mime_type, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      randomUUID(),
+      groupFolder,
+      relPath,
+      snap.versionNum,
+      snap.contentRef,
+      snap.sizeBytes,
+      mimeType ?? null,
+      userId,
+    );
+    pruneVersionSnapshots(groupFolder, relPath, VERSION_KEEP, rootOverride);
+    // 同步清理超出保留数的 DB 行
+    getDb().prepare(
+      `DELETE FROM file_versions
+       WHERE group_folder = ? AND file_path = ?
+         AND version_num NOT IN (
+           SELECT version_num FROM file_versions
+           WHERE group_folder = ? AND file_path = ?
+           ORDER BY version_num DESC LIMIT ?
+         )`,
+    ).run(groupFolder, relPath, groupFolder, relPath, VERSION_KEEP);
+  } catch (err) {
+    logger.warn({ err }, `version snapshot failed (non-blocking) for ${relPath}`);
+  }
+}
 
 // MIME 类型映射（预览和编辑端点共用）
 const MIME_MAP: Record<string, string> = {
@@ -1030,6 +1087,8 @@ fileRoutes.put('/:jid/files/content/:path', authMiddleware, async (c) => {
     } catch (err: any) {
       if (err && err.code !== 'ENOENT') throw err;
     }
+    // 覆盖前保存旧内容版本快照（best-effort）
+    recordVersionSnapshot(group.folder, relativePath, rootOverride, authUser.id);
     const tmp = `${absolutePath}.tmp`;
     // 用 fs.writeFileSync(fd, ...) 让 Node 内置循环处理 partial-write
     // (NFS / 容器 IO 限流 / 磁盘满边界都可能 short-write 导致内容截断)。
@@ -1168,6 +1227,8 @@ fileRoutes.put('/:jid/files/binary/:path', authMiddleware, async (c) => {
     } catch (err: any) {
       if (err && err.code !== 'ENOENT') throw err;
     }
+    // 覆盖前保存旧内容版本快照（best-effort）
+    recordVersionSnapshot(group.folder, relativePath, rootOverride, authUser.id);
     const tmp = `${absolutePath}.tmp`;
     const noFollowFlag = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW;
     let renameOk = false;
@@ -1331,10 +1392,36 @@ fileRoutes.delete('/:jid/files/:path', authMiddleware, (c) => {
     const relativePath = Buffer.from(encodedPath, 'base64url').toString(
       'utf-8',
     );
-    deleteFile(group.folder, relativePath, rootOverride);
+    // 软删除：移入 .trash/{trashId}/ + 记录 file_trash 元数据
+    const trashed = moveToTrash(group.folder, relativePath, rootOverride);
+    try {
+      getDb().prepare(
+        `INSERT INTO file_trash (id, group_folder, trash_id, original_path, name, is_folder, size_bytes, deleted_by, entry_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        randomUUID(),
+        group.folder,
+        trashed.trashId,
+        trashed.originalPath,
+        trashed.name,
+        trashed.isFolder ? 1 : 0,
+        trashed.sizeBytes,
+        authUser.id,
+        trashed.entryJson,
+      );
+    } catch (dbErr) {
+      // DB 写入失败时回滚：把文件移回原路径，避免数据不一致
+      logger.error({ err: dbErr }, `file_trash insert failed for ${jid}, rolling back`);
+      try {
+        restoreFromTrash(group.folder, trashed.trashId, trashed.originalPath, rootOverride);
+      } catch (rbErr) {
+        logger.error({ err: rbErr }, `trash rollback restore failed for ${jid}`);
+      }
+      return c.json({ error: 'Failed to record trash entry' }, 500);
+    }
     invalidateGroupStorageUsage(group.folder, rootOverride);
 
-    return c.json({ success: true });
+    return c.json({ success: true, softDeleted: true, trashId: trashed.trashId });
   } catch (error) {
     logger.error({ err: error }, `Failed to delete file for ${jid}`);
     const msg = (error as Error).message;
@@ -1405,6 +1492,272 @@ fileRoutes.post('/:jid/directories', authMiddleware, async (c) => {
       ? msg
       : 'Failed to create directory';
     return c.json({ error: publicMsg }, 400);
+  }
+});
+
+// ===========================================================================
+// AgentNet Disk — 搜索/移动/重命名/回收站/版本历史（MVP 增量路由）
+// ===========================================================================
+
+// GET /api/groups/:jid/files/search?q=keyword — 递归文件名搜索
+fileRoutes.get('/:jid/files/search', authMiddleware, (c) => {
+  const jid = c.req.param('jid');
+  const group = getRegisteredGroup(jid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json({ error: 'Insufficient permissions for host execution mode' }, 403);
+  }
+  try {
+    const q = c.req.query('q') || '';
+    if (!q.trim()) return c.json({ files: [] });
+    const results = searchFiles(group.folder, q.trim(), getFileRootOverride(group));
+    return c.json({ files: results, query: q.trim() });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to search files for ${jid}`);
+    return c.json({ error: 'Failed to search files' }, 500);
+  }
+});
+
+// POST /api/groups/:jid/files/move — 移动文件/文件夹
+fileRoutes.post('/:jid/files/move', authMiddleware, async (c) => {
+  const jid = c.req.param('jid');
+  const group = getRegisteredGroup(jid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json({ error: 'Insufficient permissions for host execution mode' }, 403);
+  }
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const { source, targetDir } = body as { source?: string; targetDir?: string };
+    if (!source) return c.json({ error: 'source is required' }, 400);
+    const rootOverride = getFileRootOverride(group);
+    const newPath = moveFile(group.folder, source, targetDir ?? '', rootOverride);
+    invalidateGroupStorageUsage(group.folder, rootOverride);
+    return c.json({ success: true, path: newPath });
+  } catch (error) {
+    const msg = (error as Error).message;
+    const safe = ['Cannot move system path', 'Cannot move root directory', 'Cannot move into own subdirectory',
+      'File with same name already exists in target directory', 'Source not found',
+      'Path traversal detected', 'Symlink traversal detected'];
+    return c.json({ error: safe.includes(msg) ? msg : 'Failed to move file' }, 400);
+  }
+});
+
+// POST /api/groups/:jid/files/rename — 重命名
+fileRoutes.post('/:jid/files/rename', authMiddleware, async (c) => {
+  const jid = c.req.param('jid');
+  const group = getRegisteredGroup(jid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+    return c.json({ error: 'Insufficient permissions for host execution mode' }, 403);
+  }
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const { path: relPath, newName } = body as { path?: string; newName?: string };
+    if (!relPath) return c.json({ error: 'path is required' }, 400);
+    if (!newName) return c.json({ error: 'newName is required' }, 400);
+    const rootOverride = getFileRootOverride(group);
+    const newPath = renameFile(group.folder, relPath, newName, rootOverride);
+    return c.json({ success: true, path: newPath });
+  } catch (error) {
+    const msg = (error as Error).message;
+    const safe = ['Cannot rename system path', 'Cannot rename root directory', 'Invalid new name',
+      'File with same name already exists', 'File or directory not found',
+      'Path traversal detected', 'Symlink traversal detected'];
+    return c.json({ error: safe.includes(msg) ? msg : 'Failed to rename file' }, 400);
+  }
+});
+
+// GET /api/groups/:jid/files/trash — 回收站列表
+fileRoutes.get('/:jid/files/trash', authMiddleware, (c) => {
+  const jid = c.req.param('jid');
+  const group = getRegisteredGroup(jid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  try {
+    const rows = getDb().prepare(
+      'SELECT id, trash_id as trashId, original_path as originalPath, name, is_folder as isFolder, size_bytes as sizeBytes, deleted_by as deletedBy, deleted_at as deletedAt, entry_json as entryJson FROM file_trash WHERE group_folder = ? ORDER BY deleted_at DESC',
+    ).all(group.folder) as Array<Record<string, unknown>>;
+    return c.json({ items: rows });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to list trash for ${jid}`);
+    return c.json({ error: 'Failed to list trash' }, 500);
+  }
+});
+
+// POST /api/groups/:jid/files/trash/:id/restore — 恢复
+fileRoutes.post('/:jid/files/trash/:id/restore', authMiddleware, async (c) => {
+  const jid = c.req.param('jid');
+  const id = c.req.param('id');
+  const group = getRegisteredGroup(jid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  try {
+    const row = getDb().prepare(
+      'SELECT trash_id as trashId, original_path as originalPath FROM file_trash WHERE id = ? AND group_folder = ?',
+    ).get(id, group.folder) as { trashId: string; originalPath: string } | undefined;
+    if (!row) return c.json({ error: 'Trash entry not found' }, 404);
+    const rootOverride = getFileRootOverride(group);
+    const restored = restoreFromTrash(group.folder, row.trashId, row.originalPath, rootOverride);
+    getDb().prepare('DELETE FROM file_trash WHERE id = ?').run(id);
+    invalidateGroupStorageUsage(group.folder, rootOverride);
+    return c.json({ success: true, path: restored.restoredPath });
+  } catch (error) {
+    const msg = (error as Error).message;
+    return c.json({ error: msg === 'Trash entry not found' ? msg : 'Failed to restore' }, 400);
+  }
+});
+
+// DELETE /api/groups/:jid/files/trash/:id — 彻底删除单项
+fileRoutes.delete('/:jid/files/trash/:id', authMiddleware, (c) => {
+  const jid = c.req.param('jid');
+  const id = c.req.param('id');
+  const group = getRegisteredGroup(jid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  try {
+    const row = getDb().prepare(
+      'SELECT trash_id as trashId FROM file_trash WHERE id = ? AND group_folder = ?',
+    ).get(id, group.folder) as { trashId: string } | undefined;
+    if (!row) return c.json({ error: 'Trash entry not found' }, 404);
+    const rootOverride = getFileRootOverride(group);
+    purgeTrashItem(group.folder, row.trashId, rootOverride);
+    getDb().prepare('DELETE FROM file_trash WHERE id = ?').run(id);
+    invalidateGroupStorageUsage(group.folder, rootOverride);
+    return c.json({ success: true });
+  } catch (error) {
+    return c.json({ error: 'Failed to purge trash item' }, 400);
+  }
+});
+
+// DELETE /api/groups/:jid/files/trash — 清空回收站
+fileRoutes.delete('/:jid/files/trash', authMiddleware, (c) => {
+  const jid = c.req.param('jid');
+  const group = getRegisteredGroup(jid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  try {
+    const rootOverride = getFileRootOverride(group);
+    emptyTrash(group.folder, rootOverride);
+    getDb().prepare('DELETE FROM file_trash WHERE group_folder = ?').run(group.folder);
+    invalidateGroupStorageUsage(group.folder, rootOverride);
+    return c.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to empty trash for ${jid}`);
+    return c.json({ error: 'Failed to empty trash' }, 400);
+  }
+});
+
+// GET /api/groups/:jid/files/versions/:path — 版本列表
+fileRoutes.get('/:jid/files/versions/:path', authMiddleware, (c) => {
+  const jid = c.req.param('jid');
+  const encodedPath = c.req.param('path');
+  const group = getRegisteredGroup(jid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  try {
+    const relPath = Buffer.from(encodedPath, 'base64url').toString('utf-8');
+    const rows = getDb().prepare(
+      'SELECT id, version_num as versionNum, size_bytes as sizeBytes, mime_type as mimeType, created_by as createdBy, created_at as createdAt, comment FROM file_versions WHERE group_folder = ? AND file_path = ? ORDER BY version_num DESC',
+    ).all(group.folder, relPath) as Array<Record<string, unknown>>;
+    return c.json({ versions: rows, path: relPath });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to list versions for ${jid}`);
+    return c.json({ error: 'Failed to list versions' }, 500);
+  }
+});
+
+// GET /api/groups/:jid/files/versions/:path/:version — 获取指定版本内容
+fileRoutes.get('/:jid/files/versions/:path/:version', authMiddleware, (c) => {
+  const jid = c.req.param('jid');
+  const encodedPath = c.req.param('path');
+  const version = parseInt(c.req.param('version'), 10);
+  const group = getRegisteredGroup(jid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  try {
+    const relPath = Buffer.from(encodedPath, 'base64url').toString('utf-8');
+    if (isNaN(version)) return c.json({ error: 'Invalid version' }, 400);
+    const buf = readVersionContent(group.folder, relPath, version, getFileRootOverride(group));
+    // 判断是否文本：小文件且 utf8 可解码则返回文本，否则 base64
+    const ext = path.extname(relPath).slice(1).toLowerCase();
+    const isText = TEXT_EXTENSIONS.has(ext);
+    if (isText && buf.byteLength <= 5 * 1024 * 1024) {
+      return c.json({ version, content: buf.toString('utf-8'), isText: true, size: buf.byteLength });
+    }
+    return c.json({ version, content: buf.toString('base64'), isText: false, size: buf.byteLength });
+  } catch (error) {
+    const msg = (error as Error).message;
+    return c.json({ error: msg === 'Version not found' ? msg : 'Failed to get version' }, 404);
+  }
+});
+
+// POST /api/groups/:jid/files/versions/:path/:version/restore — 回滚到指定版本
+fileRoutes.post('/:jid/files/versions/:path/:version/restore', authMiddleware, async (c) => {
+  const jid = c.req.param('jid');
+  const encodedPath = c.req.param('path');
+  const version = parseInt(c.req.param('version'), 10);
+  const group = getRegisteredGroup(jid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  try {
+    const relPath = Buffer.from(encodedPath, 'base64url').toString('utf-8');
+    if (isNaN(version)) return c.json({ error: 'Invalid version' }, 400);
+    if (isSystemPath(relPath)) return c.json({ error: 'Cannot version system file' }, 403);
+    const rootOverride = getFileRootOverride(group);
+    // 1. 当前内容存为新版本快照（保留当前态）
+    recordVersionSnapshot(group.folder, relPath, rootOverride, authUser.id);
+    // 2. 用目标版本内容覆盖当前文件
+    const buf = readVersionContent(group.folder, relPath, version, rootOverride);
+    const abs = validateAndResolvePath(group.folder, relPath, rootOverride);
+    const tmp = `${abs}.tmp`;
+    try {
+      fs.writeFileSync(tmp, buf, { flag: 'wx', mode: 0o644 });
+    } catch (err: any) {
+      if (err && err.code === 'EEXIST') {
+        fs.unlinkSync(tmp);
+        fs.writeFileSync(tmp, buf, { flag: 'wx', mode: 0o644 });
+      } else { throw err; }
+    }
+    fs.renameSync(tmp, abs);
+    invalidateGroupStorageUsage(group.folder, rootOverride);
+    return c.json({ success: true, restoredVersion: version });
+  } catch (error) {
+    const msg = (error as Error).message;
+    return c.json({ error: msg === 'Version not found' ? msg : 'Failed to restore version' }, 400);
   }
 });
 
