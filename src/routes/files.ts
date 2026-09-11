@@ -1365,6 +1365,54 @@ fileRoutes.put('/:jid/files/html-docx/:path', authMiddleware, async (c) => {
   }
 });
 
+// DELETE /api/groups/:jid/files/trash/:id — 彻底删除单项
+// 注意：字面路由 trash 必须注册在参数路由 :path 之前，否则 Hono 会将 "trash" 当作 :path 捕获
+fileRoutes.delete('/:jid/files/trash/:id', authMiddleware, (c) => {
+  const jid = c.req.param('jid');
+  const id = c.req.param('id');
+  const group = getRegisteredGroup(jid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  try {
+    const row = getDb().prepare(
+      'SELECT trash_id as trashId FROM file_trash WHERE id = ? AND group_folder = ?',
+    ).get(id, group.folder) as { trashId: string } | undefined;
+    if (!row) return c.json({ error: 'Trash entry not found' }, 404);
+    const rootOverride = getFileRootOverride(group);
+    purgeTrashItem(group.folder, row.trashId, rootOverride);
+    getDb().prepare('DELETE FROM file_trash WHERE id = ?').run(id);
+    invalidateGroupStorageUsage(group.folder, rootOverride);
+    return c.json({ success: true });
+  } catch (error) {
+    return c.json({ error: 'Failed to purge trash item' }, 400);
+  }
+});
+
+// DELETE /api/groups/:jid/files/trash — 清空回收站
+// 注意：字面路由 trash 必须注册在参数路由 :path 之前，否则 Hono 会将 "trash" 当作 :path 捕获
+fileRoutes.delete('/:jid/files/trash', authMiddleware, (c) => {
+  const jid = c.req.param('jid');
+  const group = getRegisteredGroup(jid);
+  if (!group) return c.json({ error: 'Group not found' }, 404);
+  const authUser = c.get('user') as AuthUser;
+  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+    return c.json({ error: 'Group not found' }, 404);
+  }
+  try {
+    const rootOverride = getFileRootOverride(group);
+    emptyTrash(group.folder, rootOverride);
+    getDb().prepare('DELETE FROM file_trash WHERE group_folder = ?').run(group.folder);
+    invalidateGroupStorageUsage(group.folder, rootOverride);
+    return c.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, `Failed to empty trash for ${jid}`);
+    return c.json({ error: 'Failed to empty trash' }, 400);
+  }
+});
+
 // DELETE /api/groups/:jid/files/:path - 删除文件
 fileRoutes.delete('/:jid/files/:path', authMiddleware, (c) => {
   const jid = c.req.param('jid');
@@ -1623,52 +1671,6 @@ fileRoutes.post('/:jid/files/trash/:id/restore', authMiddleware, async (c) => {
   } catch (error) {
     const msg = (error as Error).message;
     return c.json({ error: msg === 'Trash entry not found' ? msg : 'Failed to restore' }, 400);
-  }
-});
-
-// DELETE /api/groups/:jid/files/trash/:id — 彻底删除单项
-fileRoutes.delete('/:jid/files/trash/:id', authMiddleware, (c) => {
-  const jid = c.req.param('jid');
-  const id = c.req.param('id');
-  const group = getRegisteredGroup(jid);
-  if (!group) return c.json({ error: 'Group not found' }, 404);
-  const authUser = c.get('user') as AuthUser;
-  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
-    return c.json({ error: 'Group not found' }, 404);
-  }
-  try {
-    const row = getDb().prepare(
-      'SELECT trash_id as trashId FROM file_trash WHERE id = ? AND group_folder = ?',
-    ).get(id, group.folder) as { trashId: string } | undefined;
-    if (!row) return c.json({ error: 'Trash entry not found' }, 404);
-    const rootOverride = getFileRootOverride(group);
-    purgeTrashItem(group.folder, row.trashId, rootOverride);
-    getDb().prepare('DELETE FROM file_trash WHERE id = ?').run(id);
-    invalidateGroupStorageUsage(group.folder, rootOverride);
-    return c.json({ success: true });
-  } catch (error) {
-    return c.json({ error: 'Failed to purge trash item' }, 400);
-  }
-});
-
-// DELETE /api/groups/:jid/files/trash — 清空回收站
-fileRoutes.delete('/:jid/files/trash', authMiddleware, (c) => {
-  const jid = c.req.param('jid');
-  const group = getRegisteredGroup(jid);
-  if (!group) return c.json({ error: 'Group not found' }, 404);
-  const authUser = c.get('user') as AuthUser;
-  if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
-    return c.json({ error: 'Group not found' }, 404);
-  }
-  try {
-    const rootOverride = getFileRootOverride(group);
-    emptyTrash(group.folder, rootOverride);
-    getDb().prepare('DELETE FROM file_trash WHERE group_folder = ?').run(group.folder);
-    invalidateGroupStorageUsage(group.folder, rootOverride);
-    return c.json({ success: true });
-  } catch (error) {
-    logger.error({ err: error }, `Failed to empty trash for ${jid}`);
-    return c.json({ error: 'Failed to empty trash' }, 400);
   }
 });
 
