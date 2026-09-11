@@ -24,7 +24,8 @@ staffEmployeeRoutes.use('*', authMiddleware);
 // List employees for the current user
 staffEmployeeRoutes.get('/', (c) => {
   const user = c.get('user') as AuthUser;
-  const includeInactive = c.req.query('includeInactive') === '1';
+  const q = c.req.query('includeInactive');
+  const includeInactive = q === '1' || q === 'true';
   const employees = listStaffEmployees(user.id, includeInactive);
   return c.json({ employees });
 });

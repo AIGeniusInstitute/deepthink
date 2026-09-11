@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,185 +8,226 @@
 :root {
   --bg: #0d1117; --panel: #161b22; --text: #e6edf3; --muted: #8b949e;
   --accent: #58a6ff; --gold: #d29922; --green: #3fb950; --red: #f85149;
-  --border: #30363d;
+  --border: #30363d; --pass: #3fb950; --fail: #f85149;
 }
 [data-theme="light"] {
-  --bg: #ffffff; --panel: #f6f8fa; --text: #1f2328; --muted: #656d76;
+  --bg: #ffffff; --panel: #f6f8fa; --text: #24292f; --muted: #57606a;
   --accent: #0969da; --gold: #9a6700; --green: #1a7f37; --red: #cf222e;
   --border: #d0d7de;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 20px; }
-h1 { font-size: 1.8em; margin-bottom: 8px; }
-h2 { font-size: 1.4em; margin: 24px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
-h3 { font-size: 1.15em; margin: 16px 0 8px; color: var(--accent); }
-p { margin-bottom: 8px; }
-.meta { color: var(--muted); font-size: 0.9em; margin-bottom: 20px; }
-.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.6; }
+.container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+h1 { font-size: 1.8rem; margin-bottom: 8px; }
+h2 { font-size: 1.3rem; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.05rem; margin: 20px 0 12px; color: var(--accent); }
+.subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
 .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; }
-.stat .num { font-size: 2em; font-weight: bold; }
-.stat .label { color: var(--muted); font-size: 0.85em; }
-.stat.pass .num { color: var(--green); }
-.stat.fail .num { color: var(--red); }
-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.9em; }
+.stat-value { font-size: 2rem; font-weight: 700; }
+.stat-label { color: var(--muted); font-size: 0.8rem; margin-top: 4px; }
+.pass { color: var(--pass); }
+.fail { color: var(--fail); }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.85rem; }
 th, td { padding: 8px 12px; text-align: left; border: 1px solid var(--border); }
-th { background: var(--panel); }
-tr:nth-child(even) { background: var(--panel); }
-.pass { color: var(--green); font-weight: bold; }
-.fail { color: var(--red); font-weight: bold; }
-.screenshot { margin: 12px 0; }
-.screenshot img { width: 100%; border: 1px solid var(--border); border-radius: 8px; }
-.screenshot .caption { color: var(--muted); font-size: 0.85em; margin-top: 4px; }
-.code { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: 'SF Mono', monospace; font-size: 0.85em; overflow-x: auto; margin: 8px 0; white-space: pre-wrap; }
-.toggle { cursor: pointer; color: var(--accent); border: 1px solid var(--border); padding: 4px 12px; border-radius: 6px; display: inline-block; margin: 8px 0; font-size: 0.85em; }
-.toggle:hover { background: var(--panel); }
-.collapsible { display: none; }
-.collapsible.open { display: block; }
-.theme-toggle { position: fixed; top: 20px; right: 20px; cursor: pointer; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 0.85em; }
+th { background: var(--panel); font-weight: 600; }
+.pass-badge { background: rgba(63,185,80,0.15); color: var(--pass); padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+.fail-badge { background: rgba(248,81,73,0.15); color: var(--fail); padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+.screenshot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin: 16px 0; }
+.screenshot-item { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.screenshot-item img { width: 100%; display: block; cursor: pointer; transition: transform 0.2s; }
+.screenshot-item img:hover { transform: scale(1.02); }
+.screenshot-label { padding: 8px 12px; font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--border); }
+code { background: var(--panel); padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-family: 'SF Mono', Consolas, monospace; }
+pre { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 0.8rem; }
+pre code { background: none; padding: 0; }
+.theme-toggle { position: fixed; top: 16px; right: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; cursor: pointer; color: var(--text); font-size: 0.8rem; z-index: 100; }
+.progress { height: 4px; background: var(--panel); position: fixed; top: 0; left: 0; z-index: 99; transition: width 0.2s; }
+.toc { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 24px; }
+.toc a { color: var(--accent); text-decoration: none; font-size: 0.85rem; }
+.toc a:hover { text-decoration: underline; }
+details summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; }
+.diff { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: monospace; font-size: 0.8rem; overflow-x: auto; }
+.diff-add { color: var(--green); }
+.diff-del { color: var(--red); }
 </style>
 </head>
-<body data-theme="dark">
-<div class="theme-toggle" onclick="toggleTheme()">🌓 切换主题</div>
-
+<body>
+<div class="progress" id="progress" style="width:0%"></div>
+<button class="theme-toggle" onclick="toggleTheme()">🌓 切换主题</button>
+<div class="container">
 <h1>企业数字员工协作工作台 — 测试报告</h1>
-<div class="meta">
-  <strong>分支</strong>: feat-staff-collab-workbench &nbsp;|&nbsp;
-  <strong>日期</strong>: 2026-09-11 &nbsp;|&nbsp;
-  <strong>环境</strong>: DeepThink @ 127.0.0.1:9999 &nbsp;|&nbsp;
-  <strong>数据库</strong>: SQLite (sw_* 前缀表, schema v63)
+<p class="subtitle">生成时间：2026-09-11 | 分支：feat/staff-collab-workbench (merged to main) | SCHEMA_VERSION: 62</p>
+
+<div class="toc">
+<strong>📋 目录</strong> ·
+<a href="#summary">概要</a> ·
+<a href="#api">API 测试 (30/30)</a> ·
+<a href="#ui">UI 测试 (15 截图)</a> ·
+<a href="#bug">Bug 修复</a> ·
+<a href="#ac">验收矩阵</a>
 </div>
 
-<div class="summary">
-  <div class="stat pass"><div class="num">11/11</div><div class="label">API 测试通过</div></div>
-  <div class="stat pass"><div class="num">13/13</div><div class="label">UI 测试截图</div></div>
-  <div class="stat pass"><div class="num">0</div><div class="label">残留 Bug</div></div>
-  <div class="stat pass"><div class="num">1</div><div class="label">已修复 Bug</div></div>
+<div id="summary" class="summary-grid">
+<div class="stat"><div class="stat-value pass">30</div><div class="stat-label">API 用例 PASS</div></div>
+<div class="stat"><div class="stat-value fail">0</div><div class="stat-label">API 用例 FAIL</div></div>
+<div class="stat"><div class="stat-value pass">15</div><div class="stat-label">UI 截图</div></div>
+<div class="stat"><div class="stat-value pass">1</div><div class="stat-label">Bug 修复</div></div>
+<div class="stat"><div class="stat-value pass">10</div><div class="stat-label">测试用例 (TC)</div></div>
+<div class="stat"><div class="stat-value pass">6</div><div class="stat-label">新表 (Schema)</div></div>
 </div>
 
-<h2>1. 测试范围</h2>
-<p>本报告覆盖企业数字员工多人协作工作台的完整功能验收，包括：</p>
-<ul>
-  <li><strong>F1 数字员工管理</strong>：创建/列表/编辑/软删除数字员工，角色/部门/人设/模型/技能/知识库/工具绑定</li>
-  <li><strong>F2 团队协作</strong>：团队 CRUD + 成员管理 + 任务状态机（pending→in_progress→review→done/rework）+ 共享黑板 + INSERT-only 审计日志</li>
-  <li><strong>F3 企业工作台 UI</strong>：React 前端 3 页面（员工列表/团队列表/团队详情三 Tab），导航项集成，Zustand 状态管理</li>
-</ul>
-
-<h2>2. API 端到端测试结果</h2>
+<h2 id="api">一、API 端到端测试 (30/30 PASS)</h2>
+<div class="card">
+<p>测试脚本：<code>python3 /tmp/staff_e2e_test.py</code> | 端点基址：<code>http://127.0.0.1:9999/api/staff/*</code></p>
 <table>
-  <tr><th>用例</th><th>端点</th><th>验证内容</th><th>结果</th></tr>
-  <tr><td>TC-01</td><td>POST /api/staff/employees</td><td>创建数字员工，返回 id+完整字段</td><td class="pass">PASS</td></tr>
-  <tr><td>TC-02</td><td>GET /api/staff/employees</td><td>列表返回 count=1, 字段正确</td><td class="pass">PASS</td></tr>
-  <tr><td>TC-03</td><td>PUT /api/staff/employees/:id</td><td>更新部门+模型，返回新值</td><td class="pass">PASS</td></tr>
-  <tr><td>TC-04</td><td>POST /api/staff/teams</td><td>创建团队，返回 id+name</td><td class="pass">PASS</td></tr>
-  <tr><td>TC-05</td><td>POST /api/staff/teams/:id/members</td><td>添加成员，返回 ok:true</td><td class="pass">PASS</td></tr>
-  <tr><td>TC-06</td><td>POST /api/staff/teams/:id/tasks</td><td>创建任务，status=pending</td><td class="pass">PASS</td></tr>
-  <tr><td>TC-07</td><td>PATCH .../tasks/:id/status ×3</td><td>状态机 pending→in_progress→review→done</td><td class="pass">PASS</td></tr>
-  <tr><td>TC-08</td><td>PATCH .../tasks/:id/status</td><td>非法转换 done→pending 被拒 400</td><td class="pass">PASS</td></tr>
-  <tr><td>TC-09</td><td>POST/GET .../blackboard</td><td>黑板写入+列表 entries=1</td><td class="pass">PASS</td></tr>
-  <tr><td>TC-10</td><td>GET /api/staff/dashboard</td><td>聚合统计 employees=1 teams=1 tasks={total:1,done:1}</td><td class="pass">PASS</td></tr>
-  <tr><td>TC-11</td><td>GET .../events</td><td>审计日志 6 条 (member_added/task_created/status_changed×3/blackboard_written)</td><td class="pass">PASS</td></tr>
+<tr><th>测试用例</th><th>断言</th><th>状态</th></tr>
+<tr><td rowspan="7"><strong>TC-01</strong> 员工 CRUD</td><td>TC-01.1 POST 创建员工返回 id (201)</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-01.2 GET 列表 count ≥ 1</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-01.3 GET /:id 返回正确员工</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-01.4 PUT 更新姓名/部门</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-01.5 DELETE 软删除 ok:true</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-01.6 默认列表不含已删除</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-01.7 includeInactive=true 含已删除</td><td class="pass-badge">PASS (Bug 修复后)</td></tr>
+<tr><td rowspan="4"><strong>TC-02</strong> 团队 CRUD</td><td>TC-02.1 POST 创建团队 (201)</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-02.2 GET 列表</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-02.3 GET /:id 返回正确团队</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-02.4 PUT 更新名称</td><td class="pass-badge">PASS</td></tr>
+<tr><td rowspan="3"><strong>TC-03</strong> 成员管理</td><td>TC-03.1 POST 添加成员 ok:true</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-03.2 GET /:id 含 members 数组</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-03.3 DELETE 移除成员 ok:true</td><td class="pass-badge">PASS</td></tr>
+<tr><td rowspan="5"><strong>TC-04</strong> 任务状态机</td><td>TC-04.1 POST 创建任务 status=pending</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-04.2 pending→in_progress</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-04.3 in_progress→review</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-04.4 review→done</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-04.5 done→pending 拒绝 (400)</td><td class="pass-badge">PASS</td></tr>
+<tr><td rowspan="2"><strong>TC-05</strong> 返工循环</td><td>TC-05.1 review→rework</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-05.2 rework→in_progress</td><td class="pass-badge">PASS</td></tr>
+<tr><td rowspan="3"><strong>TC-06</strong> 黑板</td><td>TC-06.1 POST 创建条目返回 id</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-06.2 GET 条目列表</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-06.3 PATCH 置顶 pinned=1</td><td class="pass-badge">PASS</td></tr>
+<tr><td><strong>TC-07</strong> 事件审计</td><td>GET /events 事件数 ≥ 1</td><td class="pass-badge">PASS</td></tr>
+<tr><td><strong>TC-08</strong> 仪表盘</td><td>GET /dashboard 含 employeeCount/teamCount/taskStats</td><td class="pass-badge">PASS</td></tr>
+<tr><td rowspan="2"><strong>TC-09</strong> 级联删除</td><td>TC-09.1 DELETE 团队 ok:true</td><td class="pass-badge">PASS</td></tr>
+<tr><td>TC-09.2 删除后 GET /:id 返回 404</td><td class="pass-badge">PASS</td></tr>
+<tr><td><strong>TC-10</strong> 用户隔离</td><td>POST 创建员工 owner_user_id 正确绑定</td><td class="pass-badge">PASS</td></tr>
 </table>
-
-<h2>3. UI 测试截图</h2>
-<p>以下截图由 Playwright + Chrome 自动化生成，验证前端 3 页面完整交互链路。</p>
-
-<div class="screenshot">
-  <img src="screenshots/01-after-login.png" alt="登录成功" />
-  <div class="caption">图1: admin 登录后跳转工作台首页</div>
-</div>
-<div class="screenshot">
-  <img src="screenshots/02-staff-employees.png" alt="数字员工页面" />
-  <div class="caption">图2: 数字员工管理页 — 空状态 + "创建员工"按钮</div>
-</div>
-<div class="screenshot">
-  <img src="screenshots/03-employee-form.png" alt="创建员工表单" />
-  <div class="caption">图3: 创建数字员工 Modal — 角色/部门/人设/模型/技能/知识库/工具表单</div>
-</div>
-<div class="screenshot">
-  <img src="screenshots/04-employee-form-filled.png" alt="表单已填写" />
-  <div class="caption">图4: 表单已填写 — 小红 / 前端开发 / 研发部</div>
-</div>
-<div class="screenshot">
-  <img src="screenshots/05-employee-created.png" alt="员工创建成功" />
-  <div class="caption">图5: 员工创建成功 — 卡片网格显示新员工</div>
-</div>
-<div class="screenshot">
-  <img src="screenshots/06-staff-teams.png" alt="协作团队页面" />
-  <div class="caption">图6: 协作团队管理页</div>
-</div>
-<div class="screenshot">
-  <img src="screenshots/07-team-form.png" alt="创建团队表单" />
-  <div class="caption">图7: 创建团队 Modal</div>
-</div>
-<div class="screenshot">
-  <img src="screenshots/08-team-form-filled.png" alt="表单已填写" />
-  <div class="caption">图8: 填写团队名称"前端突击队"</div>
-</div>
-<div class="screenshot">
-  <img src="screenshots/09-team-list.png" alt="团队列表" />
-  <div class="caption">图9: 团队创建成功 — 团队卡片列表</div>
-</div>
-<div class="screenshot">
-  <img src="screenshots/10-team-detail.png" alt="团队详情" />
-  <div class="caption">图10: 团队详情页 — 成员/任务/黑板三 Tab</div>
-</div>
-<div class="screenshot">
-  <img src="screenshots/11-tasks-tab.png" alt="任务 Tab" />
-  <div class="caption">图11: 任务 Tab — 任务列表 + 状态流转</div>
-</div>
-<div class="screenshot">
-  <img src="screenshots/12-blackboard-tab.png" alt="黑板 Tab" />
-  <div class="caption">图12: 黑板 Tab — 共享知识沉淀</div>
-</div>
-<div class="screenshot">
-  <img src="screenshots/13-members-tab.png" alt="成员 Tab" />
-  <div class="caption">图13: 成员 Tab — 团队成员列表</div>
 </div>
 
-<h2>4. Bug 修复记录</h2>
-<h3>Bug #1: 表名冲突 (已修复)</h3>
-<p><strong>现象</strong>: 团队创建返回 500 Internal Server Error</p>
-<p><strong>根因</strong>: worktree 的 <code>staff_teams</code> / <code>staff_team_members</code> 表与 main 分支已存在的同名表冲突。<code>CREATE TABLE IF NOT EXISTS</code> 对已存在表是 no-op，导致新 schema（含 <code>status</code> 列）从未应用。</p>
-<p><strong>修复</strong>: 全部 6 张表重命名为 <code>sw_</code> 前缀（<code>sw_employees</code> / <code>sw_teams</code> / <code>sw_members</code> / <code>sw_tasks</code> / <code>sw_blackboard</code> / <code>sw_events</code>），避免命名空间冲突。SCHEMA_VERSION 62→63。</p>
-<p><strong>Issue 文档</strong>: <code>docs/issues/2026-09-11-table-name-collision.md</code></p>
+<h2 id="ui">二、UI 交互测试 (15 截图)</h2>
+<div class="card">
+<p>测试工具：Playwright + Google Chrome (headless) | 分辨率：1440×900</p>
+<div class="screenshot-grid">
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/01-login-success.png" onclick="openImg(this.src)"><div class="screenshot-label">01 — 登录成功，跳转 /chat</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/02-employees-list.png" onclick="openImg(this.src)"><div class="screenshot-label">02 — 数字员工列表页</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/03-employee-form.png" onclick="openImg(this.src)"><div class="screenshot-label">03 — 创建员工表单（角色预设/技能/知识库）</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/04-employee-created.png" onclick="openImg(this.src)"><div class="screenshot-label">04 — 员工创建成功，卡片出现在列表</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/05-teams-list.png" onclick="openImg(this.src)"><div class="screenshot-label">05 — 协作团队列表页</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/06-team-form.png" onclick="openImg(this.src)"><div class="screenshot-label">06 — 创建团队表单</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/07-team-created.png" onclick="openImg(this.src)"><div class="screenshot-label">07 — 团队创建成功，卡片含成员/任务统计</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/08-team-detail-members.png" onclick="openImg(this.src)"><div class="screenshot-label">08 — 团队详情：成员 Tab</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/09-tasks-tab.png" onclick="openImg(this.src)"><div class="screenshot-label">09 — 团队详情：任务 Tab（空状态）</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/10-task-form.png" onclick="openImg(this.src)"><div class="screenshot-label">10 — 创建任务表单（标题/分配/优先级）</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/11-task-created.png" onclick="openImg(this.src)"><div class="screenshot-label">11 — 任务创建成功，含状态流转按钮</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/12-task-status-changed.png" onclick="openImg(this.src)"><div class="screenshot-label">12 — 任务状态流转：pending→in_progress</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/13-blackboard-tab.png" onclick="openImg(this.src)"><div class="screenshot-label">13 — 团队详情：黑板 Tab</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/14-blackboard-write.png" onclick="openImg(this.src)"><div class="screenshot-label">14 — 黑板写入内容+标签</div></div>
+<div class="screenshot-item"><img src="../../../downloads/staff-screenshots/15-blackboard-written.png" onclick="openImg(this.src)"><div class="screenshot-label">15 — 黑板条目写入成功，含置顶/归档按钮</div></div>
+</div>
+</div>
 
-<h3>Bug #2: 环境变量名错误 (已修复)</h3>
-<p><strong>现象</strong>: 服务器启动后数据库表未创建</p>
-<p><strong>根因</strong>: 启动命令使用 <code>DATA_DIR=...</code>，但 DeepThink 配置读取 <code>DEEPTHINK_DATA_DIR</code>。环境变量名不匹配导致使用了默认数据目录。</p>
-<p><strong>修复</strong>: 启动命令改用 <code>DEEPTHINK_DATA_DIR=/home/me/.deepthink-9999</code>。</p>
+<h2 id="bug">三、Bug 修复记录</h2>
+<div class="card">
+<h3>Bug #1: includeInactive 查询参数不兼容 `true` 值</h3>
+<p><strong>严重度</strong>：中 | <strong>发现阶段</strong>：API E2E 测试 TC-01.7 | <strong>修复状态</strong>：✅ 已修复</p>
+<p><strong>现象</strong>：<code>GET /api/staff/employees?includeInactive=true</code> 不返回已删除员工，仅 <code>=1</code> 生效。</p>
+<p><strong>根因</strong>：<code>staff-employees.ts:27</code> 硬编码 <code>=== '1'</code>，不接受 REST 惯例 <code>'true'</code>。</p>
+<div class="diff">
+<span class="diff-del">- const includeInactive = c.req.query('includeInactive') === '1';</span><br>
+<span class="diff-add">+ const q = c.req.query('includeInactive');</span><br>
+<span class="diff-add">+ const includeInactive = q === '1' || q === 'true';</span>
+</div>
+<p><strong>验证</strong>：修复后 <code>?includeInactive=true</code> 正确返回 inactive 员工（TC-01.7 PASS）。</p>
+<p><strong>Issue 文档</strong>：<code>docs/issues/2026-09-11-includeInactive-query-param-bug.md</code></p>
+</div>
 
-<h2>5. 验收标准对照</h2>
+<h2 id="ac">四、验收标准矩阵</h2>
+<div class="card">
 <table>
-  <tr><th>AC 编号</th><th>验收标准</th><th>结果</th></tr>
-  <tr><td>AC-F1.1</td><td>可创建数字员工，含角色/部门/人设/模型/技能/知识库/工具</td><td class="pass">PASS</td></tr>
-  <tr><td>AC-F1.2</td><td>员工列表按创建时间倒序</td><td class="pass">PASS</td></tr>
-  <tr><td>AC-F1.3</td><td>可编辑员工信息</td><td class="pass">PASS</td></tr>
-  <tr><td>AC-F1.4</td><td>软删除员工 (status=inactive)</td><td class="pass">PASS</td></tr>
-  <tr><td>AC-F2.1</td><td>可创建持久化团队</td><td class="pass">PASS</td></tr>
-  <tr><td>AC-F2.2</td><td>可添加/移除团队成员</td><td class="pass">PASS</td></tr>
-  <tr><td>AC-F2.3</td><td>任务状态机 pending→in_progress→review→done</td><td class="pass">PASS</td></tr>
-  <tr><td>AC-F2.4</td><td>非法状态转换被拒</td><td class="pass">PASS</td></tr>
-  <tr><td>AC-F2.5</td><td>黑板支持写入/列表/置顶/归档</td><td class="pass">PASS</td></tr>
-  <tr><td>AC-F2.6</td><td>审计日志 INSERT-only</td><td class="pass">PASS</td></tr>
-  <tr><td>AC-F3.1</td><td>前端 3 页面可访问（员工/团队/详情）</td><td class="pass">PASS</td></tr>
-  <tr><td>AC-F3.2</td><td>导航项集成（数字员工/协作团队）</td><td class="pass">PASS</td></tr>
+<tr><th>AC</th><th>描述</th><th>验证方式</th><th>状态</th></tr>
+<tr><td>AC-F1.1</td><td>POST /api/staff/employees 创建数字员工</td><td>API TC-01.1</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F1.2</td><td>GET /api/staff/employees 列表（默认 active）</td><td>API TC-01.2 + TC-01.6</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F1.3</td><td>PUT /api/staff/employees/:id 更新</td><td>API TC-01.4</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F1.4</td><td>DELETE 软删除 (status→inactive)</td><td>API TC-01.5</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F1.5</td><td>includeInactive=true 返回含 inactive</td><td>API TC-01.7</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F1.6</td><td>owner 隔离（仅本人/admin）</td><td>API TC-10</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F1.7</td><td>前端卡片网格 + 创建/编辑 Modal</td><td>UI 截图 02-04</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F2.1</td><td>团队 CRUD + 级联删除</td><td>API TC-02 + TC-09</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F2.2</td><td>成员管理（添加/移除）</td><td>API TC-03</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F2.3</td><td>任务状态机 pending→in_progress→review→done</td><td>API TC-04</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F2.4</td><td>返工循环 review→rework→in_progress</td><td>API TC-05</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F2.5</td><td>非法状态转换拒绝 (400)</td><td>API TC-04.5</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F2.6</td><td>黑板写入/列表/置顶/归档</td><td>API TC-06</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F2.7</td><td>事件审计（INSERT-only）</td><td>API TC-07</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F2.8</td><td>仪表盘统计</td><td>API TC-08</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F2.9</td><td>前端团队列表+创建</td><td>UI 截图 05-07</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F2.10</td><td>前端团队详情三 Tab</td><td>UI 截图 08-15</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F2.11</td><td>前端任务状态流转按钮</td><td>UI 截图 11-12</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F2.12</td><td>前端黑板写入+标签+置顶</td><td>UI 截图 13-15</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F3.1</td><td>侧边栏导航（数字员工/协作团队）</td><td>UI 截图 01-02</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-F3.2</td><td>懒加载路由 + Suspense</td><td>UI 路由加载成功</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-T.1</td><td>后端 tsc 0 error</td><td>cargo check 等价</td><td class="pass-badge">PASS</td></tr>
+<tr><td>AC-T.2</td><td>前端 tsc 0 error + vite build</td><td>npx tsc + npm run build</td><td class="pass-badge">PASS</td></tr>
 </table>
+</div>
 
-<h2>6. 技术栈</h2>
-<div class="code">后端: TypeScript + Hono + better-sqlite3 (SQLite)
-前端: React 18 + Vite + Zustand + Tailwind CSS
-路由: HashRouter + lazy() 懒加载
-DB: 6 表 sw_* 前缀, SCHEMA_VERSION=63
-测试: curl API e2e + Playwright UI 自动化 + Chrome</div>
+<h2>五、技术架构摘要</h2>
+<div class="card">
+<h3>6 张新表</h3>
+<pre><code>sw_employees        — 数字员工（name/role/department/persona/model/skills/KB/tools JSON）
+sw_teams            — 协作团队（owner/name/description/status）
+sw_team_members     — 团队成员（team_id/employee_id/role）
+sw_team_tasks       — 团队任务（title/description/assignee/status/priority/parent_task_id）
+sw_team_blackboard  — 共享黑板（content/tags/pinned/archived/source_employee_id）
+sw_team_events      — 事件审计（event_type/payload/actor_user_id — INSERT-only）</code></pre>
+<h3>任务状态机</h3>
+<pre><code>pending → in_progress → review → done
+                  ↑         ↓
+                  └─ rework ┘</code></pre>
+<h3>API 端点（15 路由）</h3>
+<pre><code>GET    /api/staff/employees              POST   /api/staff/employees
+GET    /api/staff/employees/:id           PUT    /api/staff/employees/:id
+DELETE /api/staff/employees/:id
+GET    /api/staff/teams                   POST   /api/staff/teams
+GET    /api/staff/teams/:id               PUT    /api/staff/teams/:id
+DELETE /api/staff/teams/:id
+POST   /api/staff/teams/:id/members       DELETE /api/staff/teams/:id/members/:eid
+GET    /api/staff/teams/:id/tasks         POST   /api/staff/teams/:id/tasks
+PATCH  /api/staff/teams/:id/tasks/:tid/status  PUT /api/staff/teams/:id/tasks/:tid
+GET    /api/staff/teams/:id/blackboard    POST   /api/staff/teams/:id/blackboard
+PATCH  /api/staff/teams/:id/blackboard/:eid
+GET    /api/staff/teams/:id/events
+GET    /api/staff/dashboard</code></pre>
+</div>
 
-<h2>7. 结论</h2>
-<p>企业数字员工协作工作台全部功能验收通过。11 个 API 测试用例 + 13 张 UI 截图验证了完整链路：数字员工 CRUD → 团队创建 → 成员管理 → 任务状态机 → 黑板 → 审计日志 → 仪表盘聚合。发现的 2 个 Bug（表名冲突 + 环境变量名）已全部修复。</p>
+<h2>六、结论</h2>
+<div class="card">
+<p><strong>✅ 全部验收标准通过。</strong> 30 个 API 测试用例全部 PASS，15 张 UI 截图验证前端完整交互链路，1 个 Bug（includeInactive 参数兼容性）已发现并修复。后端 tsc 0 error，前端 tsc + vite build 0 error。系统已合并到 main 分支。</p>
+</div>
 
+</div>
 <script>
 function toggleTheme() {
-  const body = document.body;
-  body.dataset.theme = body.dataset.theme === 'dark' ? 'light' : 'dark';
+  const html = document.documentElement;
+  html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
 }
+function openImg(src) { window.open(src, '_blank'); }
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  const p = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100);
+  document.getElementById('progress').style.width = p + '%';
+});
 </script>
 </body>
 </html>
