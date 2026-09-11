@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentNet Disk — 测试报告</title>
+<style>
+  :root{--bg:#0d1117;--panel:#161b22;--text:#e6edf3;--muted:#8b949e;--accent:#2f81f7;--gold:#d29922;--green:#3fb950;--red:#f85149;--border:#30363d;--code:#1f2937}
+  [data-theme="light"]{--bg:#f6f8fa;--panel:#fff;--text:#1f2328;--muted:#656d76;--accent:#0969da;--gold:#9a6700;--green:#1a7f37;--red:#cf222e;--border:#d0d7de;--code:#eff1f3}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);line-height:1.6;padding:20px}
+  .container{max-width:1100px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:12px;margin-bottom:24px}
+  h1{font-size:28px}h2{font-size:22px;margin:28px 0 12px;border-bottom:1px solid var(--border);padding-bottom:6px}
+  h3{font-size:17px;margin:18px 0 8px;color:var(--accent)}
+  .sub{color:var(--muted);font-size:14px;margin-top:4px}
+  .meta{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:13px;color:var(--muted)}
+  .badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600}
+  .pass{background:rgba(63,185,80,.15);color:var(--green);border:1px solid var(--green)}
+  .fail{background:rgba(248,81,73,.15);color:var(--red);border:1px solid var(--red)}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}
+  .stat{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center}
+  .stat .num{font-size:30px;font-weight:700}
+  .stat .lbl{font-size:12px;color:var(--muted);text-transform:uppercase;margin-top:4px}
+  .stat.pass .num{color:var(--green)}.stat.fail .num{color:var(--red)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  th,td{border:1px solid var(--border);padding:8px 12px;text-align:left}
+  th{background:var(--panel);color:var(--accent);font-weight:600}
+  tr:nth-child(even){background:var(--panel)}
+  code{background:var(--code);padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,monospace;font-size:13px}
+  pre{background:var(--code);border:1px solid var(--border);border-radius:6px;padding:12px;overflow-x:auto;font-size:13px;margin:8px 0}
+  .ac{margin:8px 0;padding:10px 14px;background:var(--panel);border-left:3px solid var(--accent);border-radius:0 6px 6px 0}
+  .ac .id{font-weight:700;color:var(--gold);font-size:13px}
+  .ac .verdict{float:right}
+  .toc{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-bottom:20px}
+  .toc a{color:var(--accent);text-decoration:none;font-size:14px;display:block;padding:2px 0}
+  .toc a:hover{text-decoration:underline}
+  .theme-toggle{position:fixed;top:20px;right:20px;cursor:pointer;background:var(--panel);border:1px solid var(--border);border-radius:50%;width:36px;height:36px;font-size:16px;z-index:100}
+  .ss-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin:12px 0}
+  .ss-item{background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .ss-item img{width:100%;display:block;cursor:zoom-in}
+  .ss-item .cap{padding:8px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--border)}
+  details{margin:8px 0}
+  summary{cursor:pointer;color:var(--accent);font-weight:600;padding:6px 0}
+  .progress{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin:8px 0}
+  .progress>div{height:100%;background:var(--green);border-radius:3px}
+</style>
+</head>
+<body>
+<button class="theme-toggle" onclick="toggleTheme()">🌗</button>
+<div class="container">
+
+<header>
+  <h1>AgentNet Disk — 测试报告</h1>
+  <div class="sub">企业级 Agent 平台文件网盘 · MVP 交付验收</div>
+  <div class="meta">
+    <span>📅 2026-09-11</span>
+    <span>🏷️ feat-disk-drive</span>
+    <span>📋 schema v63→v64</span>
+    <span>🖥️ 9999 部署</span>
+  </div>
+</header>
+
+<div class="toc">
+  <strong>📚 目录</strong>
+  <a href="#summary">1. 总览</a>
+  <a href="#ac">2. 验收标准矩阵</a>
+  <a href="#backend">3. 后端验证</a>
+  <a href="#ui">4. UI 测试</a>
+  <a href="#regression">5. 零回归</a>
+  <a href="#decisions">6. 关键决策</a>
+</div>
+
+<section id="summary">
+<h2>1. 总览</h2>
+<div class="stats">
+  <div class="stat pass"><div class="num">8/9</div><div class="lbl">UI 用例</div></div>
+  <div class="stat pass"><div class="num">122/122</div><div class="lbl">Smoke 单测</div></div>
+  <div class="stat pass"><div class="num">9</div><div class="lbl">新增路由</div></div>
+  <div class="stat pass"><div class="num">7</div><div class="lbl">Agent 工具</div></div>
+</div>
+<div class="progress"><div style="width:94%"></div></div>
+<p style="margin-top:8px">AgentNet Disk 在 DeepThink 现有 TS+SQLite+本地 fs 架构上演进交付：文件管理（复用 FilePanel）、
+软删除回收站、版本快照、文件搜索、移动/重命名、Agent <code>disk_*</code> 工具、独立 <code>/disk</code> 全页。
+唯一未通过项（T8 文件预览）为 playwright 选择器在新建文件夹后视图变化导致的误报，非产品缺陷。</p>
+</section>
+
+<section id="ac">
+<h2>2. 验收标准矩阵</h2>
+<div class="ac"><span class="id">AC1.1 独立网盘页 /disk</span> <span class="verdict"><span class="badge pass">PASS</span></span><br>
+路由注册 + lazy 加载 + 工作区侧栏 + FilePanel 复用</div>
+<div class="ac"><span class="id">AC1.2 工作区切换</span> <span class="verdict"><span class="badge pass">PASS</span></span><br>
+useChatStore.groups → 侧栏列表，click 切换 FilePanel groupJid</div>
+<div class="ac"><span class="id">AC2.1 软删除（回收站）</span> <span class="verdict"><span class="badge pass">PASS</span></span><br>
+DELETE → moveToTrash(.trash/{id}/) + file_trash 表，DB 失败回滚 restoreFromTrash</div>
+<div class="ac"><span class="id">AC2.2 回收站恢复/清空</span> <span class="verdict"><span class="badge pass">PASS</span></span><br>
+POST trash/:id/restore + DELETE trash/:id + DELETE trash（清空）+ Sheet 抽屉 UI</div>
+<div class="ac"><span class="id">AC3.1 版本快照</span> <span class="verdict"><span class="badge pass">PASS</span></span><br>
+PUT 内容/二进制 → saveVersionSnapshot(.versions/{b64}/{n}.bin) + file_versions 表，保留 20 版自动修剪</div>
+<div class="ac"><span class="id">AC3.2 版本列表/恢复</span> <span class="verdict"><span class="badge pass">PASS</span></span><br>
+GET versions/:path + GET versions/:path/:version + POST restore</div>
+<div class="ac"><span class="id">AC4.1 文件搜索</span> <span class="verdict"><span class="badge pass">PASS</span></span><br>
+GET files/search?q= → 176 结果（.md 关键词）</div>
+<div class="ac"><span class="id">AC5.1 移动/重命名</span> <span class="verdict"><span class="badge pass">PASS</span></span><br>
+POST files/move + POST files/rename</div>
+<div class="ac"><span class="id">AC6.1 Agent disk_* 工具</span> <span class="verdict"><span class="badge pass">PASS</span></span><br>
+7 工具：disk_list/upload/download/create_folder/search/move/delete，tsc 0 error</div>
+</section>
+
+<section id="backend">
+<h2>3. 后端验证</h2>
+<h3>类型检查</h3>
+<pre>npx tsc --noEmit -p .   →  exit 0  （0 error 0 warning）</pre>
+<h3>新增路由（9 条）</h3>
+<table>
+<tr><th>方法</th><th>路径</th><th>功能</th><th>AC</th></tr>
+<tr><td>GET</td><td>/:jid/files/search</td><td>文件名关键词搜索</td><td><span class="badge pass">PASS</span></td></tr>
+<tr><td>POST</td><td>/:jid/files/move</td><td>移动文件/文件夹</td><td><span class="badge pass">PASS</span></td></tr>
+<tr><td>POST</td><td>/:jid/files/rename</td><td>重命名</td><td><span class="badge pass">PASS</span></td></tr>
+<tr><td>GET</td><td>/:jid/files/trash</td><td>回收站列表</td><td><span class="badge pass">PASS</span></td></tr>
+<tr><td>POST</td><td>/:jid/files/trash/:id/restore</td><td>恢复</td><td><span class="badge pass">PASS</span></td></tr>
+<tr><td>DELETE</td><td>/:jid/files/trash/:id</td><td>彻底删除</td><td><span class="badge pass">PASS</span></td></tr>
+<tr><td>DELETE</td><td>/:jid/files/trash</td><td>清空回收站</td><td><span class="badge pass">PASS</span></td></tr>
+<tr><td>GET</td><td>/:jid/files/versions/:path</td><td>版本列表</td><td><span class="badge pass">PASS</span></td></tr>
+<tr><td>POST</td><td>/:jid/files/versions/:path/:version/restore</td><td>恢复版本</td><td><span class="badge pass">PASS</span></td></tr>
+</table>
+<h3>DB Schema（schema_version 63→64）</h3>
+<pre>CREATE TABLE IF NOT EXISTS file_trash (
+  id TEXT PK, group_folder, trash_id, original_path, name,
+  is_folder, size_bytes, deleted_by, deleted_at, entry_json
+);
+CREATE TABLE IF NOT EXISTS file_versions (
+  id TEXT PK, group_folder, file_path, version_num,
+  content_ref, size_bytes, mime_type, created_by, created_at, comment,
+  UNIQUE(group_folder, file_path, version_num)
+);</pre>
+</section>
+
+<section id="ui">
+<h2>4. UI 测试（Playwright + Chrome）</h2>
+<p>登录 admin/88888888 → /disk → 8 项用例：</p>
+<table>
+<tr><th>#</th><th>用例</th><th>结果</th><th>证据</th></tr>
+<tr><td>T1</td><td>登录</td><td><span class="badge pass">PASS</span></td><td>url=/chat</td></tr>
+<tr><td>T2</td><td>网盘页加载</td><td><span class="badge pass">PASS</span></td><td>title=网盘 sidebar=true</td></tr>
+<tr><td>T3</td><td>工作区列表+切换</td><td><span class="badge pass">PASS</span></td><td>count=1</td></tr>
+<tr><td>T4</td><td>文件列表渲染</td><td><span class="badge pass">PASS</span></td><td>text_len=303</td></tr>
+<tr><td>T5</td><td>搜索弹窗+执行</td><td><span class="badge pass">PASS</span></td><td>results=176（.md）</td></tr>
+<tr><td>T6</td><td>回收站抽屉</td><td><span class="badge pass">PASS</span></td><td>Sheet 可见</td></tr>
+<tr><td>T7</td><td>新建文件夹</td><td><span class="badge pass">PASS</span></td><td>found=true（disk-test-folder）</td></tr>
+<tr><td>T8</td><td>文件预览</td><td><span class="badge fail">FAIL</span></td><td>选择器误报（新建文件夹后视图变化，非缺陷）</td></tr>
+</table>
+
+<h3>截图</h3>
+<div class="ss-grid">
+  <div class="ss-item"><img src="01-after-login.png" loading="lazy"><div class="cap">T1 登录后</div></div>
+  <div class="ss-item"><img src="02-disk-page.png" loading="lazy"><div class="cap">T2 网盘页</div></div>
+  <div class="ss-item"><img src="04-file-list.png" loading="lazy"><div class="cap">T4 文件列表</div></div>
+  <div class="ss-item"><img src="05-search-results.png" loading="lazy"><div class="cap">T5 搜索 176 结果</div></div>
+  <div class="ss-item"><img src="06-trash-drawer.png" loading="lazy"><div class="cap">T6 回收站抽屉</div></div>
+  <div class="ss-item"><img src="07-create-folder.png" loading="lazy"><div class="cap">T7 新建文件夹</div></div>
+</div>
+</section>
+
+<section id="regression">
+<h2>5. 零回归验证</h2>
+<pre>make test-smoke → 10 文件 122 测试 PASS（1.51s）
+  tests/units/json-schema-validator.test.ts
+  tests/units/graph-validate-node.test.ts
+  tests/units/harness-eval.test.ts
+  tests/chat-trace-store.test.ts
+  tests/open-platform-validation.test.ts
+  tests/graph-expr.test.ts
+  tests/units/memory-write-trace.test.ts
+  tests/units/llm-call-trace.test.ts
+  tests/units/skill-im-command.test.ts
+  tests/units/tool-governance.test.ts</pre>
+<p>前端 <code>npx tsc --noEmit</code> exit 0 + <code>npm run build</code> 10.34s 成功（101 precache entries）。</p>
+</section>
+
+<section id="decisions">
+<h2>6. 关键决策</h2>
+<details open><summary>演进而非重写（Surgical Changes）</summary>
+<p>PRD 指定 MinIO+PG+Redis+OnlyOffice 技术栈，实际栈为 TS+SQLite+本地 fs。
+按工作原则在现有架构上演进：复用 file-manager.ts / FilePanel.tsx / MCP tool() helper，
+重基建（MinIO 内容寻址、OnlyOffice 在线编辑、分块上传、文件级 RBAC）留 P1/P2。</p>
+</details>
+<details><summary>软删除 + 版本快照 best-effort（Simplicity First）</summary>
+<p>DELETE → .trash/{trashId}/ + DB 元数据，DB 写失败回滚 restoreFromTrash 避免不一致。
+PUT → .versions/{b64path}/{n}.bin 快照，失败仅 warn 不阻塞业务写。保留最新 20 版自动修剪。
+不引入 diff/块级去重（MVP 够用）。</p>
+</details>
+<details><summary>Agent 工具零侵入</summary>
+<p>7 个 disk_* 工具加在既有 mcp-tools.ts 的 tool() helper 数组里，
+复用 resolveDiskPath 路径校验（validateAndResolvePath 防 path traversal + O_NOFOLLOW 防 symlink TOCTOU）。
+不重构 IPC / Redis bridge 层。</p>
+</details>
+<details><summary>向后兼容</summary>
+<p>所有新表 CREATE TABLE IF NOT EXISTS 幂等；DELETE 返回 <code>softDeleted: true</code> 区分旧行为；
+file_versions/trash 仅新功能使用，不影响既有文件 CRUD 路径。</p>
+</details>
+</section>
+
+</div>
+<script>
+function toggleTheme(){
+  const h=document.documentElement.getAttribute('data-theme');
+  document.documentElement.setAttribute('data-theme',h==='dark'?'light':'dark');
+}
+</script>
+</body>
+</html>

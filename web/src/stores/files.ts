@@ -37,6 +37,38 @@ interface FileState {
   saveFileContent: (jid: string, filePath: string, content: string) => Promise<boolean>;
   saveFileBinary: (jid: string, filePath: string, data: ArrayBuffer | Blob) => Promise<boolean>;
   saveHtmlAsDocx: (jid: string, filePath: string, html: string) => Promise<boolean>;
+  // AgentNet Disk — 搜索/移动/重命名/回收站/版本
+  searchFiles: (jid: string, q: string) => Promise<FileEntry[]>;
+  moveFile: (jid: string, source: string, targetDir: string) => Promise<boolean>;
+  renameFile: (jid: string, filePath: string, newName: string) => Promise<boolean>;
+  listTrash: (jid: string) => Promise<TrashItem[]>;
+  restoreTrash: (jid: string, id: string) => Promise<boolean>;
+  purgeTrash: (jid: string, id: string) => Promise<boolean>;
+  emptyTrash: (jid: string) => Promise<boolean>;
+  listVersions: (jid: string, filePath: string) => Promise<VersionEntry[]>;
+  getVersionContent: (jid: string, filePath: string, version: number) => Promise<{ content: string; isText: boolean } | null>;
+  restoreVersion: (jid: string, filePath: string, version: number) => Promise<boolean>;
+}
+
+export interface TrashItem {
+  id: string;
+  trashId: string;
+  originalPath: string;
+  name: string;
+  isFolder: boolean;
+  sizeBytes: number;
+  deletedBy: string;
+  deletedAt: string;
+}
+
+export interface VersionEntry {
+  id: string;
+  versionNum: number;
+  sizeBytes: number;
+  mimeType: string | null;
+  createdBy: string;
+  createdAt: string;
+  comment: string | null;
 }
 
 export function toBase64Url(str: string): string {
@@ -242,6 +274,120 @@ export const useFileStore = create<FileState>((set, get) => ({
       const msg = err instanceof Error ? err.message : 'Failed to convert HTML to docx';
       console.error('Failed to convert HTML to docx:', err);
       set({ error: msg });
+      return false;
+    }
+  },
+
+  // ─── AgentNet Disk 方法 ───
+  searchFiles: async (jid: string, q: string) => {
+    try {
+      const data = await api.get<{ files: FileEntry[] }>(
+        `/api/groups/${encodeURIComponent(jid)}/files/search?q=${encodeURIComponent(q)}`
+      );
+      return data.files;
+    } catch (err) {
+      console.error('Failed to search files:', err);
+      return [];
+    }
+  },
+
+  moveFile: async (jid: string, source: string, targetDir: string) => {
+    try {
+      await api.post(`/api/groups/${encodeURIComponent(jid)}/files/move`, { source, targetDir });
+      await get().loadFiles(jid, get().currentPath[jid] || '');
+      return true;
+    } catch (err) {
+      console.error('Failed to move file:', err);
+      set({ error: err instanceof Error ? err.message : 'Failed to move file' });
+      return false;
+    }
+  },
+
+  renameFile: async (jid: string, filePath: string, newName: string) => {
+    try {
+      await api.post(`/api/groups/${encodeURIComponent(jid)}/files/rename`, { path: filePath, newName });
+      await get().loadFiles(jid, get().currentPath[jid] || '');
+      return true;
+    } catch (err) {
+      console.error('Failed to rename file:', err);
+      set({ error: err instanceof Error ? err.message : 'Failed to rename file' });
+      return false;
+    }
+  },
+
+  listTrash: async (jid: string) => {
+    try {
+      const data = await api.get<{ items: TrashItem[] }>(`/api/groups/${encodeURIComponent(jid)}/files/trash`);
+      return data.items;
+    } catch (err) {
+      console.error('Failed to list trash:', err);
+      return [];
+    }
+  },
+
+  restoreTrash: async (jid: string, id: string) => {
+    try {
+      await api.post(`/api/groups/${encodeURIComponent(jid)}/files/trash/${id}/restore`);
+      return true;
+    } catch (err) {
+      console.error('Failed to restore trash:', err);
+      return false;
+    }
+  },
+
+  purgeTrash: async (jid: string, id: string) => {
+    try {
+      await api.delete(`/api/groups/${encodeURIComponent(jid)}/files/trash/${id}`);
+      return true;
+    } catch (err) {
+      console.error('Failed to purge trash:', err);
+      return false;
+    }
+  },
+
+  emptyTrash: async (jid: string) => {
+    try {
+      await api.delete(`/api/groups/${encodeURIComponent(jid)}/files/trash`);
+      return true;
+    } catch (err) {
+      console.error('Failed to empty trash:', err);
+      return false;
+    }
+  },
+
+  listVersions: async (jid: string, filePath: string) => {
+    try {
+      const encoded = toBase64Url(filePath);
+      const data = await api.get<{ versions: VersionEntry[] }>(
+        `/api/groups/${encodeURIComponent(jid)}/files/versions/${encoded}`
+      );
+      return data.versions;
+    } catch (err) {
+      console.error('Failed to list versions:', err);
+      return [];
+    }
+  },
+
+  getVersionContent: async (jid: string, filePath: string, version: number) => {
+    try {
+      const encoded = toBase64Url(filePath);
+      const data = await api.get<{ content: string; isText: boolean }>(
+        `/api/groups/${encodeURIComponent(jid)}/files/versions/${encoded}/${version}`
+      );
+      return { content: data.content, isText: data.isText };
+    } catch (err) {
+      console.error('Failed to get version content:', err);
+      return null;
+    }
+  },
+
+  restoreVersion: async (jid: string, filePath: string, version: number) => {
+    try {
+      const encoded = toBase64Url(filePath);
+      await api.post(`/api/groups/${encodeURIComponent(jid)}/files/versions/${encoded}/${version}/restore`);
+      return true;
+    } catch (err) {
+      console.error('Failed to restore version:', err);
       return false;
     }
   },

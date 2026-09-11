@@ -2639,6 +2639,38 @@ export function initDatabase(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_staff_evt_team ON sw_events(team_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_staff_evt_task ON sw_events(task_id, created_at DESC);
+
+    -- v64: AgentNet Disk 文件网盘 — 回收站 + 版本历史
+    -- file_trash: 软删除记录（文件移到 {group}/.trash/{trashId}/，此表存元数据+原路径）
+    -- file_versions: 文件内容保存时自动快照（存 .versions/{path}/{n}.bin ref + 元数据）
+    CREATE TABLE IF NOT EXISTS file_trash (
+      id TEXT PRIMARY KEY,
+      group_folder TEXT NOT NULL,
+      trash_id TEXT NOT NULL,
+      original_path TEXT NOT NULL,
+      name TEXT NOT NULL,
+      is_folder INTEGER NOT NULL DEFAULT 0,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      deleted_by TEXT NOT NULL,
+      deleted_at TEXT NOT NULL DEFAULT (datetime('now')),
+      entry_json TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_file_trash_group ON file_trash(group_folder, deleted_at DESC);
+
+    CREATE TABLE IF NOT EXISTS file_versions (
+      id TEXT PRIMARY KEY,
+      group_folder TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      version_num INTEGER NOT NULL,
+      content_ref TEXT,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      mime_type TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      comment TEXT,
+      UNIQUE (group_folder, file_path, version_num)
+    );
+    CREATE INDEX IF NOT EXISTS idx_file_versions_path ON file_versions(group_folder, file_path, version_num DESC);
   `);
 
   // PostgreSQL: FK constraints are stripped at CREATE TABLE time by
@@ -2656,7 +2688,7 @@ export function initDatabase(): void {
     }
   }
 
-  const SCHEMA_VERSION = '63';
+  const SCHEMA_VERSION = '64';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
