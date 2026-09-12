@@ -7254,7 +7254,7 @@ function mapUserRow(row: Record<string, unknown>): User {
     role,
     status,
     permissions: parsePermissionsFromDb(row.permissions, role),
-    must_change_password: !!row.must_change_password,
+    must_change_password: !!(Number(row.must_change_password)),
     disable_reason:
       typeof row.disable_reason === 'string' ? row.disable_reason : null,
     notes: typeof row.notes === 'string' ? row.notes : null,
@@ -7754,7 +7754,7 @@ export function getSessionWithUser(
     status: parseUserStatus(row.status),
     display_name: String(row.display_name ?? ''),
     permissions: parsePermissionsFromDb(row.permissions, role),
-    must_change_password: !!row.must_change_password,
+    must_change_password: !!(Number(row.must_change_password)),
   };
 }
 
