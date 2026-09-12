@@ -101,6 +101,7 @@ import openPlatformRoutes from './routes/open-platform.js';
 import openPlatformKeysRoutes from './routes/open-platform-keys.js';
 import openPlatformAdminRoutes from './routes/open-platform-admin.js';
 import openPlatformDebugRoutes from './routes/open-platform-debug.js';
+import evalCenterRoutes from './routes/eval-center.js';
 import { getSandboxManager } from './sandbox/index.js';
 import {
   checkBillingAccess,
@@ -351,6 +352,7 @@ app.route('/v1', openPlatformRoutes);
 app.route('/api/open-platform/keys', openPlatformKeysRoutes);
 app.route('/api/open-platform/debug', openPlatformDebugRoutes);
 app.route('/api/open-platform', openPlatformAdminRoutes);
+app.route('/api/eval-center', evalCenterRoutes);
 
 // --- POST /api/messages ---
 

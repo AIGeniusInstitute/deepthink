@@ -10856,6 +10856,17 @@ async function main(): Promise<void> {
   initDatabase();
   logger.info('Database initialized');
 
+  // ─── Eval Center PostgreSQL initialization ───
+  // Dedicated PG pool for the eval center (datasets/rubrics/runs/traces).
+  // Best-effort: failure only disables the eval center, not the main app.
+  try {
+    const { initEvalDb } = await import('./eval-center/eval-db.js');
+    await initEvalDb();
+    logger.info('Eval Center PostgreSQL initialized');
+  } catch (err) {
+    logger.warn({ err }, 'Eval Center PG init failed (eval center disabled)');
+  }
+
   // Sync harness eval cases from data/harness/eval-cases/ into DB on startup.
   try {
     const synced = loadAndSyncEvalCases();
