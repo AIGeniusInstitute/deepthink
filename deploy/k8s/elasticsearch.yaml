@@ -1,0 +1,88 @@
+# Elasticsearch — full-text + analytics search store.
+#
+# NOTE: the DeepThink platform itself uses pgvector + pg_trgm (PostgreSQL)
+# for vector / full-text search and does NOT depend on Elasticsearch. This
+# manifest is provided as optional infrastructure for future features that
+# need a dedicated search/analytics engine. See deploy/local/docker-compose.yml.
+#
+# Single-node, security disabled (in-cluster, minimal footprint).
+# Heap pinned to 512m to fit the memory-constrained kind node.
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  namespace: deepthink
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/component: search
+spec:
+  serviceName: elasticsearch
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: elasticsearch
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: elasticsearch
+        app.kubernetes.io/component: search
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: elasticsearch
+          # docker.io/library/elasticsearch (official Elastic image; pre-loaded on the kind host)
+          image: elasticsearch:8.11.3
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: discovery.type
+              value: single-node
+            - name: xpack.security.enabled
+              value: "false"
+            - name: xpack.security.http.ssl.enabled
+              value: "false"
+            - name: xpack.security.transport.ssl.enabled
+              value: "false"
+            - name: ES_JAVA_OPTS
+              value: "-Xms512m -Xmx512m"
+            - name: cluster.routing.allocation.disk.threshold_enabled
+              value: "false"
+          ports:
+            - name: http
+              containerPort: 9200
+              protocol: TCP
+          volumeMounts:
+            - name: es-data
+              mountPath: /usr/share/elasticsearch/data
+          readinessProbe:
+            httpGet: { path: /, port: 9200 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /, port: 9200 }
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits: { cpu: "1000m", memory: "1536Mi" }
+  volumeClaimTemplates:
+    - metadata:
+        name: es-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests: { storage: 5Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: deepthink
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: 9200

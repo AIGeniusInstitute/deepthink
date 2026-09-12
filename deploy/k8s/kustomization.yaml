@@ -21,6 +21,9 @@ resources:
   - redis.yaml
   - postgres.yaml
   - minio.yaml
+  - elasticsearch.yaml
+  - milvus.yaml
+  - clickhouse.yaml
   - deployment.yaml
   - service.yaml
   - ingress.yaml

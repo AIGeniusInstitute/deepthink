@@ -1,0 +1,80 @@
+# ClickHouse — columnar OLAP store for analytics / time-series.
+#
+# Single-node, HTTP interface on 8123 (native TCP 9000 left in-pod only).
+# Credentials sourced from deepthink-secret (CLICKHOUSE_USER / CLICKHOUSE_PASSWORD).
+#
+# NOTE: the DeepThink platform itself does NOT depend on ClickHouse today.
+# This manifest is provided as optional infrastructure for future analytics
+# features.
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: clickhouse
+  namespace: deepthink
+  labels:
+    app.kubernetes.io/name: clickhouse
+    app.kubernetes.io/component: olap
+spec:
+  serviceName: clickhouse
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: clickhouse
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: clickhouse
+        app.kubernetes.io/component: olap
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: clickhouse
+          image: clickhouse/clickhouse-server:24.3
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: CLICKHOUSE_USER
+              valueFrom: { secretKeyRef: { name: deepthink-secret, key: CLICKHOUSE_USER } }
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom: { secretKeyRef: { name: deepthink-secret, key: CLICKHOUSE_PASSWORD } }
+            - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8123
+              protocol: TCP
+          volumeMounts:
+            - name: ch-data
+              mountPath: /var/lib/clickhouse
+          readinessProbe:
+            httpGet: { path: /ping, port: 8123 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /ping, port: 8123 }
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "1000m", memory: "1Gi" }
+  volumeClaimTemplates:
+    - metadata:
+        name: ch-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests: { storage: 5Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  namespace: deepthink
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: clickhouse
+  ports:
+    - name: http
+      port: 8123
+      targetPort: 8123

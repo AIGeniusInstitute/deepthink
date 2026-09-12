@@ -37,3 +37,8 @@ data:
   S3_ENDPOINT: "http://minio:9000"
   S3_REGION: "us-east-1"
   S3_FORCE_PATH_STYLE: "true"
+
+  # ─── Optional infra (not consumed by the app today; reserved for future features) ──
+  ELASTICSEARCH_URL: "http://elasticsearch:9200"
+  MILVUS_ADDR: "milvus:19530"
+  CLICKHOUSE_URL: "http://clickhouse:8123"
