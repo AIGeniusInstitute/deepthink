@@ -227,8 +227,13 @@ _start-direct: ## (内部) 裸跑模式（无 pm2 或未注册）；START_DIRECT
 # 后台守护：nohup 脱离终端（SSH 断线/SIGHUP 不掉线）+ watchdog 自动重启（node 意外
 # 退出自动拉起；make stop-prod 写停止标记强制停止、不重启）。日志 → logs/deepthink-<PORT>.log，
 # 命令立即返回，用 make stop-prod PORT=<PORT> 停止、tail -f logs/deepthink-<PORT>.log 看日志。
-start-prod: ## 以隔离 data dir（~/.deepthink-<PORT>）后台守护启动生产实例（PORT 必填，含自动重启）
+start-prod: ## 一键重启生产实例（编译+构建+部署，PORT 必填）：端口被占用时先自动停旧实例，再增量编译并后台守护启动
 	@if [ "$(origin PORT)" != "command line" ]; then echo "❌ 用法: make start-prod PORT=9999"; exit 1; fi
+	@# 一键重启：端口已被旧实例占用时，先停掉它（写停止标记 + 杀监听进程），复用 stop-prod 保证 watchdog 不自动拉起旧进程
+	@if lsof -ti:$(PORT) -sTCP:LISTEN >/dev/null 2>&1; then \
+	  echo "🔄 端口 $(PORT) 已被占用，先停止旧实例…"; \
+	  $(MAKE) --no-print-directory stop-prod PORT=$(PORT); \
+	fi
 	@export DEEPTHINK_DATA_DIR="$(HOME)/.deepthink-$(PORT)"; \
 	  export PROD_LOG="$(CURDIR)/logs/deepthink-$(PORT).log"; \
 	  export PROD_PIDFILE="$(CURDIR)/logs/deepthink-$(PORT).pid"; \
