@@ -72,3 +72,4 @@ desktop/release/
 desktop/dev-resources/
 desktop/resources/icon.iconset/
 dev-resources/
+web/node_modules

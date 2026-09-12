@@ -40,6 +40,7 @@ const StaffEmployeesPage = lazy(() => import('./pages/StaffEmployeesPage').then(
 const StaffTeamsPage = lazy(() => import('./pages/StaffTeamsPage').then(m => ({ default: m.StaffTeamsPage })));
 const StaffTeamDetailPage = lazy(() => import('./pages/StaffTeamDetailPage').then(m => ({ default: m.StaffTeamDetailPage })));
 const DiskPage = lazy(() => import('./pages/DiskPage').then(m => ({ default: m.DiskPage })));
+const EvalCenterPage = lazy(() => import('./pages/EvalCenterPage').then(m => ({ default: m.EvalCenterPage })));
 
 export function App() {
   const Router = shouldUseHashRouter() ? HashRouter : BrowserRouter;
@@ -80,6 +81,7 @@ export function App() {
         >
           <Route path="/chat/:groupFolder?" element={<Suspense fallback={null}><ChatPage /></Suspense>} />
           <Route path="/disk" element={<Suspense fallback={null}><DiskPage /></Suspense>} />
+          <Route path="/eval-center" element={<Suspense fallback={null}><EvalCenterPage /></Suspense>} />
           <Route path="/groups" element={<Navigate to="/settings?tab=groups" replace />} />
           <Route path="/tasks" element={<Suspense fallback={null}><TasksPage /></Suspense>} />
           <Route path="/loops" element={<Suspense fallback={null}><LoopsPage /></Suspense>} />
