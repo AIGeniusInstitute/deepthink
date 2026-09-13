@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分布式 Agent-Runner 调度修复 · 测试报告</title>
+<style>
+:root {
+  --bg: #0d1117; --panel: #161b22; --border: #30363d;
+  --text: #c9d1d9; --text2: #8b949e; --accent: #58a6ff;
+  --green: #3fb950; --red: #f85149; --gold: #d2991d;
+  --amber: #d2991d;
+}
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 48px 0; }
+.container { max-width: 900px; margin: 0 auto; padding: 0 24px; }
+h1 { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { color: var(--text2); font-size: 14px; margin-bottom: 32px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 24px; margin-bottom: 24px; }
+.card h2 { font-size: 18px; margin: 0 0 16px 0; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+th { color: var(--text2); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+.pass { color: var(--green); font-weight: 600; }
+.fail { color: var(--red); font-weight: 600; }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.pill-pass { background: #1a3a1e; color: var(--green); }
+.pill-info { background: #1a2a3a; color: var(--accent); }
+.code { background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 16px; font-family: 'SF Mono', monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 12px 0; }
+.green { color: var(--green); }
+.amber { color: var(--amber); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.ac-table td:first-child { font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🔧 分布式 Agent-Runner 调度修复 · 测试报告</h1>
+<p class="subtitle">提交 481e646 · 2026-09-13 · DeepThink K8s (kind-desktop, namespace deepthink, port 30080)</p>
+
+<div class="card">
+<h2>📊 测试概览</h2>
+<table>
+<tr><th>指标</th><th>值</th></tr>
+<tr><td>总测试用例</td><td>6</td></tr>
+<tr><td>通过</td><td class="pass">6</td></tr>
+<tr><td>失败</td><td>0</td></tr>
+<tr><td>通过率</td><td class="pass">100%</td></tr>
+<tr><td>E2E 测试脚本</td><td><code>/tmp/e2e-test-v3.mjs</code> (Playwright + WS)</td></tr>
+<tr><td>模型</td><td>DashScope DeepSeek (deepseek-v4-pro)</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h2>✅ 验收标准矩阵</h2>
+<table class="ac-table">
+<tr><th>AC</th><th>描述</th><th>结果</th><th>证据</th></tr>
+<tr>
+  <td>AC1</td>
+  <td>E2E: 用户发送消息后 Agent 通过 WS 回复</td>
+  <td><span class="pill pill-pass">PASS</span></td>
+  <td>Agent reply: "收到您的测试消息 E2ETEST-mtz4fc3f。系统运行正常"</td>
+</tr>
+<tr>
+  <td>AC2</td>
+  <td>WebSocket stream_event 流式事件正常推送</td>
+  <td><span class="pill pill-pass">PASS</span></td>
+  <td>16 stream events (thinking_delta × 7, text_delta × 5, usage × 1, status × 3)</td>
+</tr>
+<tr>
+  <td>AC3</td>
+  <td>Agent 回复由正确 sender 标识</td>
+  <td><span class="pill pill-pass">PASS</span></td>
+  <td>sender=deepthink-agent</td>
+</tr>
+<tr>
+  <td>AC4</td>
+  <td>任务处理后 agent-runner 返回 BLPOP 等待新任务</td>
+  <td><span class="pill pill-pass">PASS</span></td>
+  <td>agent-runner 日志: "Task complete, waiting for next task from Redis..."</td>
+</tr>
+<tr>
+  <td>AC5</td>
+  <td>Redis 队列在任务处理后为空 (LLEN=0)</td>
+  <td><span class="pill pill-pass">PASS</span></td>
+  <td><code>redis-cli LLEN deepthink:agent-tasks → 0</code></td>
+</tr>
+<tr>
+  <td>AC6</td>
+  <td>多 Pod 去重：同一 turnId 不重复 LPUSH</td>
+  <td><span class="pill pill-pass">PASS</span></td>
+  <td>日志: "publishAgentTask: task already claimed by another pod, skipping"</td>
+</tr>
+</table>
+</div>
+
+<div class="card">
+<h2>🔬 E2E 测试输出</h2>
+<div class="code">Sent: E2ETEST-mtz4fc3f
+t=3s: User message: sender=bb3b0dfd... text="E2ETEST-mtz4fc3f"
+t=9s: Stream event: thinking_delta (×7)
+t=9s: Stream event: text_delta (×5)
+t=9s: Stream event: usage
+t=9s: Agent reply via WS: "收到您的测试消息 E2ETEST-mtz4fc3f。系统运行正常，有什么可以帮您的？"
+
+New messages (3):
+  sender=bb3b0dfd-ef69-41db-a4ae-3ff71709ec74 text="E2ETEST-mtz4fc3f"
+  sender=deepthink-agent text="收到您的测试消息 E2ETEST-mtz4fc3f。系统运行正常，有什么可以帮您的？"
+
+Stream events: 16
+  type=thinking_delta / text_delta / status / usage / context_audit
+
+EXIT_CODE=0</div>
+</div>
+
+<div class="card">
+<h2>🐛 修复的根因</h2>
+<table>
+<tr><th>#</th><th>根因</th><th>严重度</th><th>修复文件</th></tr>
+<tr>
+  <td>1</td>
+  <td>agent-runner 卡在 waitForIpcMessage() 永不出 — 缺少 _close 信号</td>
+  <td><span class="pill" style="background:#3d1a1a;color:var(--red)">🔴 CRITICAL</span></td>
+  <td><code>src/index.ts</code></td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>IPC 订阅竞态: agent-runner 发布输出时 web-server 订阅未就绪</td>
+  <td><span class="pill" style="background:#3d2a1a;color:var(--gold)">🟡 HIGH</span></td>
+  <td><code>src/index.ts</code></td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>多 Pod 任务重复分发: 两个 web-server Pod 同时 LPUSH 同一 turnId</td>
+  <td><span class="pill" style="background:#3d2a1a;color:var(--gold)">🟡 HIGH</span></td>
+  <td><code>src/redis-bus.ts</code></td>
+</tr>
+<tr>
+  <td>4</td>
+  <td>distributedHandler 异常导致 Promise 悬挂 10 分钟超时</td>
+  <td><span class="pill" style="background:#2a2a1a;color:var(--amber)">🟠 MEDIUM</span></td>
+  <td><code>src/index.ts</code></td>
+</tr>
+<tr>
+  <td>5</td>
+  <td>Redis 初始化晚于 startWebServer → 启动竞态（首条消息走错路径）</td>
+  <td><span class="pill" style="background:#2a2a1a;color:var(--amber)">🟠 MEDIUM</span></td>
+  <td><code>src/index.ts</code></td>
+</tr>
+</table>
+</div>
+
+<div class="grid2">
+<div class="card">
+<h2>📈 修复前后对比</h2>
+<table>
+<tr><th>指标</th><th>修复前</th><th>修复后</th></tr>
+<tr><td>Agent 回复</td><td class="fail">❌ 无</td><td class="pass">✅ 正常</td></tr>
+<tr><td>任务队列消费</td><td class="fail">卡在 waitForIpcMessage</td><td class="pass">正常循环</td></tr>
+<tr><td>去重</td><td class="fail">❌ 重复发布</td><td class="pass">SET NX 互斥</td></tr>
+<tr><td>订阅竞态</td><td class="fail">可能丢失输出</td><td class="pass">await 订阅就绪</td></tr>
+</table>
+</div>
+<div class="card">
+<h2>📋 部署信息</h2>
+<table>
+<tr><td>集群</td><td>kind-desktop (K8s v1.32.2)</td></tr>
+<tr><td>Namespace</td><td>deepthink</td></tr>
+<tr><td>Web Server Pods</td><td>2</td></tr>
+<tr><td>Agent Runner Pods</td><td>2</td></tr>
+<tr><td>Redis</td><td>redis:7-alpine</td></tr>
+<tr><td>外部端口</td><td>30080</td></tr>
+<tr><td>模型</td><td>deepseek-v4-pro (DashScope)</td></tr>
+</table>
+</div>
+</div>
+
+<div class="card">
+<h2>📝 已知残留问题</h2>
+<table>
+<tr><th>问题</th><th>影响</th><th>优先级</th></tr>
+<tr>
+  <td>恢复流程重放旧消息</td>
+  <td>Pod 重启后 recovery 会重放已处理的历史消息，导致用户消息在 WS 中重复出现</td>
+  <td><span class="pill" style="background:#2a2a1a;color:var(--amber)">🟠 MEDIUM</span></td>
+</tr>
+<tr>
+  <td>agent-runner 残留旧 task</td>
+  <td>之前的手动调试 task <code>{"test":true}</code> 仍在 agent-runner 日志中（group: undefined → EACCES）</td>
+  <td><span class="pill" style="background:#1a3a1e;color:var(--green)">🟢 LOW</span></td>
+</tr>
+</table>
+</div>
+
+</div>
+</body>
+</html>
