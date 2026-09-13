@@ -10,6 +10,34 @@ import { authMiddleware } from '../middleware/auth.js';
 import { DATA_DIR } from '../config.js';
 import { checkMcpServerLimit } from '../billing.js';
 import { listMcpTools, callMcpTool } from '../mcp-client.js';
+import { logger } from '../logger.js';
+
+// ─── MCP Server Config DB Access (K8s multi-pod fix) ───
+// Uses the same provider_configs DB table as runtime-config.ts, but with
+// a per-user key prefix pattern to store MCP server configurations.
+
+function mcpServerConfigKey(userId: string): string {
+  return `mcp-servers:${userId}`;
+}
+
+// Lazy DB handle — will be populated at runtime.
+let _mcpConfigDb: {
+  prepare(sql: string): {
+    get(...params: unknown[]): unknown;
+    run(...params: unknown[]): unknown;
+  };
+} | null = null;
+
+async function ensureMcpConfigDb(): Promise<typeof _mcpConfigDb> {
+  if (_mcpConfigDb) return _mcpConfigDb;
+  try {
+    const { getDb } = await import('../db.js');
+    _mcpConfigDb = getDb();
+  } catch {
+    // DB not available (e.g., early startup) — file-only mode.
+  }
+  return _mcpConfigDb;
+}
 
 // --- Types ---
 
@@ -60,6 +88,22 @@ function validateServerId(id: string): boolean {
 }
 
 async function readMcpServersFile(userId: string): Promise<McpServersFile> {
+  // DB-first: provider_configs is primary for K8s multi-pod.
+  const db = await ensureMcpConfigDb();
+  if (db) {
+    try {
+      const row = db
+        .prepare('SELECT config_data FROM provider_configs WHERE config_key = ? AND user_id = ?')
+        .get(mcpServerConfigKey(userId), userId) as { config_data: string } | undefined;
+      if (row) {
+        return JSON.parse(row.config_data) as McpServersFile;
+      }
+    } catch (err) {
+      logger.warn({ err, userId }, 'Failed to read MCP servers from DB');
+    }
+  }
+
+  // Fall back to file-based storage.
   try {
     const data = await fs.readFile(getServersFilePath(userId), 'utf-8');
     return JSON.parse(data);
@@ -72,9 +116,27 @@ async function writeMcpServersFile(
   userId: string,
   data: McpServersFile,
 ): Promise<void> {
+  // File is the durable local cache (agent-runner reads servers.json at startup).
   const dir = getUserMcpServersDir(userId);
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(getServersFilePath(userId), JSON.stringify(data, null, 2));
+
+  // Best-effort DB write-through for K8s multi-pod sharing.
+  const db = await ensureMcpConfigDb();
+  if (db) {
+    try {
+      const json = JSON.stringify(data);
+      db.prepare(
+        `INSERT INTO provider_configs (config_key, user_id, config_data, updated_at)
+         VALUES (?, ?, ?, datetime('now'))
+         ON CONFLICT(config_key, user_id) DO UPDATE SET
+           config_data = excluded.config_data,
+           updated_at = datetime('now')`,
+      ).run(mcpServerConfigKey(userId), userId, json);
+    } catch (err) {
+      logger.warn({ err, userId }, 'Failed to write MCP servers to DB');
+    }
+  }
 }
 
 async function readHostSyncManifest(userId: string): Promise<HostSyncManifest> {

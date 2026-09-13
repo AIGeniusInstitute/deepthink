@@ -62,6 +62,111 @@ const CLAUDE_CONFIG_AUDIT_FILE = path.join(
   CLAUDE_CONFIG_DIR,
   'claude-provider.audit.log',
 );
+
+// ─── Provider Config DB Storage (K8s multi-pod fix) ───
+// File-based *-provider.json configs cannot be shared across K8s pods when PVC
+// is RWO (ReadWriteOnce). DB-backed storage via provider_configs table replaces
+// file-as-primary with DB-as-primary, file-as-write-through-cache.
+//
+// Uses lazy reference to avoid static import cycles with db.ts. The db reference
+// is injected by index.ts after database initialization via setProviderConfigDb().
+// When no DB reference is set (e.g. early startup, single-process mode), all
+// reads fall back to file-based storage transparently.
+
+interface ProviderConfigDbHandle {
+  prepare(sql: string): {
+    get(...params: unknown[]): unknown;
+    run(...params: unknown[]): unknown;
+    all(...params: unknown[]): unknown[];
+  };
+}
+
+let _providerConfigDb: ProviderConfigDbHandle | null = null;
+
+/** Inject the DB handle for provider config reads/writes. Called by index.ts after DB init. */
+export function setProviderConfigDb(db: ProviderConfigDbHandle): void {
+  _providerConfigDb = db;
+}
+
+function readProviderConfigFromDb<T = unknown>(
+  configKey: string,
+  userId = '',
+): T | null {
+  if (!_providerConfigDb) return null;
+  try {
+    const row = _providerConfigDb
+      .prepare(
+        'SELECT config_data FROM provider_configs WHERE config_key = ? AND user_id = ?',
+      )
+      .get(configKey, userId) as { config_data: string } | undefined;
+    if (!row) return null;
+    return JSON.parse(row.config_data) as T;
+  } catch (err) {
+    logger.warn(
+      { err, configKey, userId },
+      'Failed to read provider config from DB',
+    );
+    return null;
+  }
+}
+
+function writeProviderConfigToDb(
+  configKey: string,
+  userId: string,
+  data: unknown,
+): boolean {
+  if (!_providerConfigDb) return false;
+  try {
+    const json = JSON.stringify(data);
+    _providerConfigDb
+      .prepare(
+        `INSERT INTO provider_configs (config_key, user_id, config_data, updated_at)
+         VALUES (?, ?, ?, datetime('now'))
+         ON CONFLICT(config_key, user_id) DO UPDATE SET
+           config_data = excluded.config_data,
+           updated_at = datetime('now')`,
+      )
+      .run(configKey, userId, json);
+    return true;
+  } catch (err) {
+    logger.warn(
+      { err, configKey, userId },
+      'Failed to write provider config to DB',
+    );
+    return false;
+  }
+}
+
+/**
+ * Sync existing file-based provider configs into the DB at startup.
+ * Files are the legacy source; after migration, DB becomes primary.
+ * Called once after DB connection is established.
+ */
+export function syncProviderConfigsFromFiles(): void {
+  if (!_providerConfigDb) return;
+
+  // Sync Feishu config from file
+  try {
+    const feishuFile = readStoredFeishuConfigFromFile();
+    if (feishuFile) {
+      writeProviderConfigToDb('feishu-provider', '', feishuFile);
+      logger.info('Synced feishu-provider config from file to DB');
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to sync Feishu config to DB');
+  }
+
+  // Sync Telegram config from file
+  try {
+    const telegramFile = readStoredTelegramConfigFromFile();
+    if (telegramFile) {
+      writeProviderConfigToDb('telegram-provider', '', telegramFile);
+      logger.info('Synced telegram-provider config from file to DB');
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to sync Telegram config to DB');
+  }
+}
 const CLAUDE_CUSTOM_ENV_FILE = path.join(
   CLAUDE_CONFIG_DIR,
   'claude-custom-env.json',
@@ -921,6 +1026,13 @@ function normalizeStoredState(
 }
 
 function readStoredState(): ClaudeStoredStateV3Resolved | null {
+  // DB-first: provider_configs table is primary for K8s multi-pod.
+  const fromDb = readProviderConfigFromDb<{
+    version: number;
+    v3: ClaudeStoredStateV3Resolved;
+  }>('claude-provider', '');
+  if (fromDb?.v3) return fromDb.v3;
+
   if (!fs.existsSync(CLAUDE_CONFIG_FILE)) return null;
   try {
     const content = fs.readFileSync(CLAUDE_CONFIG_FILE, 'utf-8');
@@ -1028,6 +1140,13 @@ function writeStoredState(state: ClaudeStoredStateV3Resolved): void {
 
   fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
   writeSecretFile(CLAUDE_CONFIG_FILE, JSON.stringify(payload, null, 2) + '\n');
+
+  // Best-effort DB write-through.
+  writeProviderConfigToDb('claude-provider', '', {
+    version: CURRENT_CONFIG_VERSION,
+    v3: normalized,
+    writtenAt: new Date().toISOString(),
+  });
 }
 
 // ─── V4 统一供应商 Read / Write / CRUD ──────────────────────────
@@ -1185,6 +1304,27 @@ function readStoredStateV4(): {
   providers: UnifiedProvider[];
   balancing: BalancingConfig;
 } | null {
+  // DB-first: provider_configs is primary for K8s multi-pod.
+  const fromDb = readProviderConfigFromDb<{
+    version: number;
+    providers: StoredProviderV4[];
+    balancing: BalancingConfig;
+  }>('claude-provider-v4', '');
+  if (fromDb?.providers) {
+    return {
+      providers: fromDb.providers.map(fromStoredProviderV4),
+      balancing: {
+        strategy: fromDb.balancing?.strategy || DEFAULT_BALANCING_CONFIG.strategy,
+        unhealthyThreshold:
+          fromDb.balancing?.unhealthyThreshold ??
+          DEFAULT_BALANCING_CONFIG.unhealthyThreshold,
+        recoveryIntervalMs:
+          fromDb.balancing?.recoveryIntervalMs ??
+          DEFAULT_BALANCING_CONFIG.recoveryIntervalMs,
+      },
+    };
+  }
+
   if (!fs.existsSync(CLAUDE_CONFIG_FILE)) return null;
   try {
     const content = fs.readFileSync(CLAUDE_CONFIG_FILE, 'utf-8');
@@ -1242,6 +1382,14 @@ function writeStoredStateV4(
 
   fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
   writeSecretFile(CLAUDE_CONFIG_FILE, JSON.stringify(payload, null, 2) + '\n');
+
+  // Best-effort DB write-through.
+  writeProviderConfigToDb('claude-provider-v4', '', {
+    version: 4,
+    providers: payload.providers,
+    balancing: payload.balancing,
+    updatedAt: payload.updatedAt,
+  });
 }
 
 // ─── V4 公开 API ─────────────────────────────────────────────
@@ -1646,7 +1794,7 @@ function defaultsFromEnv(): ClaudeProviderConfig {
   }
 }
 
-function readStoredFeishuConfig(): FeishuProviderConfig | null {
+function readStoredFeishuConfigFromFile(): FeishuProviderConfig | null {
   if (!fs.existsSync(FEISHU_CONFIG_FILE)) return null;
   const content = fs.readFileSync(FEISHU_CONFIG_FILE, 'utf-8');
   const parsed = JSON.parse(content) as Record<string, unknown>;
@@ -1660,6 +1808,18 @@ function readStoredFeishuConfig(): FeishuProviderConfig | null {
     enabled: stored.enabled,
     updatedAt: stored.updatedAt || null,
   };
+}
+
+function readStoredFeishuConfig(): FeishuProviderConfig | null {
+  // DB-first: provider_configs table is the primary store for K8s multi-pod.
+  const fromDb = readProviderConfigFromDb<FeishuProviderConfig>(
+    'feishu-provider',
+    '',
+  );
+  if (fromDb) return fromDb;
+
+  // Fall back to file-based storage (legacy / single-process).
+  return readStoredFeishuConfigFromFile();
 }
 
 function defaultsFeishuFromEnv(): FeishuProviderConfig {
@@ -1720,8 +1880,13 @@ export function saveFeishuProviderConfig(
     }),
   };
 
+  // Write-through: file is the durable local cache, DB is the primary store.
   fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
   writeSecretFile(FEISHU_CONFIG_FILE, JSON.stringify(payload, null, 2) + '\n');
+
+  // Best-effort DB write (no-op when DB is not yet initialized).
+  writeProviderConfigToDb('feishu-provider', '', normalized);
+
   return normalized;
 }
 
@@ -1741,7 +1906,7 @@ export function toPublicFeishuProviderConfig(
 
 // ========== Telegram Provider Config ==========
 
-function readStoredTelegramConfig(): TelegramProviderConfig | null {
+function readStoredTelegramConfigFromFile(): TelegramProviderConfig | null {
   if (!fs.existsSync(TELEGRAM_CONFIG_FILE)) return null;
   const content = fs.readFileSync(TELEGRAM_CONFIG_FILE, 'utf-8');
   const parsed = JSON.parse(content) as Record<string, unknown>;
@@ -1755,6 +1920,15 @@ function readStoredTelegramConfig(): TelegramProviderConfig | null {
     enabled: stored.enabled,
     updatedAt: stored.updatedAt || null,
   };
+}
+
+function readStoredTelegramConfig(): TelegramProviderConfig | null {
+  const fromDb = readProviderConfigFromDb<TelegramProviderConfig>(
+    'telegram-provider',
+    '',
+  );
+  if (fromDb) return fromDb;
+  return readStoredTelegramConfigFromFile();
 }
 
 function defaultsTelegramFromEnv(): TelegramProviderConfig {
@@ -1817,6 +1991,10 @@ export function saveTelegramProviderConfig(
 
   fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
   writeSecretFile(TELEGRAM_CONFIG_FILE, JSON.stringify(payload, null, 2) + '\n');
+
+  // Best-effort DB write-through.
+  writeProviderConfigToDb('telegram-provider', '', normalized);
+
   return normalized;
 }
 
@@ -2748,6 +2926,12 @@ const DEFAULT_REGISTRATION_CONFIG: RegistrationConfig = {
 
 export function getRegistrationConfig(): RegistrationConfig {
   try {
+    const fromDb = readProviderConfigFromDb<RegistrationConfig>(
+      'registration',
+      '',
+    );
+    if (fromDb) return fromDb;
+
     if (!fs.existsSync(REGISTRATION_CONFIG_FILE)) {
       return { ...DEFAULT_REGISTRATION_CONFIG };
     }
@@ -2786,6 +2970,9 @@ export function saveRegistrationConfig(
   const tmp = `${REGISTRATION_CONFIG_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', 'utf-8');
   fs.renameSync(tmp, REGISTRATION_CONFIG_FILE);
+
+  writeProviderConfigToDb('registration', '', config);
+
   return config;
 }
 
@@ -3056,6 +3243,13 @@ const DEFAULT_APPEARANCE_CONFIG: AppearanceConfig = {
 
 export function getAppearanceConfig(): AppearanceConfig {
   try {
+    // DB-first: provider_configs is primary for K8s multi-pod.
+    const fromDb = readProviderConfigFromDb<AppearanceConfig>(
+      'appearance',
+      '',
+    );
+    if (fromDb) return fromDb;
+
     if (!fs.existsSync(APPEARANCE_CONFIG_FILE)) {
       return { ...DEFAULT_APPEARANCE_CONFIG };
     }
@@ -3105,6 +3299,10 @@ export function saveAppearanceConfig(
   const tmp = `${APPEARANCE_CONFIG_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', 'utf-8');
   fs.renameSync(tmp, APPEARANCE_CONFIG_FILE);
+
+  // Best-effort DB write-through.
+  writeProviderConfigToDb('appearance', '', config);
+
   return {
     appName: config.appName,
     aiName: config.aiName,
@@ -3136,6 +3334,13 @@ const DEFAULT_REMINDER_CONFIG: ReminderGlobalConfig = {
 
 export function getReminderConfig(): ReminderGlobalConfig {
   try {
+    // DB-first: provider_configs is primary for K8s multi-pod.
+    const fromDb = readProviderConfigFromDb<ReminderGlobalConfig>(
+      'reminder',
+      '',
+    );
+    if (fromDb) return fromDb;
+
     if (!fs.existsSync(REMINDER_CONFIG_FILE)) {
       return { ...DEFAULT_REMINDER_CONFIG };
     }
@@ -3166,6 +3371,10 @@ export function saveReminderConfig(next: Partial<ReminderGlobalConfig>): Reminde
   const tmp = `${REMINDER_CONFIG_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', 'utf-8');
   fs.renameSync(tmp, REMINDER_CONFIG_FILE);
+
+  // Best-effort DB write-through.
+  writeProviderConfigToDb('reminder', '', config);
+
   return { enabled: config.enabled, intervalSteps: config.intervalSteps };
 }
 
@@ -3256,6 +3465,13 @@ function userImDir(userId: string): string {
 }
 
 export function getUserFeishuConfig(userId: string): UserFeishuConfig | null {
+  // DB-first: provider_configs is primary for K8s multi-pod.
+  const fromDb = readProviderConfigFromDb<UserFeishuConfig>(
+    'feishu-provider',
+    userId,
+  );
+  if (fromDb) return fromDb;
+
   const filePath = path.join(userImDir(userId), 'feishu.json');
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -3308,6 +3524,7 @@ export function saveUserFeishuConfig(
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, 'feishu.json');
   writeSecretFile(filePath, JSON.stringify(payload, null, 2) + '\n');
+  writeProviderConfigToDb('feishu-provider', userId, normalized);
   return normalized;
 }
 
@@ -3330,6 +3547,12 @@ export function saveFeishuOwnerOpenId(userId: string, openId: string): void {
 export function getUserTelegramConfig(
   userId: string,
 ): UserTelegramConfig | null {
+  const fromDb = readProviderConfigFromDb<UserTelegramConfig>(
+    'telegram-provider',
+    userId,
+  );
+  if (fromDb) return fromDb;
+
   const filePath = path.join(userImDir(userId), 'telegram.json');
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -3385,6 +3608,10 @@ export function saveUserTelegramConfig(
 // ========== QQ User IM Config ==========
 
 export function getUserQQConfig(userId: string): UserQQConfig | null {
+  // DB-first: provider_configs is primary for K8s multi-pod.
+  const fromDb = readProviderConfigFromDb<UserQQConfig>('qq-provider', userId);
+  if (fromDb) return fromDb;
+
   const filePath = path.join(userImDir(userId), 'qq.json');
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -3431,10 +3658,9 @@ export function saveUserQQConfig(
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, 'qq.json');
   writeSecretFile(filePath, JSON.stringify(payload, null, 2) + '\n');
+  writeProviderConfigToDb('qq-provider', userId, normalized);
   return normalized;
 }
-
-// ========== WeChat User IM Config ==========
 
 export interface UserWeChatConfig {
   botToken: string; // iLink bot_token
@@ -3464,6 +3690,10 @@ interface WeChatSecretPayload {
 }
 
 export function getUserWeChatConfig(userId: string): UserWeChatConfig | null {
+  // DB-first: provider_configs is primary for K8s multi-pod.
+  const fromDb = readProviderConfigFromDb<UserWeChatConfig>('wechat-provider', userId);
+  if (fromDb) return fromDb;
+
   const filePath = path.join(userImDir(userId), 'wechat.json');
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -3522,6 +3752,7 @@ export function saveUserWeChatConfig(
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, 'wechat.json');
   writeSecretFile(filePath, JSON.stringify(payload, null, 2) + '\n');
+  writeProviderConfigToDb('wechat-provider', userId, normalized);
   return normalized;
 }
 
@@ -3548,6 +3779,10 @@ interface StoredWhatsAppProviderConfigV1 {
 export function getUserWhatsAppConfig(
   userId: string,
 ): UserWhatsAppConfig | null {
+  // DB-first: provider_configs is primary for K8s multi-pod.
+  const fromDb = readProviderConfigFromDb<UserWhatsAppConfig>('whatsapp-provider', userId);
+  if (fromDb) return fromDb;
+
   const filePath = path.join(userImDir(userId), 'whatsapp.json');
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -3594,6 +3829,7 @@ export function saveUserWhatsAppConfig(
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, 'whatsapp.json');
   writeSecretFile(filePath, JSON.stringify(payload, null, 2) + '\n');
+  writeProviderConfigToDb('whatsapp-provider', userId, normalized);
   return normalized;
 }
 
@@ -3602,6 +3838,10 @@ export function saveUserWhatsAppConfig(
 export function getUserDingTalkConfig(
   userId: string,
 ): UserDingTalkConfig | null {
+  // DB-first: provider_configs is primary for K8s multi-pod.
+  const fromDb = readProviderConfigFromDb<UserDingTalkConfig>('dingtalk-provider', userId);
+  if (fromDb) return fromDb;
+
   const filePath = path.join(userImDir(userId), 'dingtalk.json');
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -3651,6 +3891,7 @@ export function saveUserDingTalkConfig(
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, 'dingtalk.json');
   writeSecretFile(filePath, JSON.stringify(payload, null, 2) + '\n');
+  writeProviderConfigToDb('dingtalk-provider', userId, normalized);
   return normalized;
 }
 
@@ -3659,6 +3900,10 @@ export function saveUserDingTalkConfig(
 export function getUserDiscordConfig(
   userId: string,
 ): UserDiscordConfig | null {
+  // DB-first: provider_configs is primary for K8s multi-pod.
+  const fromDb = readProviderConfigFromDb<UserDiscordConfig>('discord-provider', userId);
+  if (fromDb) return fromDb;
+
   const filePath = path.join(userImDir(userId), 'discord.json');
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -3705,6 +3950,7 @@ export function saveUserDiscordConfig(
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, 'discord.json');
   writeSecretFile(filePath, JSON.stringify(payload, null, 2) + '\n');
+  writeProviderConfigToDb('discord-provider', userId, normalized);
   return normalized;
 }
 
@@ -3986,7 +4232,22 @@ export function getSystemSettings(): SystemSettings {
     }
   }
 
-  // 1. Try reading from file
+  // 1. Try reading from DB (primary store for K8s multi-pod)
+  try {
+    const fromDb = readProviderConfigFromDb<SystemSettings>(
+      'system-settings',
+      '',
+    );
+    if (fromDb) {
+      _settingsCache = fromDb;
+      _settingsMtimeMs = 0;
+      return fromDb;
+    }
+  } catch {
+    /* DB not available, fall through to file */
+  }
+
+  // 2. Try reading from file (legacy / write-through cache)
   try {
     const settings = readSystemSettingsFromFile();
     if (settings) {
@@ -4007,7 +4268,7 @@ export function getSystemSettings(): SystemSettings {
     }
   }
 
-  // 2. Fall back to env vars, then hardcoded defaults
+  // 3. Fall back to env vars, then hardcoded defaults
   const settings = buildEnvFallbackSettings();
   _settingsCache = settings;
   _settingsMtimeMs = 0; // no file — will re-check on next call
@@ -4101,6 +4362,9 @@ export function saveSystemSettings(
   fs.writeFileSync(tmp, JSON.stringify(merged, null, 2) + '\n', 'utf-8');
   fs.renameSync(tmp, SYSTEM_SETTINGS_FILE);
 
+  // Best-effort DB write-through.
+  writeProviderConfigToDb('system-settings', '', merged);
+
   // Update in-memory cache immediately
   _settingsCache = merged;
   try {
@@ -4162,6 +4426,9 @@ const DEFAULT_ATOMCODE_CONFIG: AtomcodeConfig = {
 
 export function getAtomcodeConfig(): AtomcodeConfig {
   try {
+    const fromDb = readProviderConfigFromDb<AtomcodeConfig>('atomcode', '');
+    if (fromDb) return fromDb;
+
     if (!fs.existsSync(ATOMCODE_CONFIG_FILE)) {
       return { ...DEFAULT_ATOMCODE_CONFIG };
     }
@@ -4210,6 +4477,7 @@ export function saveAtomcodeConfig(cfg: Partial<AtomcodeConfig>): AtomcodeConfig
   };
   fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
   writeSecretFile(ATOMCODE_CONFIG_FILE, JSON.stringify(merged, null, 2) + '\n');
+  writeProviderConfigToDb('atomcode', '', merged);
   return merged;
 }
 
@@ -4272,6 +4540,9 @@ function sanitizeProviders(raw: unknown): CodexProvider[] {
 
 export function getCodexConfig(): CodexConfig {
   try {
+    const fromDb = readProviderConfigFromDb<CodexConfig>('codex', '');
+    if (fromDb) return fromDb;
+
     if (!fs.existsSync(CODEX_CONFIG_FILE)) {
       return { ...DEFAULT_CODEX_CONFIG };
     }
@@ -4317,6 +4588,7 @@ export function saveCodexConfig(cfg: Partial<CodexConfig>): CodexConfig {
   };
   fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
   writeSecretFile(CODEX_CONFIG_FILE, JSON.stringify(merged, null, 2) + '\n');
+  writeProviderConfigToDb('codex', '', merged);
   return merged;
 }
 
@@ -4411,6 +4683,9 @@ function sanitizeOpencodeProviders(raw: unknown): OpencodeProvider[] {
 
 export function getOpencodeConfig(): OpencodeConfig {
   try {
+    const fromDb = readProviderConfigFromDb<OpencodeConfig>('opencode', '');
+    if (fromDb) return fromDb;
+
     if (!fs.existsSync(OPENCODE_CONFIG_FILE)) {
       return { ...DEFAULT_OPENCODE_CONFIG };
     }
@@ -4485,6 +4760,7 @@ export function saveOpencodeConfig(cfg: Partial<OpencodeConfig>): OpencodeConfig
   };
   fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
   writeSecretFile(OPENCODE_CONFIG_FILE, JSON.stringify(merged, null, 2) + '\n');
+  writeProviderConfigToDb('opencode', '', merged);
   return merged;
 }
 
@@ -4593,6 +4869,9 @@ function sanitizePiProviders(raw: unknown): PiProvider[] {
 
 export function getPiConfig(): PiConfig {
   try {
+    const fromDb = readProviderConfigFromDb<PiConfig>('pi', '');
+    if (fromDb) return fromDb;
+
     if (!fs.existsSync(PI_CONFIG_FILE)) {
       return { ...DEFAULT_PI_CONFIG };
     }
@@ -4656,6 +4935,7 @@ export function savePiConfig(cfg: Partial<PiConfig>): PiConfig {
   };
   fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
   writeSecretFile(PI_CONFIG_FILE, JSON.stringify(merged, null, 2) + '\n');
+  writeProviderConfigToDb('pi', '', merged);
   return merged;
 }
 

@@ -19,8 +19,8 @@
  * two ends stay symmetric (see issue: trace read/write path mismatch).
  */
 
-import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync, renameSync, readdirSync, statSync, rmdirSync } from 'node:fs';
+import { join, dirname, relative } from 'node:path';
 import { DATA_DIR } from './config.js';
 import { logger } from './logger.js';
 
@@ -127,4 +127,249 @@ export async function getTraceIo(ref: string): Promise<string> {
     return resp.Body.transformToString('utf8');
   }
   return readFileSync(ref, 'utf8');
+}
+
+// ─── Workspace File Operations (MinIO / S3 backend) ───
+// These mirror file-manager.ts operations but route through the object store
+// when S3 is enabled, so workspace files are accessible from any K8s pod.
+//
+// Contract:
+// - Write-through: S3 is primary, local cache under /data/file-cache/ is best-effort.
+// - Read-through: try S3 first, fall back to local filesystem.
+// - All keys are relative to the group folder root.
+
+const WS_BUCKET = process.env.S3_WS_BUCKET || 'deepthink-workspaces';
+const FILE_CACHE_DIR = join(DATA_DIR, 'file-cache');
+
+/** Normalize a group folder + file path into an S3 key. */
+function wsS3Key(groupFolder: string, filePath: string): string {
+  // filePath is relative to group root, e.g. "src/index.ts"
+  return `groups/${groupFolder}/files/${filePath}`;
+}
+
+/** Parse S3 key back to group folder + file path. */
+function wsFromS3Key(key: string): { groupFolder: string; filePath: string } | null {
+  const m = key.match(/^groups\/([^/]+)\/files\/(.+)$/);
+  if (!m) return null;
+  return { groupFolder: m[1], filePath: m[2] };
+}
+
+/** Local cache path for a workspace file (best-effort, not critical). */
+function wsLocalPath(groupFolder: string, filePath: string): string {
+  return join(FILE_CACHE_DIR, groupFolder, filePath);
+}
+
+/** Write a workspace file (sync for fs, async-fire for s3). */
+export async function putWorkspaceFile(
+  groupFolder: string,
+  filePath: string,
+  content: string | Buffer,
+  contentType?: string,
+): Promise<void> {
+  if (isS3Enabled) {
+    const { client, mod } = await loadS3();
+    const key = wsS3Key(groupFolder, filePath);
+    await client.send(new mod.PutObjectCommand({
+      Bucket: WS_BUCKET,
+      Key: key,
+      Body: content,
+      ContentType: contentType || 'application/octet-stream',
+    }));
+    // Best-effort local cache write.
+    try {
+      mkdirSync(dirname(wsLocalPath(groupFolder, filePath)), { recursive: true });
+      writeFileSync(wsLocalPath(groupFolder, filePath), content);
+    } catch { /* cache write failure is non-fatal */ }
+  } else {
+    // fs backend: write through file-manager utilities (caller handles).
+    // This function is only meaningful under S3 mode.
+    throw new Error('putWorkspaceFile requires S3 backend (OBJECT_STORE_PROVIDER=s3)');
+  }
+}
+
+/** Read a workspace file (async). */
+export async function getWorkspaceFile(
+  groupFolder: string,
+  filePath: string,
+): Promise<Buffer | null> {
+  if (isS3Enabled) {
+    try {
+      const { client, mod } = await loadS3();
+      const key = wsS3Key(groupFolder, filePath);
+      const resp = await client.send(new mod.GetObjectCommand({
+        Bucket: WS_BUCKET,
+        Key: key,
+      }));
+      const buf = Buffer.from(await resp.Body.transformToByteArray());
+      // Refresh local cache.
+      try {
+        mkdirSync(dirname(wsLocalPath(groupFolder, filePath)), { recursive: true });
+        writeFileSync(wsLocalPath(groupFolder, filePath), buf);
+      } catch { /* cache write failure is non-fatal */ }
+      return buf;
+    } catch (err: any) {
+      if (err?.name === 'NoSuchKey') {
+        // Fall back to local cache.
+        const lp = wsLocalPath(groupFolder, filePath);
+        if (existsSync(lp)) return readFileSync(lp);
+        return null;
+      }
+      throw err;
+    }
+  }
+  // fs backend: read from local fs.
+  const lp = wsLocalPath(groupFolder, filePath);
+  if (existsSync(lp)) return readFileSync(lp);
+  return null;
+}
+
+/** Delete a workspace file (async). */
+export async function deleteWorkspaceFile(
+  groupFolder: string,
+  filePath: string,
+): Promise<void> {
+  if (isS3Enabled) {
+    const { client, mod } = await loadS3();
+    const key = wsS3Key(groupFolder, filePath);
+    await client.send(new mod.DeleteObjectCommand({
+      Bucket: WS_BUCKET,
+      Key: key,
+    }));
+    // Also delete local cache.
+    try { unlinkSync(wsLocalPath(groupFolder, filePath)); } catch { /* ok */ }
+  } else {
+    try { unlinkSync(wsLocalPath(groupFolder, filePath)); } catch { /* ok */ }
+  }
+}
+
+/** Move/rename a workspace file (async). S3: copy + delete. */
+export async function moveWorkspaceFile(
+  groupFolder: string,
+  fromPath: string,
+  toPath: string,
+): Promise<void> {
+  if (isS3Enabled) {
+    const { client, mod } = await loadS3();
+    const fromKey = wsS3Key(groupFolder, fromPath);
+    const toKey = wsS3Key(groupFolder, toPath);
+    // Copy then delete (S3 has no native rename).
+    await client.send(new mod.CopyObjectCommand({
+      Bucket: WS_BUCKET,
+      Key: toKey,
+      CopySource: `/${WS_BUCKET}/${fromKey}`,
+    }));
+    await client.send(new mod.DeleteObjectCommand({
+      Bucket: WS_BUCKET,
+      Key: fromKey,
+    }));
+    // Update local cache.
+    try {
+      renameSync(wsLocalPath(groupFolder, fromPath), wsLocalPath(groupFolder, toPath));
+    } catch { /* cache move failure is non-fatal */ }
+  } else {
+    renameSync(wsLocalPath(groupFolder, fromPath), wsLocalPath(groupFolder, toPath));
+  }
+}
+
+/** Metadata for a workspace file entry returned by listWorkspaceFiles. */
+export interface WsFileMeta {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  size: number;
+  modifiedAt: string;
+}
+
+/** List workspace files under a prefix (async). */
+export async function listWorkspaceFiles(
+  groupFolder: string,
+  prefix = '',
+): Promise<WsFileMeta[]> {
+  if (isS3Enabled) {
+    const { client, mod } = await loadS3();
+    const baseKey = wsS3Key(groupFolder, prefix);
+    const listPrefix = prefix ? baseKey : `groups/${groupFolder}/files/`;
+    // Ensure prefix ends with / for directory listing semantics, except when empty.
+    const effectivePrefix = prefix && !prefix.endsWith('/') ? `groups/${groupFolder}/files/${prefix}` : listPrefix;
+
+    const resp = await client.send(new mod.ListObjectsV2Command({
+      Bucket: WS_BUCKET,
+      Prefix: effectivePrefix,
+      Delimiter: '/',
+    }));
+
+    const entries: WsFileMeta[] = [];
+
+    // Directories (CommonPrefixes).
+    if (resp.CommonPrefixes) {
+      for (const cp of resp.CommonPrefixes) {
+        const dirKey = cp.Prefix!;
+        const rel = wsFromS3Key(dirKey.replace(/\/$/, ''));
+        if (!rel) continue;
+        entries.push({
+          name: rel.filePath.split('/').pop() || rel.filePath,
+          path: rel.filePath,
+          type: 'directory',
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    // Files.
+    if (resp.Contents) {
+      for (const obj of resp.Contents) {
+        if (!obj.Key || obj.Key.endsWith('/')) continue;
+        const rel = wsFromS3Key(obj.Key);
+        if (!rel) continue;
+        // Skip the prefix item itself.
+        if (rel.filePath === prefix) continue;
+        entries.push({
+          name: rel.filePath.split('/').pop() || rel.filePath,
+          path: rel.filePath,
+          type: 'file',
+          size: obj.Size ?? 0,
+          modifiedAt: obj.LastModified?.toISOString() || new Date().toISOString(),
+        });
+      }
+    }
+
+    return entries;
+  }
+
+  // fs backend.
+  const dir = wsLocalPath(groupFolder, prefix);
+  if (!existsSync(dir)) return [];
+  const entries: WsFileMeta[] = [];
+  const items = readdirSync(dir, { withFileTypes: true });
+  for (const item of items) {
+    const relPath = prefix ? `${prefix}/${item.name}` : item.name;
+    const absPath = join(dir, item.name);
+    const st = statSync(absPath);
+    entries.push({
+      name: item.name,
+      path: relPath,
+      type: item.isDirectory() ? 'directory' : 'file',
+      size: st.size,
+      modifiedAt: st.mtime.toISOString(),
+    });
+  }
+  return entries;
+}
+
+/** Ensure the workspace bucket exists (idempotent, called at startup). */
+export async function ensureWorkspaceBucket(): Promise<void> {
+  if (!isS3Enabled) return;
+  try {
+    const { client, mod } = await loadS3();
+    await client.send(new mod.CreateBucketCommand({ Bucket: WS_BUCKET }));
+    logger.info({ bucket: WS_BUCKET }, 'MinIO workspace bucket ensured');
+  } catch (err: any) {
+    // BucketAlreadyOwnedByYou / BucketAlreadyExists — ok.
+    if (err?.name === 'BucketAlreadyOwnedByYou' || err?.name === 'BucketAlreadyExists') {
+      logger.info({ bucket: WS_BUCKET }, 'MinIO workspace bucket already exists');
+      return;
+    }
+    logger.warn({ err, bucket: WS_BUCKET }, 'Failed to ensure workspace bucket (non-blocking)');
+  }
 }

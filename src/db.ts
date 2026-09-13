@@ -2688,7 +2688,7 @@ export function initDatabase(): void {
     }
   }
 
-  const SCHEMA_VERSION = '64';
+  const SCHEMA_VERSION = '66';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -2700,6 +2700,45 @@ export function initDatabase(): void {
     seedBuiltinSkills();
   } catch (err) {
     logger.warn({ err }, 'seedBuiltinSkills failed (non-blocking)');
+  }
+
+  // v65: provider_configs — centralized DB storage for IM channel & provider configs.
+  // Replaces file-based *-provider.json which cannot be shared across K8s pods
+  // when PVC is RWO (ReadWriteOnce). DB is the single source of truth;
+  // file-based storage becomes write-through cache for backward compat.
+  // user_id='' (empty string) = system-level config; non-empty = user-level.
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS provider_configs (
+        config_key TEXT NOT NULL,
+        user_id TEXT NOT NULL DEFAULT '',
+        config_data TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (config_key, user_id)
+      );
+    `);
+  } catch (err) {
+    logger.warn({ err }, 'provider_configs migration v65 failed (non-blocking)');
+  }
+
+  // v66: mcp_server_configs — DB-backed MCP server configuration.
+  // Replaces file-based data/mcp-servers/{userId}/servers.json which cannot be
+  // shared across K8s pods. The file remains as write-through cache for backward
+  // compatibility with agent-runner container spawn (reads servers.json at startup).
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mcp_server_configs (
+        user_id TEXT NOT NULL,
+        server_name TEXT NOT NULL,
+        config_data TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (user_id, server_name)
+      );
+    `);
+  } catch (err) {
+    logger.warn({ err }, 'mcp_server_configs migration v66 failed (non-blocking)');
   }
 }
 

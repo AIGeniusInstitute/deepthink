@@ -1,0 +1,164 @@
+{
+  "results": [
+    {
+      "name": "TC0-API登录",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:00.033Z"
+    },
+    {
+      "name": "TC1-对话页",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:03.255Z"
+    },
+    {
+      "name": "TC2-AI对话",
+      "status": "PASS",
+      "detail": "消息已发送并等待回复",
+      "time": "2026-09-13T18:28:15.324Z"
+    },
+    {
+      "name": "TC3-设置页",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:18.885Z"
+    },
+    {
+      "name": "TC4-模型配置",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:21.829Z"
+    },
+    {
+      "name": "TC5-系统设置",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:24.772Z"
+    },
+    {
+      "name": "TC6-文件管理",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:27.969Z"
+    },
+    {
+      "name": "TC7-技能管理",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:30.567Z"
+    },
+    {
+      "name": "TC8-MCP配置",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:33.170Z"
+    },
+    {
+      "name": "TC9-AgentStudio",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:36.103Z"
+    },
+    {
+      "name": "TC10-评测中心",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:38.998Z"
+    },
+    {
+      "name": "TC11-用户管理",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:41.597Z"
+    },
+    {
+      "name": "TC12-分组管理",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:44.496Z"
+    },
+    {
+      "name": "TC13-仪表盘",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:47.438Z"
+    },
+    {
+      "name": "TC14-协作",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:50.378Z"
+    },
+    {
+      "name": "TC15-健康检查",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:50.382Z"
+    },
+    {
+      "name": "TC16-就绪检查",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:50.384Z"
+    },
+    {
+      "name": "TC17-认证状态",
+      "status": "FAIL",
+      "detail": "user: undefined",
+      "time": "2026-09-13T18:28:50.388Z"
+    },
+    {
+      "name": "TC18-飞书配置API",
+      "status": "FAIL",
+      "detail": "",
+      "time": "2026-09-13T18:28:50.390Z"
+    },
+    {
+      "name": "TC19-系统设置API",
+      "status": "FAIL",
+      "detail": "",
+      "time": "2026-09-13T18:28:50.392Z"
+    },
+    {
+      "name": "TC20-MCP列表API",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:50.395Z"
+    },
+    {
+      "name": "TC21-文件列表API",
+      "status": "FAIL",
+      "detail": "",
+      "time": "2026-09-13T18:28:50.396Z"
+    },
+    {
+      "name": "TC22-技能列表API",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-09-13T18:28:50.398Z"
+    },
+    {
+      "name": "TC23-用户列表API",
+      "status": "FAIL",
+      "detail": "",
+      "time": "2026-09-13T18:28:50.400Z"
+    },
+    {
+      "name": "TC24-外观配置API",
+      "status": "FAIL",
+      "detail": "",
+      "time": "2026-09-13T18:28:50.401Z"
+    },
+    {
+      "name": "TC25-注册配置API",
+      "status": "FAIL",
+      "detail": "",
+      "time": "2026-09-13T18:28:50.403Z"
+    }
+  ],
+  "passCount": 19,
+  "failCount": 7,
+  "total": 26,
+  "baseUrl": "http://192.168.1.25:30080"
+}

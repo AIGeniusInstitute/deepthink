@@ -165,6 +165,8 @@ import {
   saveFeishuOwnerOpenId,
   saveUserTelegramConfig,
   updateAllSessionCredentials,
+  setProviderConfigDb,
+  syncProviderConfigsFromFiles,
 } from './runtime-config.js';
 import type {
   FeishuConnectConfig,
@@ -11027,6 +11029,15 @@ async function main(): Promise<void> {
   initDatabase();
   logger.info('Database initialized');
 
+  // Wire up provider config DB storage (K8s multi-pod fix).
+  // This injects the DB handle so runtime-config.ts can use provider_configs
+  // table as primary storage, with file-based JSON as write-through cache.
+  {
+    const { getDb } = await import('./db.js');
+    setProviderConfigDb(getDb());
+    syncProviderConfigsFromFiles();
+  }
+
   // ─── Eval Center PostgreSQL initialization ───
   // Dedicated PG pool for the eval center (datasets/rubrics/runs/traces).
   // Best-effort: failure only disables the eval center, not the main app.
@@ -11036,6 +11047,15 @@ async function main(): Promise<void> {
     logger.info('Eval Center PostgreSQL initialized');
   } catch (err) {
     logger.warn({ err }, 'Eval Center PG init failed (eval center disabled)');
+  }
+
+  // ─── MinIO workspace bucket initialization ───
+  // Best-effort: failure only means workspace files stay on local PVC.
+  try {
+    const { ensureWorkspaceBucket } = await import('./object-store.js');
+    await ensureWorkspaceBucket();
+  } catch (err) {
+    logger.warn({ err }, 'MinIO workspace bucket init failed (non-blocking)');
   }
 
   // Sync harness eval cases from data/harness/eval-cases/ into DB on startup.
