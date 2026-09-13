@@ -26,6 +26,8 @@ import {
   AvailableGroup,
   ContainerInput,
   ContainerOutput,
+  applyTurnMounts,
+  loadGroupAgentDefinition,
   runContainerAgent,
   runHostAgent,
   willClearSessionOnProviderSwitch,
@@ -5223,6 +5225,21 @@ async function runAgent(
       fs.mkdirSync(distWorkspaceGlobal, { recursive: true });
       fs.mkdirSync(distWorkspaceMemory, { recursive: true });
 
+      // Enrich agentDefinition with per-turn mounts (skills/MCP/KB)
+      // so the distributed agent-runner receives skill content in its
+      // system prompt. Without this, turnMounts is present in the payload
+      // but the agent-runner has no code to process it — it only reads
+      // agentDefinition.systemPrompt.
+      const baseAgentDef = loadGroupAgentDefinition(
+        group.agentDefId,
+        group.created_by,
+      );
+      const enrichedAgentDef = applyTurnMounts(
+        baseAgentDef,
+        turnMounts,
+        group.created_by,
+      );
+
       const taskInput = {
         prompt: prompt || '',
         sessionId,
@@ -5239,6 +5256,7 @@ async function runAgent(
         engine: group.engine,
         workspaceGlobal: distWorkspaceGlobal,
         workspaceMemory: distWorkspaceMemory,
+        agentDefinition: enrichedAgentDef,
         turnMounts,
       };
 

@@ -1125,7 +1125,7 @@ function buildContainerArgs(
  * Returns null when the group has no agent_def_id or the definition is missing.
  * Reads MCP servers from user's servers.json and flattens matching configs.
  */
-function loadGroupAgentDefinition(
+export function loadGroupAgentDefinition(
   agentDefId: string | null | undefined,
   ownerUserId: string | undefined,
 ): ContainerInput['agentDefinition'] {
@@ -1236,7 +1236,7 @@ function getSkillContentsForTurn(
  * Returns a NEW agentDefinition (does not mutate the input). Mounts deduped by
  * (resourceType, resourceId) to avoid double-mounting if already in agent_mounts.
  */
-function applyTurnMounts(
+export function applyTurnMounts(
   agentDef: ContainerInput['agentDefinition'] | undefined,
   turnMounts: SelectedMounts | undefined,
   ownerUserId: string | undefined,
