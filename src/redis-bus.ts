@@ -530,9 +530,10 @@ export async function publishAgentTask(taskInput: any): Promise<boolean> {
   }
   try {
     // LPUSH onto a Redis list (queue semantics). agent-runner consumes with
-    // BRPOP — each task is delivered to exactly one runner. Do NOT use PUBLISH
+    // BLPOP — each task is delivered to exactly one runner. Do NOT use PUBLISH
     // here: pub/sub is fan-out and would dispatch one task to every replica.
     await pub.lPush(AGENT_TASKS_CHANNEL, JSON.stringify(taskInput));
+    logger.info({ turnId, queueLen: 'pushed' }, 'publishAgentTask: task published to agent-tasks queue');
     return true;
   } catch (err) {
     logger.warn({ err }, 'Redis publishAgentTask failed');

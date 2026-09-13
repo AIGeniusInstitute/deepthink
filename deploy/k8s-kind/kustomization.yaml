@@ -18,3 +18,21 @@ patches:
       - op: replace
         path: /spec/accessModes/0
         value: ReadWriteOnce
+
+  # Ingress: replace host-specific rule with catch-all
+  - target:
+      kind: Ingress
+      name: deepthink
+    patch: |-
+      - op: replace
+        path: /spec/rules
+        value:
+          - http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: deepthink
+                      port:
+                        name: http

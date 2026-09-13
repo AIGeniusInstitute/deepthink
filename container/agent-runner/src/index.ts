@@ -2506,6 +2506,23 @@ async function processOneTask(): Promise<void> {
       stdinData = await readStdin();
     }
     containerInput = JSON.parse(stdinData);
+    // Defensive: reject tasks with missing prompt instead of crashing deep
+    // inside runQuery with "Cannot read properties of undefined (reading 'slice')".
+    // In distributed mode, skip the bad task and loop to BLPOP the next one;
+    // in stdin mode, crash to let the orchestrator (Docker/K8s) restart us.
+    if (typeof containerInput.prompt !== 'string') {
+      const msg = `Invalid task: prompt is ${typeof containerInput.prompt} (expected string), task keys: ${Object.keys(containerInput).join(',')}`;
+      log(msg);
+      writeOutput({
+        status: 'error',
+        result: null,
+        error: msg,
+      });
+      if (distributedMode && isRedisIpcConnected()) {
+        return; // Skip bad task, loop back to BLPOP for the next one
+      }
+      process.exit(1);
+    }
     currentGroupFolder = containerInput.groupFolder;
     log(`Received input for group: ${containerInput.groupFolder}`);
 
@@ -2706,7 +2723,7 @@ async function processOneTask(): Promise<void> {
   cleanupStartupInterruptSentinel();
 
   // Build initial prompt (drain any pending IPC messages too)
-  let prompt = containerInput.prompt;
+  let prompt = containerInput.prompt || '';
   let promptImages = containerInput.images;
   if (containerInput.isScheduledTask) {
     const scheduledTaskPrefixLines = [
@@ -2963,14 +2980,15 @@ async function processOneTask(): Promise<void> {
       // If _close was consumed during the query, exit immediately.
       // Don't emit a session-update marker (it would reset the host's
       // idle timer and cause a 30-min delay before the next _close).
+      //
+      // Return directly (not break) so we skip the post-query
+      // waitForIpcMessage() loop and the closeRedisIpc() cleanup at the
+      // bottom of processOneTask(). The outer main() loop will clean up
+      // per-task state and go back to BLPOP for the next task.
       if (queryResult.closedDuringQuery) {
-        log('Close sentinel consumed during query, exiting');
-        // Notify host that this exit was due to _close, not a normal completion.
-        // Without this marker the host treats the exit as silent success and
-        // commits the message cursor, causing the in-flight IM message to be
-        // consumed without a reply (the "swallowed message" bug).
+        log('Close sentinel consumed during query, returning to task loop');
         writeOutput({ status: 'closed', result: null });
-        break;
+        return;
       }
 
       // Inactivity watchdog fired (graph agent runs only): the SDK stalled with

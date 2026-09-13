@@ -2163,9 +2163,17 @@ function safeBroadcastLocal(
   }
 }
 
+/** Unique identifier for this pod, used to deduplicate cross-pod broadcasts. */
+const THIS_POD_ID = process.env.HOSTNAME || `pod-${process.pid}-${Date.now()}`;
+
 /**
  * Broadcast to local WebSocket clients AND publish to Redis (for cross-pod propagation).
  * When Redis is not configured, this is identical to safeBroadcastLocal (single-pod mode).
+ *
+ * Dedup mechanism: A _originPod marker is attached to Redis-published messages.
+ * When subscribeWsBroadcast receives a message from this pod, it skips forwarding
+ * (local clients already received it via safeBroadcastLocal). This prevents the
+ * 2× duplicate that would otherwise occur from the Redis loopback.
  */
 function safeBroadcast(
   msg: WsMessageOut,
@@ -2174,8 +2182,10 @@ function safeBroadcast(
 ): void {
   // 1. Send to local clients immediately (synchronous, zero latency for same-pod)
   safeBroadcastLocal(msg, adminOnly, allowedUserIds);
-  // 2. Fire-and-forget publish to Redis for cross-pod propagation
-  publishWsBroadcast(msg, adminOnly, allowedUserIds ?? null).catch(() => {});
+  // 2. Fire-and-forget publish to Redis for cross-pod propagation.
+  //    Attach origin marker so this pod skips the loopback on receive.
+  const msgWithOrigin = { ...(msg as any), _originPod: THIS_POD_ID };
+  publishWsBroadcast(msgWithOrigin, adminOnly, allowedUserIds ?? null).catch(() => {});
 }
 
 /**
@@ -3067,6 +3077,9 @@ export function startWebServer(webDeps: WebDeps): void {
   initRedis().then(() => {
     if (!isRedisConnected()) return; // single-process mode, skip
     subscribeWsBroadcast((msg, adminOnly, allowedUserIds) => {
+      // Skip messages originating from this pod — local clients already received
+      // them via the safeBroadcastLocal call inside safeBroadcast().
+      if ((msg as any)._originPod === THIS_POD_ID) return;
       // Received a broadcast from another pod — forward to local clients only
       // (do NOT re-publish to Redis, avoiding infinite loop)
       safeBroadcastLocal(msg as WsMessageOut, adminOnly, allowedUserIds);

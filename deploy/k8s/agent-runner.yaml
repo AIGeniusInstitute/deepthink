@@ -30,6 +30,8 @@ spec:
           value: "distributed"
         - name: REDIS_URL
           value: "redis://redis:6379"
+        - name: CLAUDE_CONFIG_DIR
+          value: "/data/.claude"
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:

@@ -921,6 +921,10 @@ const shutdownSavedJids = new Set<string>();
 
 const queue = new GroupQueue();
 const EMPTY_CURSOR: MessageCursor = { timestamp: '', id: '' };
+// Safety net for recovery / cold-start: when no cursor exists, messages older
+// than this are skipped to prevent replaying the entire history. 5 minutes is
+// long enough to catch genuine unprocessed messages that arrived during a brief
+// restart while short enough to avoid re-broadcasting days-old test messages.
 const terminalWarmupInFlight = new Set<string>();
 const STUCK_RUNNER_CHECK_INTERVAL_POLLS = 15;
 const STUCK_RUNNER_IDLE_MS = 3 * 60 * 1000;
@@ -3341,6 +3345,27 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   if (missedMessages.length === 0) return true;
 
+  // Recovery guard: when no cursor exists (cold-start / crash restart),
+  // fast-forward the cursor to the latest message to prevent replaying
+  // the entire message history. EMPTY_CURSOR matches ALL historical
+  // messages; without this guard, every recovery triggers a re-broadcast
+  // of every unprocessed message ever stored, causing duplicate user
+  // messages in WebSocket.
+  if (sinceCursor.timestamp === '' && sinceCursor.id === '') {
+    const lastMsg = missedMessages[missedMessages.length - 1];
+    setCursors(chatJid, {
+      timestamp: lastMsg.timestamp,
+      id: lastMsg.id,
+    });
+    logger.info(
+      { chatJid, count: missedMessages.length, lastTimestamp: lastMsg.timestamp },
+      'Cold start: fast-forwarded cursor to latest message, skipping historical replay',
+    );
+    return true;
+  }
+
+  if (missedMessages.length === 0) return true;
+
   // Admin home is shared as web:main, so select runtime owner from the latest
   // active admin sender to avoid writing global memory into another admin's
   // user-global directory.
@@ -5199,7 +5224,7 @@ async function runAgent(
       fs.mkdirSync(distWorkspaceMemory, { recursive: true });
 
       const taskInput = {
-        prompt,
+        prompt: prompt || '',
         sessionId,
         turnId,
         groupFolder: group.folder,
@@ -5219,8 +5244,11 @@ async function runAgent(
 
       // Register the onOutput handler for this group's distributed output.
       // The IpcWatcherManager routes agent_output messages from Redis to this handler.
+      // Handler registration is deferred to after the publishAgentTask dedup check:
+      // only the pod that successfully claims the task forwards agent output to WS.
+      let _distributedHandler: ((output: ContainerOutput) => Promise<void>) | undefined;
       const finalOutputPromise = new Promise<ContainerOutput>((resolve) => {
-        const distributedHandler = async (agentOutput: ContainerOutput) => {
+        _distributedHandler = async (agentOutput: ContainerOutput) => {
           try {
             if (wrappedOnOutput) {
               await wrappedOnOutput(agentOutput);
@@ -5243,7 +5271,6 @@ async function runAgent(
             }
           }
         };
-        ipcWatcherManager?.registerDistributedOutput(group.folder, distributedHandler);
       });
 
       // Timeout safety: if no terminal output within 10 minutes, return error.
@@ -5263,24 +5290,53 @@ async function runAgent(
       // Per-user distributed active counter (计费并发上限跨 Pod 生效):
       // incr before dispatch, decr in finally on completion/timeout.
       if (ownerId) await incrUserActive(ownerId);
+      let published = false;
       try {
-        const published = await publishAgentTask(taskInput);
+        try {
+          published = await publishAgentTask(taskInput);
+        } catch (err) {
+          logger.warn({ err, turnId }, 'publishAgentTask threw, treating as not-published');
+          published = false;
+        }
         if (!published) {
           // Another web-server pod already claimed this task (dedup via Redis SET NX).
-          // We still wait for the output because our watchGroup subscription is active
-          // and we'll receive the agent-runner output via Redis pub/sub.
-          logger.info({ turnId }, 'Task already claimed by another pod; waiting for output via pub/sub');
+          // Do NOT register the output handler or wait for output — the publishing
+          // pod will broadcast agent output to all WS clients (including ours) via
+          // Redis cross-pod safeBroadcast.  If both pods register handlers, each
+          // receives the agent-runner output via Pub/Sub and forwards it to WS,
+          // causing every message to appear N×POD_COUNT times.
+          logger.info({ turnId }, 'Task already claimed by another pod; skipping output handling');
+          output = { status: 'success', result: null };
+        } else {
+          // Only the publishing pod registers the distributed output handler.
+          // Both pods subscribe to the ipc-out channel (pub/sub is fan-out),
+          // but only the publisher forwards agent output to WS clients.
+          if (_distributedHandler) {
+            ipcWatcherManager?.registerDistributedOutput(
+              group.folder,
+              _distributedHandler,
+            );
+          }
+
+          // Wait for the final output (or timeout)
+          output = await Promise.race([finalOutputPromise, timeoutPromise]);
         }
-        // Wait for the final output (or timeout) — both the publishing pod and the
-        // dedup-skipped pod have active IPC subscriptions and will receive the output.
-        output = await Promise.race([finalOutputPromise, timeoutPromise]);
       } finally {
         // Signal the distributed agent-runner to exit its waitForIpcMessage
         // loop so it can return to the BLPOP queue and pick up the next task.
         // Without this, the agent-runner is stuck waiting for follow-up IPC
         // input and never re-enters the task queue, leaving subsequent tasks
         // (including recovery tasks from other pods) permanently stranded.
-        if (isRedisConnected()) {
+        //
+        // IMPORTANT: Only the publishing pod sends _close. The non-publishing
+        // pod must NOT send _close because:
+        // 1. It has no IPC output handler registered — _close serves no purpose.
+        // 2. Its _close arrives DURING the agent-runner's query (the publishing
+        //    pod is still waiting on finalOutputPromise), triggering a premature
+        //    interruptQueryForShutdown and breaking the agent output stream.
+        // 3. The premature interrupt causes duplicate WS messages because the
+        //    agent-runner's partial output is retransmitted on the next poll.
+        if (published && isRedisConnected()) {
           publishAgentIpc(group.folder, { type: '_close', text: '' }).catch(() => {});
         }
         ipcWatcherManager?.unregisterDistributedOutput(group.folder);

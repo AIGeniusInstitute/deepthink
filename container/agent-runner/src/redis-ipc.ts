@@ -17,6 +17,7 @@ export const distributedMode = !!REDIS_URL && AGENT_RUNNER_MODE === 'distributed
 
 let _pub: any = null;
 let _sub: any = null;
+let _task: any = null;  // dedicated BLPOP connection — must NOT be shared with _pub
 let _connected = false;
 let _workerId = ''; // pod-level unique worker ID for pool registration
 
@@ -32,10 +33,13 @@ export async function initRedisIpc(): Promise<void> {
     const { createClient } = await import('redis');
     _pub = createClient({ url: REDIS_URL });
     _sub = createClient({ url: REDIS_URL });
+    _task = createClient({ url: REDIS_URL });  // dedicated connection for BLPOP
     _pub.on('error', () => {});
     _sub.on('error', () => {});
+    _task.on('error', () => {});
     await _pub.connect();
     await _sub.connect();
+    await _task.connect();
     _connected = true;
     // Worker registration: signal that this agent-runner is ready for tasks.
     // Use hostname (unique per pod) instead of process.pid (=1 in containers,
@@ -61,11 +65,11 @@ export function waitForTask(): Promise<any> {
       reject(new Error('Redis not connected'));
       return;
     }
-    // BRPOP: blocking pop from a Redis list. Queue semantics — each task is
-    // consumed by exactly ONE agent-runner (unlike pub/sub fan-out, which would
-    // dispatch the same task to every replica simultaneously). Timeout 0 = block
-    // forever. node-redis resolves { key, element }.
-    _pub
+    // Use the dedicated _task connection for BLPOP, NOT _pub.
+    // _pub is shared with publishIpcOutput — if BLPOP blocks on _pub
+    // and a publish is queued, node-redis can stall the connection
+    // causing BLPOP to not return for minutes after LPUSH.
+    _task
       .blPop(TASK_QUEUE_CHANNEL, 0)
       .then((res: any) => {
         try {
@@ -166,9 +170,11 @@ export async function closeRedisIpc(): Promise<void> {
   const tasks: Promise<void>[] = [];
   if (_pub) tasks.push(_pub.quit().then(() => {}).catch(() => {}));
   if (_sub) tasks.push(_sub.quit().then(() => {}).catch(() => {}));
+  if (_task) tasks.push(_task.quit().then(() => {}).catch(() => {}));
   await Promise.allSettled(tasks);
   _pub = null;
   _sub = null;
+  _task = null;
   _connected = false;
   console.log('[redis-ipc] Connections closed');
 }
