@@ -1002,10 +1002,25 @@ const activeHeldCardFinalizers = new Map<string, () => void>();
 
 // ── Per-turn mounts bridge (web chat dropdowns → processGroupMessages) ──
 // In-memory only; keyed by user message id. Set by handleWebUserMessage via
-// WebDeps.setPendingTurnMounts, popped once by processGroupMessages. Not
-// persisted to DB — selectedMounts is a web-UI-only, per-turn concern.
+// WebDeps.setPendingTurnMounts, popped once by processGroupMessages.
+// In single-process mode the in-memory Map is the source of truth.
+// In K8s distributed mode turnMounts are persisted to Redis
+// (deepthink:turn-mounts:{msgId}) so any pod can read them — the
+// web handler and the message processor may be on different pods.
 const pendingTurnMounts = new Map<string, SelectedMounts>();
-function popPendingTurnMounts(msgId: string): SelectedMounts | undefined {
+async function popPendingTurnMounts(msgId: string): Promise<SelectedMounts | undefined> {
+  // Redis-first: in K8s distributed mode the mounts were set by a
+  // potentially different pod. Check Redis before falling back to
+  // the process-local in-memory Map.
+  if (isRedisConnected()) {
+    try {
+      const fromRedis = await import('./redis-bus.js').then(m => m.popTurnMounts(msgId));
+      if (fromRedis) return fromRedis as SelectedMounts;
+    } catch {
+      // fall through to in-memory fallback
+    }
+  }
+  // In-memory fallback (single-process / no Redis)
   const m = pendingTurnMounts.get(msgId);
   if (m) pendingTurnMounts.delete(msgId);
   return m;
@@ -3859,7 +3874,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // from handleWebUserMessage. The home group dispatches via runAgent (not
   // processAgentConversation), so we must pop + forward here too.
   const turnMounts = lastProcessed?.id
-    ? popPendingTurnMounts(lastProcessed.id)
+    ? await popPendingTurnMounts(lastProcessed.id)
     : undefined;
   try {
     output = await runAgent(
@@ -5239,6 +5254,13 @@ async function runAgent(
         turnMounts,
         group.created_by,
       );
+      logger.info({
+        hasBaseAgentDef: !!baseAgentDef,
+        hasTurnMounts: !!turnMounts,
+        hasEnriched: !!enrichedAgentDef,
+        enrichedSystemPromptLen: enrichedAgentDef?.systemPrompt?.length ?? 0,
+        enrichedMountsLen: enrichedAgentDef?.mounts?.length ?? 0,
+      }, 'enrichedAgentDef before taskInput');
 
       const taskInput = {
         prompt: prompt || '',
@@ -8843,7 +8865,7 @@ async function processAgentConversation(
     // Per-turn mounts (skills/MCP/KB) selected in the web chat dropdowns.
     // Bridged in-memory from handleWebUserMessage via setPendingTurnMounts.
     const turnMounts = lastProcessed?.id
-      ? popPendingTurnMounts(lastProcessed.id)
+      ? await popPendingTurnMounts(lastProcessed.id)
       : undefined;
 
     const containerInput: ContainerInput = {
@@ -12189,8 +12211,18 @@ async function main(): Promise<void> {
 
     // Per-turn mounts bridge: web chat dropdowns → processGroupMessages.
     webDeps.setPendingTurnMounts = (msgId, mounts) => {
-      if (mounts) pendingTurnMounts.set(msgId, mounts);
-      else pendingTurnMounts.delete(msgId);
+      if (mounts) {
+        pendingTurnMounts.set(msgId, mounts);
+        // Also persist to Redis for cross-pod visibility in K8s distributed mode.
+        // The web request handler and the message processor may run on different pods.
+        if (isRedisConnected()) {
+          import('./redis-bus.js').then(({ setTurnMounts }) => {
+            setTurnMounts(msgId, mounts).catch(() => {});
+          });
+        }
+      } else {
+        pendingTurnMounts.delete(msgId);
+      }
     };
   }
 
@@ -12266,8 +12298,20 @@ async function main(): Promise<void> {
   const IM_LEADER_TTL_MS = 30_000;
   const POD_TOKEN = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
   let imLeader = false;
-  if (await acquireOwnership(IM_LEADER_KEY, POD_TOKEN, IM_LEADER_TTL_MS)) {
-    imLeader = true;
+  // Retry acquisition during rolling update: old pod's lease (TTL 30s) may
+  // still be alive when the new pod starts. Retry up to 5 times with 10s
+  // intervals to give the old lease time to expire.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (await acquireOwnership(IM_LEADER_KEY, POD_TOKEN, IM_LEADER_TTL_MS)) {
+      imLeader = true;
+      break;
+    }
+    if (attempt < 4) {
+      logger.info({ attempt: attempt + 1 }, 'Waiting for IM leader lease to expire...');
+      await new Promise((r) => setTimeout(r, 10_000));
+    }
+  }
+  if (imLeader) {
   let anyFeishuConnected = false;
 
   // Connect each user's IM channels concurrently — startup latency was
@@ -12452,7 +12496,18 @@ async function main(): Promise<void> {
   setInterval(
     async () => {
       try {
-        if (!imLeader) return;
+        if (!imLeader) {
+          // Non-leader pods periodically re-attempt acquisition.
+          // Covers the case where all pods failed initial acquisition
+          // (e.g. during a rolling update where old and new pods hold the
+          // lease). Once acquired, IM channels will be connected on the
+          // next health-check cycle or manual user reconnect.
+          if (await acquireOwnership(IM_LEADER_KEY, POD_TOKEN, IM_LEADER_TTL_MS)) {
+            imLeader = true;
+            logger.info('Acquired IM leader lease on retry');
+          }
+          return;
+        }
         const ok = await renewOwnership(IM_LEADER_KEY, POD_TOKEN, IM_LEADER_TTL_MS);
         if (!ok) {
           imLeader = false;

@@ -1199,17 +1199,66 @@ export function loadGroupAgentDefinition(
  * (SKILL.md files) for user/project skills that are NOT stored in the DB
  * `skills` table (only builtin skills live there).
  */
+/**
+ * Resolve the project-level skills directory (container/skills/ relative to cwd).
+ * These are skills bundled with the Docker image — they live outside the DB
+ * and outside user-skills dirs, so getSkillContentsForTurn must explicitly
+ * check here as a third fallback.
+ */
+function getProjectSkillsDir(): string {
+  return path.resolve(process.cwd(), 'container', 'skills');
+}
+
+/**
+ * Get skill content for per-turn mount enrichment.
+ *
+ * Search order:
+ * 1. PostgreSQL `skills` table (builtin skills live here)
+ * 2. User skills dir: DATA_DIR/skills/{userId}/{skillId}/SKILL.md
+ * 3. Project skills dir: cwd/container/skills/{skillId}/SKILL.md
+ *
+ * Project-level skills (e.g. agent-browser installed via skills registry) are
+ * NOT in the DB `skills` table — they only exist as SKILL.md files in the
+ * project directory. Without this third fallback, selecting a project skill
+ * in the web UI dropdown would result in "no skill content found" and the
+ * skill context would never reach the agent.
+ */
 function getSkillContentsForTurn(
   ids: string[],
   userId?: string,
 ): Array<{ id: string; name: string; content: string }> {
   const dbRows = getSkillContents(ids);
   const found = new Set(dbRows.map((r) => r.id));
-  const missing = ids.filter((id) => !found.has(id));
-  if (missing.length === 0 || !userId) return dbRows;
+  let missing = ids.filter((id) => !found.has(id));
+  if (missing.length === 0) return dbRows;
+
+  // Fallback 1: user skills directory (DATA_DIR/skills/{userId}/)
+  if (userId) {
+    const remaining: string[] = [];
+    for (const id of missing) {
+      const skillPath = getSkillContentPath(userId, id);
+      if (skillPath && fs.existsSync(skillPath)) {
+        try {
+          const content = fs.readFileSync(skillPath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          dbRows.push({ id, name: frontmatter.name || id, content });
+          found.add(id);
+        } catch {
+          // ignore read errors
+        }
+      } else {
+        remaining.push(id);
+      }
+    }
+    missing = remaining;
+  }
+  if (missing.length === 0) return dbRows;
+
+  // Fallback 2: project skills directory (container/skills/)
+  const projectDir = getProjectSkillsDir();
   for (const id of missing) {
-    const skillPath = getSkillContentPath(userId, id);
-    if (skillPath && fs.existsSync(skillPath)) {
+    const skillPath = path.join(projectDir, id, 'SKILL.md');
+    if (fs.existsSync(skillPath)) {
       try {
         const content = fs.readFileSync(skillPath, 'utf-8');
         const frontmatter = parseFrontmatter(content);
@@ -1219,6 +1268,7 @@ function getSkillContentsForTurn(
       }
     }
   }
+
   return dbRows;
 }
 

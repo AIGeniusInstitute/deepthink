@@ -532,7 +532,8 @@ export async function publishAgentTask(taskInput: any): Promise<boolean> {
     // LPUSH onto a Redis list (queue semantics). agent-runner consumes with
     // BLPOP — each task is delivered to exactly one runner. Do NOT use PUBLISH
     // here: pub/sub is fan-out and would dispatch one task to every replica.
-    await pub.lPush(AGENT_TASKS_CHANNEL, JSON.stringify(taskInput));
+    const json = JSON.stringify(taskInput);
+    await pub.lPush(AGENT_TASKS_CHANNEL, json);
     logger.info({ turnId, queueLen: 'pushed' }, 'publishAgentTask: task published to agent-tasks queue');
     return true;
   } catch (err) {
@@ -555,6 +556,56 @@ export async function hasDistributedRunners(): Promise<boolean> {
     return count && count > 0;
   } catch {
     return false;
+  }
+}
+
+// ─── Per-Turn Mounts (Cross-Pod Skill/MCP/KB Selection) ──
+
+const TURN_MOUNTS_TTL_MS = 300_000; // 5 min, covers message processing window
+
+/**
+ * Persist per-turn mounts to Redis so any pod can read them.
+ * The in-memory pendingTurnMounts Map in index.ts is process-local;
+ * in K8s distributed mode the web handler and message processor may
+ * run on different pods — Redis is the shared ground truth.
+ */
+export async function setTurnMounts(
+  msgId: string,
+  mounts: { skills?: string[]; mcpServers?: string[]; kbIds?: string[] },
+): Promise<void> {
+  const pub = getPub();
+  if (!pub) return;
+  try {
+    const key = `deepthink:turn-mounts:${msgId}`;
+    await pub.set(key, JSON.stringify(mounts), { PX: TURN_MOUNTS_TTL_MS });
+  } catch (err) {
+    logger.warn({ err, msgId }, 'Redis setTurnMounts failed');
+  }
+}
+
+/**
+ * Read and atomically delete per-turn mounts from Redis.
+ * Returns undefined if the key doesn't exist or Redis isn't connected.
+ */
+export async function popTurnMounts(
+  msgId: string,
+): Promise<{ skills?: string[]; mcpServers?: string[]; kbIds?: string[] } | undefined> {
+  const pub = getPub();
+  if (!pub) return undefined;
+  try {
+    const key = `deepthink:turn-mounts:${msgId}`;
+    const raw = await pub.get(key);
+    if (!raw) return undefined;
+    // Atomic get-and-delete (pop semantics — each message is
+    // processed exactly once). Not truly atomic (GET + DEL are
+    // two round-trips) but the dedup key deepthink:task-claimed:{turnId}
+    // in publishAgentTask ensures only one pod processes the message,
+    // so a concurrent pop race cannot happen.
+    await pub.del(key);
+    return JSON.parse(raw) as { skills?: string[]; mcpServers?: string[]; kbIds?: string[] };
+  } catch (err) {
+    logger.warn({ err, msgId }, 'Redis popTurnMounts failed');
+    return undefined;
   }
 }
 
