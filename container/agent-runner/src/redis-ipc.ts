@@ -18,6 +18,7 @@ export const distributedMode = !!REDIS_URL && AGENT_RUNNER_MODE === 'distributed
 let _pub: any = null;
 let _sub: any = null;
 let _connected = false;
+let _workerId = ''; // pod-level unique worker ID for pool registration
 
 const TASK_QUEUE_CHANNEL = 'deepthink:agent-tasks';
 const IPC_INPUT_PREFIX = 'deepthink:ipc:';
@@ -36,8 +37,11 @@ export async function initRedisIpc(): Promise<void> {
     await _pub.connect();
     await _sub.connect();
     _connected = true;
-    // Worker registration: signal that this agent-runner is ready for tasks
-    await _pub.sAdd('deepthink:agent-runners:pool', process.pid.toString()).catch(() => {});
+    // Worker registration: signal that this agent-runner is ready for tasks.
+    // Use hostname (unique per pod) instead of process.pid (=1 in containers,
+    // so sAdd deduplicates identical PIDs across pods and the pool stays empty).
+    _workerId = process.env.HOSTNAME || `runner-${process.pid}-${Date.now()}`;
+    await _pub.sAdd('deepthink:agent-runners:pool', _workerId).catch(() => {});
     console.log('[redis-ipc] Connected — distributed agent-runner mode active');
   } catch (err) {
     console.error('[redis-ipc] Failed to connect, falling back to file-system mode:', err);
@@ -104,10 +108,14 @@ export async function publishIpcOutput(
   subdir: 'messages' | 'tasks',
   payload: any,
 ): Promise<void> {
-  if (!_connected) return;
+  if (!_connected) {
+    console.error('[redis-ipc] publishIpcOutput skipped: not connected');
+    return;
+  }
   const channel = `${IPC_OUTPUT_PREFIX}${groupFolder}:${subdir}`;
   try {
-    await _pub.publish(channel, JSON.stringify(payload));
+    const result = await _pub.publish(channel, JSON.stringify(payload));
+    console.error(`[redis-ipc] Published to ${channel}: ${result} subscribers, payload type=${payload.type}, status=${payload.output?.status}`);
   } catch (err) {
     console.error('[redis-ipc] Failed to publish output:', err);
   }
@@ -151,8 +159,8 @@ export async function requestTaskResult(
 /** Unregister this agent-runner from the pool and close connections. */
 export async function closeRedisIpc(): Promise<void> {
   try {
-    if (_pub) {
-      await _pub.sRem('deepthink:agent-runners:pool', process.pid.toString()).catch(() => {});
+    if (_pub && _workerId) {
+      await _pub.sRem('deepthink:agent-runners:pool', _workerId).catch(() => {});
     }
   } catch { /* ignore */ }
   const tasks: Promise<void>[] = [];

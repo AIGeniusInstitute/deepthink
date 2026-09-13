@@ -91,8 +91,12 @@ const CLAUDE_EFFORT = (process.env.CLAUDE_EFFORT?.trim() || '') as
   | 'xhigh'
   | 'max';
 
-const IPC_INPUT_DIR = path.join(WORKSPACE_IPC, 'input');
-const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
+// IPC directory helpers — use functions (not module-level consts) because
+// WORKSPACE_IPC is reassigned dynamically when a distributed task arrives
+// (processOneTask → resolve workspace on PVC).  Module-level consts capture
+// the initial "/workspace/ipc" wall and mkdirSync fails with EACCES on PVC pods.
+const ipcInputDir = () => path.join(WORKSPACE_IPC, 'input');
+const ipcInputCloseSentinel = () => path.join(ipcInputDir(), '_close');
 const IPC_FALLBACK_POLL_MS = 5000; // 后备轮询间隔（仅防止 inotify 事件丢失）
 
 // ─── Redis IPC message queue (distributed mode) ─────────────────────────
@@ -633,7 +637,11 @@ function writeOutput(output: ContainerOutput): void {
     publishIpcOutput(currentGroupFolder, 'messages', {
       type: 'agent_output',
       output,
-    }).catch(() => {});
+    }).catch((err) => {
+      console.error(`[agent-runner] publishIpcOutput error:`, err);
+    });
+  } else {
+    console.error(`[agent-runner] writeOutput: Redis publish skipped — connected=${isRedisIpcConnected()} distributed=${distributedMode} folder=${currentGroupFolder}`);
   }
 }
 
@@ -1044,16 +1052,16 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
  */
 function shouldClose(): boolean {
   if (consumeRedisSignal('_close')) return true;
-  if (fs.existsSync(IPC_INPUT_CLOSE_SENTINEL)) {
-    try { fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL); } catch { /* ignore */ }
+  if (fs.existsSync(ipcInputCloseSentinel())) {
+    try { fs.unlinkSync(ipcInputCloseSentinel()); } catch { /* ignore */ }
     return true;
   }
   return false;
 }
 
-const IPC_INPUT_DRAIN_SENTINEL = path.join(IPC_INPUT_DIR, '_drain');
+const ipcInputDrainSentinel = () => path.join(ipcInputDir(), '_drain');
 
-const IPC_INPUT_INTERRUPT_SENTINEL = path.join(IPC_INPUT_DIR, '_interrupt');
+const ipcInputInterruptSentinel = () => path.join(ipcInputDir(), '_interrupt');
 const INTERRUPT_GRACE_WINDOW_MS = 10_000;
 let lastInterruptRequestedAt = 0;
 
@@ -1084,8 +1092,8 @@ function shouldInterrupt(): boolean {
     markInterruptRequested();
     return true;
   }
-  if (fs.existsSync(IPC_INPUT_INTERRUPT_SENTINEL)) {
-    try { fs.unlinkSync(IPC_INPUT_INTERRUPT_SENTINEL); } catch { /* ignore */ }
+  if (fs.existsSync(ipcInputInterruptSentinel())) {
+    try { fs.unlinkSync(ipcInputInterruptSentinel()); } catch { /* ignore */ }
     markInterruptRequested();
     return true;
   }
@@ -1094,13 +1102,13 @@ function shouldInterrupt(): boolean {
 
 function cleanupStartupInterruptSentinel(): void {
   try {
-    const stat = fs.statSync(IPC_INPUT_INTERRUPT_SENTINEL);
+    const stat = fs.statSync(ipcInputInterruptSentinel());
     const ageMs = Date.now() - stat.mtimeMs;
     if (ageMs <= INTERRUPT_GRACE_WINDOW_MS) {
       log(`Preserving recent interrupt sentinel at startup (${Math.round(ageMs)}ms old)`);
       return;
     }
-    fs.unlinkSync(IPC_INPUT_INTERRUPT_SENTINEL);
+    fs.unlinkSync(ipcInputInterruptSentinel());
     log(`Removed stale interrupt sentinel at startup (${Math.round(ageMs)}ms old)`);
   } catch {
     /* ignore */
@@ -1114,8 +1122,8 @@ function cleanupStartupInterruptSentinel(): void {
  */
 function shouldDrain(): boolean {
   if (consumeRedisSignal('_drain')) return true;
-  if (fs.existsSync(IPC_INPUT_DRAIN_SENTINEL)) {
-    try { fs.unlinkSync(IPC_INPUT_DRAIN_SENTINEL); } catch { /* ignore */ }
+  if (fs.existsSync(ipcInputDrainSentinel())) {
+    try { fs.unlinkSync(ipcInputDrainSentinel()); } catch { /* ignore */ }
     return true;
   }
   return false;
@@ -1154,12 +1162,12 @@ function drainIpcInput(): IpcDrainResult {
 
   // Then drain file-system messages (fallback / single-pod mode)
   try {
-    const files = fs.readdirSync(IPC_INPUT_DIR)
+    const files = fs.readdirSync(ipcInputDir())
       .filter(f => f.endsWith('.json'))
       .sort();
 
     for (const file of files) {
-      const filePath = path.join(IPC_INPUT_DIR, file);
+      const filePath = path.join(ipcInputDir(), file);
       try {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         fs.unlinkSync(filePath);
@@ -1201,13 +1209,13 @@ function createIpcWatcher(onFileDetected: () => void): { close: () => void } {
     }, 50);
   };
 
-  // Ensure IPC_INPUT_DIR exists
-  try { fs.mkdirSync(IPC_INPUT_DIR, { recursive: true }); } catch {}
+  // Ensure ipcInputDir() exists
+  try { fs.mkdirSync(ipcInputDir(), { recursive: true }); } catch {}
 
   try {
     // Listen to all event types — 'rename' covers atomic writes on Linux,
     // but Docker bind mounts (macOS virtiofs) may emit 'change' instead.
-    watcher = fs.watch(IPC_INPUT_DIR, () => {
+    watcher = fs.watch(ipcInputDir(), () => {
       debouncedDetect();
     });
     watcher.on('error', (err) => {
@@ -2686,7 +2694,7 @@ async function processOneTask(): Promise<void> {
   ];
 
   const memoryRecallPrompt = buildMemoryRecallPrompt(isHome, disableMemoryLayer);
-  fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });
+  fs.mkdirSync(ipcInputDir(), { recursive: true });
 
   // Clean up stale sentinels from previous container runs.
   // Note: _drain is NOT cleaned here — the host's cleanupIpcSentinels() in
@@ -2694,7 +2702,7 @@ async function processOneTask(): Promise<void> {
   // A _drain present at startup was written by registerProcess() for the
   // CURRENT run (indicating pending messages arrived during container boot).
   // Deleting it here causes those messages to be silently lost (#xxx).
-  try { fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL); } catch { /* ignore */ }
+  try { fs.unlinkSync(ipcInputCloseSentinel()); } catch { /* ignore */ }
   cleanupStartupInterruptSentinel();
 
   // Build initial prompt (drain any pending IPC messages too)
@@ -2854,7 +2862,7 @@ async function processOneTask(): Promise<void> {
       // 清理残留的 _interrupt sentinel（空闲期间写入的中断信号不应影响下一次 query）。
       // 注意：_drain 不在此处清理 — 如果 _drain 存在，说明有待处理的消息，
       // pollIpcDuringQuery 会在查询结果后检测到并正确退出容器。
-      try { fs.unlinkSync(IPC_INPUT_INTERRUPT_SENTINEL); } catch { /* ignore */ }
+      try { fs.unlinkSync(ipcInputInterruptSentinel()); } catch { /* ignore */ }
       clearInterruptRequested();
 
       // 消费 auto-continue 阶段暂存的 history context（如果存在）。
@@ -2993,8 +3001,8 @@ async function processOneTask(): Promise<void> {
           newSessionId: sessionId,  // 确保主进程持久化 session ID
         });
         // 清理可能残留的 _interrupt / _drain 文件
-        try { fs.unlinkSync(IPC_INPUT_INTERRUPT_SENTINEL); } catch { /* ignore */ }
-        try { fs.unlinkSync(IPC_INPUT_DRAIN_SENTINEL); } catch { /* ignore */ }
+        try { fs.unlinkSync(ipcInputInterruptSentinel()); } catch { /* ignore */ }
+        try { fs.unlinkSync(ipcInputDrainSentinel()); } catch { /* ignore */ }
         clearInterruptRequested();
         consecutiveCompactions = 0;
 
@@ -3006,7 +3014,7 @@ async function processOneTask(): Promise<void> {
           log(`Query interrupted; re-enqueueing ${piped.length} queued message(s) to IPC`);
           for (const msg of piped) {
             const filename = `${Date.now()}-requeue-${Math.random().toString(36).slice(2, 8)}.json`;
-            const filepath = path.join(IPC_INPUT_DIR, filename);
+            const filepath = path.join(ipcInputDir(), filename);
             const tempPath = `${filepath}.tmp`;
             try {
               fs.writeFileSync(tempPath, JSON.stringify({ type: 'message', text: msg.text, images: msg.images, taskId: msg.taskId, sourceJid: msg.sourceJid }));
@@ -3166,7 +3174,7 @@ async function processOneTask(): Promise<void> {
           if (autoContResult.interruptedDuringQuery) {
             log('WARN: Auto-continue query was interrupted by user');
             resumeAt = undefined;
-            try { fs.unlinkSync(IPC_INPUT_INTERRUPT_SENTINEL); } catch { /* ignore */ }
+            try { fs.unlinkSync(ipcInputInterruptSentinel()); } catch { /* ignore */ }
           }
           // After auto-continue, fall through to wait for next IPC message.
         } else {
@@ -3250,7 +3258,7 @@ async function processOneTask(): Promise<void> {
         if (contResult.interruptedDuringQuery) {
           log('WARN: Truncation-continue query was interrupted by user');
           resumeAt = undefined;
-          try { fs.unlinkSync(IPC_INPUT_INTERRUPT_SENTINEL); } catch { /* ignore */ }
+          try { fs.unlinkSync(ipcInputInterruptSentinel()); } catch { /* ignore */ }
           break;
         }
         // 续写本身又被截断 → 带新结尾再续，直到写完或触顶
@@ -3284,7 +3292,7 @@ async function processOneTask(): Promise<void> {
       // only to execute ONE query for ONE graph node. The host's graph path
       // never writes a _close/_drain sentinel (unlike the chat GroupQueue),
       // so entering waitForIpcMessage() here would block forever on
-      // fs.watch(IPC_INPUT_DIR) — the container sleeps (STAT=Sl, %CPU=0),
+      // fs.watch(ipcInputDir()) — the container sleeps (STAT=Sl, %CPU=0),
       // runContainerAgent's promise never resolves (no close event), and the
       // graph_node_runs row stays 'running' until the 30-min containerTimeout
       // fires (or never, if stream output keeps resetting it). Exit now so

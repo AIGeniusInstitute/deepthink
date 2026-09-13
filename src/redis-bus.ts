@@ -17,9 +17,10 @@ let _pub: any = null;
 let _sub: any = null;
 let _connected = false;
 
-/** 初始化 Redis 连接(仅当 REDIS_URL 存在)。 */
+/** 初始化 Redis 连接(仅当 REDIS_URL 存在)。幂等: 已连接时不重复初始化。 */
 export async function initRedis(): Promise<void> {
   if (!redisEnabled) return;
+  if (_connected) return;
   try {
     const { createClient } = await import('redis');
     _pub = createClient({ url: process.env.REDIS_URL! });
@@ -460,9 +461,14 @@ export async function subscribeIpcOutput(
   handler: (payload: any) => void,
 ): Promise<() => void> {
   const sub = getSub();
-  if (!sub) return () => {};
+  if (!sub) {
+    logger.info({ groupFolder, subdir }, 'subscribeIpcOutput: Redis not connected, skipping');
+    return () => {};
+  }
   const channel = `${IPC_OUTPUT_PREFIX}${groupFolder}:${subdir}`;
+  logger.info({ channel }, 'subscribeIpcOutput: subscribing');
   await sub.subscribe(channel, (raw: string) => {
+    logger.info({ channel, len: raw.length }, 'Redis IPC subscription received message');
     try {
       handler(JSON.parse(raw));
     } catch (err) {
@@ -498,17 +504,39 @@ export async function publishIpcTaskResult(
 /**
  * 发布任务到分布式 agent-runner 队列。
  * agent-runner 的 waitForTask() 从 deepthink:agent-tasks 消费。
+ *
+ * @param taskInput 任务负载（须含 turnId 用于跨 Pod 去重）
+ * @returns true 如果任务已发布, false 如果另一个 Pod 已认领（跳过）
  */
-export async function publishAgentTask(taskInput: any): Promise<void> {
+export async function publishAgentTask(taskInput: any): Promise<boolean> {
   const pub = getPub();
-  if (!pub) return;
+  if (!pub) return true; // no Redis → caller proceeds with local path
+  const turnId = taskInput?.turnId;
+  if (turnId) {
+    // Distributed dedup: two web-server pods may both enter runAgent for the
+    // same message (each sees no active local runner).  SET NX ensures only
+    // one pod pushes the task onto the queue.  TTL 15 min covers the longest
+    // expected turn duration plus a safety margin.
+    const dedupKey = `deepthink:task-claimed:${turnId}`;
+    try {
+      const claimed = await pub.set(dedupKey, '1', { NX: true, EX: 900 });
+      if (claimed !== 'OK') {
+        logger.info({ turnId }, 'publishAgentTask: task already claimed by another pod, skipping');
+        return false;
+      }
+    } catch (err) {
+      logger.warn({ err, turnId }, 'publishAgentTask: dedup SET NX failed, proceeding anyway');
+    }
+  }
   try {
     // LPUSH onto a Redis list (queue semantics). agent-runner consumes with
     // BRPOP — each task is delivered to exactly one runner. Do NOT use PUBLISH
     // here: pub/sub is fan-out and would dispatch one task to every replica.
     await pub.lPush(AGENT_TASKS_CHANNEL, JSON.stringify(taskInput));
+    return true;
   } catch (err) {
     logger.warn({ err }, 'Redis publishAgentTask failed');
+    return false;
   }
 }
 

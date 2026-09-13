@@ -175,7 +175,7 @@ import type {
 } from './im-manager.js';
 import { GroupQueue } from './group-queue.js';
 import { startSchedulerLoop, stopSchedulerLoop, triggerTaskNow, computeNextRunForSchedule } from './task-scheduler.js';
-import { isRedisConnected, subscribeAgentIpc, subscribeIpcOutput, publishIpcTaskResult, publishAgentTask, hasDistributedRunners, incrUserActive, decrUserActive, initUserActiveMirror, getUserActiveMirror, acquireOwnership, renewOwnership, releaseOwnership, withOwnership } from './redis-bus.js';
+import { initRedis, isRedisConnected, subscribeAgentIpc, subscribeIpcOutput, publishIpcTaskResult, publishAgentTask, publishAgentIpc, hasDistributedRunners, incrUserActive, decrUserActive, initUserActiveMirror, getUserActiveMirror, acquireOwnership, renewOwnership, releaseOwnership, withOwnership } from './redis-bus.js';
 import {
   startSupervisorLoop,
   bootRecoverSupervisor,
@@ -610,7 +610,16 @@ let shuttingDown = false;
 class IpcWatcherManager {
   private watchers = new Map<
     string,
-    { watchers: fs.FSWatcher[]; refCount: number; redisUnsub?: () => void; redisOutputUnsubs: (() => void)[] }
+    {
+      watchers: fs.FSWatcher[];
+      refCount: number;
+      redisUnsub?: () => void;
+      redisOutputUnsubs: (() => void)[];
+      // Promises that resolve when each Redis IPC subscription is ready.
+      // Await these before publishing a distributed task to avoid a race
+      // where the agent-runner publishes output before our subscription lands.
+      redisSubPending: Promise<void>[];
+    }
   >();
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private processingFolders = new Set<string>();
@@ -662,10 +671,11 @@ class IpcWatcherManager {
         // Watch failed — fallback polling will handle it
       }
     }
-    this.watchers.set(folder, { watchers: folderWatchers, refCount: 1, redisOutputUnsubs: [] });
+    this.watchers.set(folder, { watchers: folderWatchers, refCount: 1, redisOutputUnsubs: [], redisSubPending: [] });
 
     // Redis bridge: subscribe to cross-pod IPC channels for this group.
     if (isRedisConnected()) {
+      logger.info({ folder }, 'watchGroup: setting up Redis IPC subscriptions');
       const inputDir = path.join(DATA_DIR, 'ipc', folder, 'input');
       const messagesDir = path.join(DATA_DIR, 'ipc', folder, 'messages');
       const tasksDir = path.join(DATA_DIR, 'ipc', folder, 'tasks');
@@ -673,7 +683,7 @@ class IpcWatcherManager {
       // 1) Input direction (deepthink:ipc:{folder}) — Phase 4:
       // Other pods publish user messages / control signals; we write them
       // to the local input dir so the local agent-runner picks them up.
-      subscribeAgentIpc(folder, (payload) => {
+      const agentIpcReady = subscribeAgentIpc(folder, (payload) => {
         try {
           fs.mkdirSync(inputDir, { recursive: true });
           if (payload.type === '_close') {
@@ -701,8 +711,9 @@ class IpcWatcherManager {
       }).then((unsub) => {
         const entry = this.watchers.get(folder);
         if (entry) entry.redisUnsub = unsub;
-      }).catch(() => {
-        // non-fatal — fs.watch + fallback polling still work
+        logger.info({ folder }, 'Redis IPC input subscription ready');
+      }).catch((err) => {
+        logger.error({ err, folder }, 'Redis IPC input subscription FAILED');
       });
 
       // 2) Output direction (deepthink:ipc-out:{folder}:messages) — NEW:
@@ -710,16 +721,17 @@ class IpcWatcherManager {
       // and mcp-bridge's send_message publishes { type: 'message', ... }.
       // Route agent_output to the registered onOutput handler; write message
       // payloads to the local messages/ dir so processGroupIpc picks them up.
-      subscribeIpcOutput(folder, 'messages', (payload) => {
+      const ipcOutReady = subscribeIpcOutput(folder, 'messages', (payload) => {
         try {
           if (payload.type === 'agent_output' && payload.output) {
             const handler = this.distributedOutputHandlers.get(folder);
             if (handler) {
+              logger.debug({ folder, status: payload.output.status }, 'Distributed output received, calling handler');
               handler(payload.output).catch((err) => {
                 logger.warn({ err, folder }, 'Distributed onOutput handler error');
               });
             } else {
-              logger.debug({ folder }, 'Distributed agent_output received but no handler registered');
+              logger.info({ folder, keys: Object.keys(this.distributedOutputHandlers) }, 'Distributed agent_output received but no handler registered');
             }
           } else if (payload.type === 'message') {
             // mcp-bridge send_message via Redis — write to local messages/ dir
@@ -737,12 +749,25 @@ class IpcWatcherManager {
       }).then((unsub) => {
         const entry = this.watchers.get(folder);
         if (entry) entry.redisOutputUnsubs.push(unsub);
-      }).catch(() => { /* non-fatal */ });
+        logger.info({ folder }, 'Redis IPC output subscription ready (messages)');
+      }).catch((err) => {
+        logger.error({ err, folder }, 'Redis IPC output subscription FAILED (messages)');
+      });
+
+      // Track subscription promises so the distributed dispatch path can
+      // await them before publishing the agent task. Without this, the
+      // agent-runner can pick up and complete a task before our subscriptions
+      // land, causing "0 subscribers" and dropped agent output.
+      const entryAfter = this.watchers.get(folder);
+      if (entryAfter) {
+        entryAfter.redisSubPending.push(agentIpcReady);
+        entryAfter.redisSubPending.push(ipcOutReady);
+      }
 
       // 3) Task requests from distributed mcp-bridge (deepthink:ipc-out:{folder}:tasks)
       // Write to local tasks/ dir so processGroupIpc handles them.
       // writeTaskResult will publish the result back via Redis.
-      subscribeIpcOutput(folder, 'tasks', (payload) => {
+      const ipcTaskReady = subscribeIpcOutput(folder, 'tasks', (payload) => {
         try {
           fs.mkdirSync(tasksDir, { recursive: true });
           const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}.json`;
@@ -757,8 +782,26 @@ class IpcWatcherManager {
       }).then((unsub) => {
         const entry = this.watchers.get(folder);
         if (entry) entry.redisOutputUnsubs.push(unsub);
-      }).catch(() => { /* non-fatal */ });
+        logger.info({ folder }, 'Redis IPC output subscription ready (tasks)');
+      }).catch((err) => {
+        logger.error({ err, folder }, 'Redis IPC output subscription FAILED (tasks)');
+      });
+      const entryTasks = this.watchers.get(folder);
+      if (entryTasks) entryTasks.redisSubPending.push(ipcTaskReady);
     }
+  }
+
+  /** Await all pending Redis IPC subscriptions for a group.
+   *  Must be called before publishing a distributed agent task to avoid a
+   *  race where the agent-runner publishes output before our subscription lands,
+   *  causing "0 subscribers" and dropped agent output. */
+  async ensureSubscriptionsReady(folder: string): Promise<void> {
+    const entry = this.watchers.get(folder);
+    if (!entry || entry.redisSubPending.length === 0) return;
+    const pending = [...entry.redisSubPending];
+    entry.redisSubPending = [];
+    await Promise.allSettled(pending);
+    logger.info({ folder, count: pending.length }, 'Redis IPC subscriptions ready');
   }
 
   /** Register an onOutput handler for distributed agent-runner output. */
@@ -5178,15 +5221,26 @@ async function runAgent(
       // The IpcWatcherManager routes agent_output messages from Redis to this handler.
       const finalOutputPromise = new Promise<ContainerOutput>((resolve) => {
         const distributedHandler = async (agentOutput: ContainerOutput) => {
-          if (wrappedOnOutput) {
-            await wrappedOnOutput(agentOutput);
-          }
-          if (
-            agentOutput.status === 'success' ||
-            agentOutput.status === 'error' ||
-            agentOutput.status === 'closed'
-          ) {
-            resolve(agentOutput);
+          try {
+            if (wrappedOnOutput) {
+              await wrappedOnOutput(agentOutput);
+            }
+          } catch (err) {
+            logger.warn(
+              { err, folder: group.folder, status: agentOutput.status },
+              'Distributed onOutput handler error (non-fatal, continuing)',
+            );
+          } finally {
+            // CRITICAL: Always resolve for terminal statuses, even if
+            // wrappedOnOutput threw. Otherwise the promise hangs forever
+            // and the 10-minute timeout fires, masking the real error.
+            if (
+              agentOutput.status === 'success' ||
+              agentOutput.status === 'error' ||
+              agentOutput.status === 'closed'
+            ) {
+              resolve(agentOutput);
+            }
           }
         };
         ipcWatcherManager?.registerDistributedOutput(group.folder, distributedHandler);
@@ -5199,15 +5253,36 @@ async function runAgent(
         }, 600_000);
       });
 
+      // Ensure Redis IPC subscriptions are ready before publishing the task.
+      // Without this await, the agent-runner can pick up and complete the task
+      // before our subscribeIpcOutput subscription lands, causing "0 subscribers"
+      // on the agent-runner side and dropped agent output.
+      await ipcWatcherManager?.ensureSubscriptionsReady(group.folder);
+
       // Publish the task to the distributed agent-runner queue
       // Per-user distributed active counter (计费并发上限跨 Pod 生效):
       // incr before dispatch, decr in finally on completion/timeout.
       if (ownerId) await incrUserActive(ownerId);
       try {
-        await publishAgentTask(taskInput);
-        // Wait for the final output (or timeout)
+        const published = await publishAgentTask(taskInput);
+        if (!published) {
+          // Another web-server pod already claimed this task (dedup via Redis SET NX).
+          // We still wait for the output because our watchGroup subscription is active
+          // and we'll receive the agent-runner output via Redis pub/sub.
+          logger.info({ turnId }, 'Task already claimed by another pod; waiting for output via pub/sub');
+        }
+        // Wait for the final output (or timeout) — both the publishing pod and the
+        // dedup-skipped pod have active IPC subscriptions and will receive the output.
         output = await Promise.race([finalOutputPromise, timeoutPromise]);
       } finally {
+        // Signal the distributed agent-runner to exit its waitForIpcMessage
+        // loop so it can return to the BLPOP queue and pick up the next task.
+        // Without this, the agent-runner is stuck waiting for follow-up IPC
+        // input and never re-enters the task queue, leaving subsequent tasks
+        // (including recovery tasks from other pods) permanently stranded.
+        if (isRedisConnected()) {
+          publishAgentIpc(group.folder, { type: '_close', text: '' }).catch(() => {});
+        }
         ipcWatcherManager?.unregisterDistributedOutput(group.folder);
         if (ownerId) await decrUserActive(ownerId);
       }
@@ -11460,6 +11535,13 @@ async function main(): Promise<void> {
     );
     logger.info({ userId }, 'Reconnected user IM channels after re-enable');
   };
+
+  // Initialize Redis BEFORE starting the web server to avoid a startup race
+  // condition: if a message arrives before Redis connects, the distributed
+  // dispatch check (isRedisConnected && hasDistributedRunners) returns false,
+  // falling through to host/container mode which fails in K8s (no local Docker).
+  await initRedis();
+  logger.info('Redis ready for distributed dispatch');
 
   // Start Web server early so frontend auth/API isn't blocked by Feishu readiness.
   startWebServer({

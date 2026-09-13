@@ -689,18 +689,18 @@ export class GroupQueue {
   ): SendMessageResult {
     const state = this.resolveActiveState(groupJid);
     if (!state) {
-      // Cross-pod: no local agent — forward message via Redis if connected.
-      // The pod that has the active agent subscribes to deepthink:ipc:{folder}
-      // and writes the message to its local input dir for the agent-runner.
-      if (isRedisConnected()) {
-        const folder = this.resolveGroupFolder(groupJid);
-        if (folder) {
-          publishAgentIpc(folder, { type: 'message', text, images: images ?? undefined, sourceJid, taskId }).catch((err) => {
-            logger.warn({ err, groupJid, folder }, 'Redis publishAgentIpc (sendMessage) failed');
-          });
-          return 'sent';
-        }
-      }
+      // Cross-pod: no local agent.
+      //
+      // CRITICAL: always return 'no_active' here so the caller triggers
+      // enqueueMessageCheck → runForGroup → cold-start path.
+      // Previously this path published to Redis IPC and returned 'sent',
+      // which skipped enqueueMessageCheck and prevented the agent-runner
+      // from ever being dispatched (the first message after deploy/pod-restart
+      // had no listener on the IPC channel, so the message was silently lost).
+      //
+      // The enqueueMessageCheck path handles distributed runners correctly:
+      // it checks hasDistributedRunners() and dispatches via publishAgentTask
+      // → LPUSH deepthink:agent-tasks → agent-runner BLPOP.
       return 'no_active';
     }
     // If the active runner is a scheduled task (not a user-message handler),
@@ -1107,6 +1107,37 @@ export class GroupQueue {
     const activeRunner = this.findActiveRunnerFor(groupJid);
     const targetJid = activeRunner || groupJid;
     const state = this.getGroup(targetJid);
+
+    // Distributed mode: no local container/process to restart. The
+    // previous runAgent call already completed (the distributed agent-runner
+    // pod processed the task and published output), but state.active was
+    // never cleared — so subsequent messages hit the IPC inject path
+    // (sendMessage returns 'sent') instead of triggering a fresh
+    // publishAgentTask dispatch.  No new task is ever pushed to Redis, and
+    // the agent-runner pods idle on BLPOP while the web-server thinks the
+    // runner is still active.
+    //
+    // Fix: reset the runner state and re-enqueue message checks.  The next
+    // processGroupMessages invocation will call runAgent, which enters the
+    // distributed branch and publishes a new task to the agent-runner queue.
+    if (!state.containerName && !state.process && state.active) {
+      logger.info(
+        { groupJid: targetJid },
+        'Restarting distributed runner: resetting state for re-dispatch',
+      );
+      state.active = false;
+      state.restarting = false;
+      state.pendingMessages = false;
+      state.queryInFlight = false;
+      state.lastActivityAt = null;
+      state.drainSentinelWritten = false;
+      state.hasIpcInjectedMessages = false;
+      if (this.activeCount > 0) this.activeCount--;
+      // Re-trigger processing. lastAgentTimestamp was never advanced for
+      // the unprocessed messages, so getMessagesSince will surface them.
+      this.enqueueMessageCheck(groupJid);
+      return;
+    }
 
     if (state.restarting) {
       logger.warn(

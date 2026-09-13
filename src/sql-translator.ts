@@ -79,6 +79,20 @@ export function translateSqliteToPg(sql: string): string {
     'substr($1, 1, 10)',
   );
 
+  // 5.5. rowid → id — SQLite's implicit rowid is aliased to the INTEGER PRIMARY KEY
+  // column. In PostgreSQL there is no rowid pseudo-column; replace it with the
+  // actual primary key column name (usually `id`).
+  result = result.replace(/\browid\b/gi, 'id');
+
+  // 5aa. MAX(a, b) scalar → GREATEST(a, b).
+  // SQLite has both the aggregate MAX(column) and the scalar MAX(val1, val2).
+  // PostgreSQL only has the aggregate form; the scalar equivalent is GREATEST().
+  // We match the two-argument form (comma-separated) and translate it.
+  result = result.replace(
+    /\bMAX\(\s*([^,)]+(?:\s*,\s*[^,)]+)?)\s*,\s*([^,)]+)\s*\)/gi,
+    'GREATEST($1, $2)',
+  );
+
   // 5b. PRAGMA table_info(table) → PG information_schema query.
   // SQLite's PRAGMA table_info returns one row per column; callers read .name
   // and (rarely) .pk. We translate to information_schema.columns. pk defaults

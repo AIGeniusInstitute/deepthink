@@ -120,12 +120,12 @@ function stmts() {
           total_cost_usd, request_count, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'))
         ON CONFLICT(user_id, model, date) DO UPDATE SET
-          total_input_tokens = total_input_tokens + excluded.total_input_tokens,
-          total_output_tokens = total_output_tokens + excluded.total_output_tokens,
-          total_cache_read_tokens = total_cache_read_tokens + excluded.total_cache_read_tokens,
-          total_cache_creation_tokens = total_cache_creation_tokens + excluded.total_cache_creation_tokens,
-          total_cost_usd = total_cost_usd + excluded.total_cost_usd,
-          request_count = request_count + 1,
+          total_input_tokens = usage_daily_summary.total_input_tokens + excluded.total_input_tokens,
+          total_output_tokens = usage_daily_summary.total_output_tokens + excluded.total_output_tokens,
+          total_cache_read_tokens = usage_daily_summary.total_cache_read_tokens + excluded.total_cache_read_tokens,
+          total_cache_creation_tokens = usage_daily_summary.total_cache_creation_tokens + excluded.total_cache_creation_tokens,
+          total_cost_usd = usage_daily_summary.total_cost_usd + excluded.total_cost_usd,
+          request_count = usage_daily_summary.request_count + 1,
           updated_at = datetime('now')`,
       ),
       getSessionWithUser: db.prepare(
@@ -143,8 +143,8 @@ function stmts() {
       ),
       updateTokenUsageLatest: db.prepare(
         `UPDATE messages SET token_usage = ?, cost_usd = ?
-         WHERE rowid = (
-           SELECT rowid FROM messages
+         WHERE id = (
+           SELECT id FROM messages
            WHERE chat_jid = ? AND is_from_me = 1 AND token_usage IS NULL
              AND COALESCE(source_kind, 'legacy') != 'sdk_send_message'
            ORDER BY timestamp DESC LIMIT 1
@@ -5728,21 +5728,21 @@ export function upsertChatTraceNode(row: ChatTraceNodeUpsertInput): void {
         trace_id, span_id, parent_span_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(chat_jid, id) DO UPDATE SET
-       session_id = COALESCE(excluded.session_id, session_id),
-       parent_node_id = COALESCE(excluded.parent_node_id, parent_node_id),
-       title = COALESCE(excluded.title, title),
-       input_summary = COALESCE(excluded.input_summary, input_summary),
-       output_summary = COALESCE(excluded.output_summary, output_summary),
-       tokens = MAX(tokens, excluded.tokens),
-       status = COALESCE(excluded.status, status),
-       ended_at = COALESCE(excluded.ended_at, ended_at),
-       graph_run_id = COALESCE(excluded.graph_run_id, graph_run_id),
-       graph_node_id = COALESCE(excluded.graph_node_id, graph_node_id),
-       tool_name = COALESCE(excluded.tool_name, tool_name),
-       tool_use_id = COALESCE(excluded.tool_use_id, tool_use_id),
-       trace_id = COALESCE(excluded.trace_id, trace_id),
-       span_id = COALESCE(excluded.span_id, span_id),
-       parent_span_id = COALESCE(excluded.parent_span_id, parent_span_id)`,
+       session_id = COALESCE(excluded.session_id, chat_trace_nodes.session_id),
+       parent_node_id = COALESCE(excluded.parent_node_id, chat_trace_nodes.parent_node_id),
+       title = COALESCE(excluded.title, chat_trace_nodes.title),
+       input_summary = COALESCE(excluded.input_summary, chat_trace_nodes.input_summary),
+       output_summary = COALESCE(excluded.output_summary, chat_trace_nodes.output_summary),
+       tokens = MAX(chat_trace_nodes.tokens, excluded.tokens),
+       status = COALESCE(excluded.status, chat_trace_nodes.status),
+       ended_at = COALESCE(excluded.ended_at, chat_trace_nodes.ended_at),
+       graph_run_id = COALESCE(excluded.graph_run_id, chat_trace_nodes.graph_run_id),
+       graph_node_id = COALESCE(excluded.graph_node_id, chat_trace_nodes.graph_node_id),
+       tool_name = COALESCE(excluded.tool_name, chat_trace_nodes.tool_name),
+       tool_use_id = COALESCE(excluded.tool_use_id, chat_trace_nodes.tool_use_id),
+       trace_id = COALESCE(excluded.trace_id, chat_trace_nodes.trace_id),
+       span_id = COALESCE(excluded.span_id, chat_trace_nodes.span_id),
+       parent_span_id = COALESCE(excluded.parent_span_id, chat_trace_nodes.parent_span_id)`,
   ).run(
     row.id,
     row.chat_jid,
@@ -5860,14 +5860,14 @@ export function upsertTraceToolCall(row: TraceToolCallUpsertInput): void {
         input_json, output_json, output_ref, status, started_at, ended_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(graph_run_id, tool_use_id) DO UPDATE SET
-       graph_node_id = COALESCE(excluded.graph_node_id, graph_node_id),
-       chat_jid = COALESCE(excluded.chat_jid, chat_jid),
-       tool_name = COALESCE(excluded.tool_name, tool_name),
-       input_json = COALESCE(excluded.input_json, input_json),
-       output_json = COALESCE(excluded.output_json, output_json),
-       output_ref = COALESCE(excluded.output_ref, output_ref),
-       status = COALESCE(excluded.status, status),
-       ended_at = COALESCE(excluded.ended_at, ended_at)`,
+       graph_node_id = COALESCE(excluded.graph_node_id, trace_tool_calls.graph_node_id),
+       chat_jid = COALESCE(excluded.chat_jid, trace_tool_calls.chat_jid),
+       tool_name = COALESCE(excluded.tool_name, trace_tool_calls.tool_name),
+       input_json = COALESCE(excluded.input_json, trace_tool_calls.input_json),
+       output_json = COALESCE(excluded.output_json, trace_tool_calls.output_json),
+       output_ref = COALESCE(excluded.output_ref, trace_tool_calls.output_ref),
+       status = COALESCE(excluded.status, trace_tool_calls.status),
+       ended_at = COALESCE(excluded.ended_at, trace_tool_calls.ended_at)`,
   ).run(
     row.graph_run_id ?? null,
     row.graph_node_id ?? null,
@@ -5965,18 +5965,18 @@ export function upsertTraceStep(row: TraceStepUpsertInput): void {
         tokens, status, started_at, ended_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(trace_id, span_id) DO UPDATE SET
-       parent_span_id = COALESCE(excluded.parent_span_id, parent_span_id),
-       chat_jid = COALESCE(excluded.chat_jid, chat_jid),
-       graph_run_id = COALESCE(excluded.graph_run_id, graph_run_id),
-       graph_node_id = COALESCE(excluded.graph_node_id, graph_node_id),
-       title = COALESCE(excluded.title, title),
-       input_summary = COALESCE(excluded.input_summary, input_summary),
-       output_summary = COALESCE(excluded.output_summary, output_summary),
-       evidence_json = COALESCE(excluded.evidence_json, evidence_json),
-       output_ref = COALESCE(excluded.output_ref, output_ref),
-       tokens = MAX(tokens, excluded.tokens),
-       status = COALESCE(excluded.status, status),
-       ended_at = COALESCE(excluded.ended_at, ended_at)`,
+       parent_span_id = COALESCE(excluded.parent_span_id, trace_steps.parent_span_id),
+       chat_jid = COALESCE(excluded.chat_jid, trace_steps.chat_jid),
+       graph_run_id = COALESCE(excluded.graph_run_id, trace_steps.graph_run_id),
+       graph_node_id = COALESCE(excluded.graph_node_id, trace_steps.graph_node_id),
+       title = COALESCE(excluded.title, trace_steps.title),
+       input_summary = COALESCE(excluded.input_summary, trace_steps.input_summary),
+       output_summary = COALESCE(excluded.output_summary, trace_steps.output_summary),
+       evidence_json = COALESCE(excluded.evidence_json, trace_steps.evidence_json),
+       output_ref = COALESCE(excluded.output_ref, trace_steps.output_ref),
+       tokens = MAX(trace_steps.tokens, excluded.tokens),
+       status = COALESCE(excluded.status, trace_steps.status),
+       ended_at = COALESCE(excluded.ended_at, trace_steps.ended_at)`,
   ).run(
     row.trace_id,
     row.span_id,
@@ -9290,10 +9290,10 @@ export function incrementMonthlyUsage(
     `INSERT INTO monthly_usage (user_id, month, total_input_tokens, total_output_tokens, total_cost_usd, message_count, updated_at)
      VALUES (?, ?, ?, ?, ?, 1, ?)
      ON CONFLICT(user_id, month) DO UPDATE SET
-       total_input_tokens = total_input_tokens + excluded.total_input_tokens,
-       total_output_tokens = total_output_tokens + excluded.total_output_tokens,
-       total_cost_usd = total_cost_usd + excluded.total_cost_usd,
-       message_count = message_count + 1,
+       total_input_tokens = monthly_usage.total_input_tokens + excluded.total_input_tokens,
+       total_output_tokens = monthly_usage.total_output_tokens + excluded.total_output_tokens,
+       total_cost_usd = monthly_usage.total_cost_usd + excluded.total_cost_usd,
+       message_count = monthly_usage.message_count + 1,
        updated_at = excluded.updated_at`,
   ).run(userId, month, inputTokens, outputTokens, costUsd, now);
 }
@@ -9594,10 +9594,10 @@ export function incrementDailyUsage(
     `INSERT INTO daily_usage (user_id, date, total_input_tokens, total_output_tokens, total_cost_usd, message_count)
      VALUES (?, ?, ?, ?, ?, 1)
      ON CONFLICT(user_id, date) DO UPDATE SET
-       total_input_tokens = total_input_tokens + excluded.total_input_tokens,
-       total_output_tokens = total_output_tokens + excluded.total_output_tokens,
-       total_cost_usd = total_cost_usd + excluded.total_cost_usd,
-       message_count = message_count + 1`,
+       total_input_tokens = daily_usage.total_input_tokens + excluded.total_input_tokens,
+       total_output_tokens = daily_usage.total_output_tokens + excluded.total_output_tokens,
+       total_cost_usd = daily_usage.total_cost_usd + excluded.total_cost_usd,
+       message_count = daily_usage.message_count + 1`,
   ).run(userId, date, inputTokens, outputTokens, costUsd);
 }
 
