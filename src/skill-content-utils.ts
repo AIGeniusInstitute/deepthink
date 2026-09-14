@@ -1,6 +1,9 @@
 /**
  * Skill content utilities — validation, slugify, atomic write, backup.
  * Used by the upgraded skills routes (create/edit/upload/optimize/debug).
+ *
+ * K8s multi-pod: file writes are mirrored to MinIO/S3 via object-store so that
+ * skills installed on one pod are visible on all others.
  */
 import fs from 'fs';
 import path from 'path';
@@ -9,6 +12,9 @@ import {
   parseFrontmatter,
   validateSkillId,
 } from './skill-utils.js';
+
+/** Skill content S3 group folder sentinel. */
+const SKILLS_S3_GROUP = '__skills__';
 
 export function getUserSkillsDir(userId: string): string {
   return path.join(DATA_DIR, 'skills', userId);
@@ -92,6 +98,9 @@ export function getSkillContentPath(userId: string, skillId: string): string | n
  * Atomic write of SKILL.md content.
  * Writes to .tmp then renames. Preserves the enabled/disabled state by writing to
  * whichever file currently exists (defaults to SKILL.md).
+ *
+ * K8s multi-pod: also writes to MinIO/S3 after local write succeeds (best-effort,
+ * non-blocking on failure).
  */
 export function writeSkillContent(
   userId: string,
@@ -104,6 +113,35 @@ export function writeSkillContent(
   const tmpPath = `${targetPath}.tmp.${process.pid}.${Date.now()}`;
   fs.writeFileSync(tmpPath, content, 'utf-8');
   fs.renameSync(tmpPath, targetPath);
+
+  // Mirror to S3 for K8s multi-pod visibility (best-effort)
+  mirrorSkillFileToS3(userId, skillId, content).catch(() => { /* non-fatal */ });
+}
+
+/** Best-effort S3 mirror for a skill content file. */
+async function mirrorSkillFileToS3(userId: string, skillId: string, content: string): Promise<void> {
+  try {
+    const { putWorkspaceFile } = await import('./object-store.js');
+    await putWorkspaceFile(
+      SKILLS_S3_GROUP,
+      `${userId}/${skillId}/SKILL.md`,
+      content,
+      'text/markdown',
+    );
+  } catch {
+    // S3 not available — no-op
+  }
+}
+
+/** Best-effort read skill content from S3. Returns null if unavailable or not found. */
+async function readSkillContentFromS3(userId: string, skillId: string): Promise<string | null> {
+  try {
+    const { getWorkspaceFile } = await import('./object-store.js');
+    const buf = await getWorkspaceFile(SKILLS_S3_GROUP, `${userId}/${skillId}/SKILL.md`);
+    return buf?.toString('utf-8') ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**

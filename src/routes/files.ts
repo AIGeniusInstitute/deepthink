@@ -44,6 +44,46 @@ import { convertToPdf, isConvertibleToPdf, isLibreOfficeAvailable, convertHtmlTo
 
 const execFileAsync = promisify(execFile);
 
+// ─── S3 helpers for K8s multi-pod workspace file mirroring ──────────
+
+/** Best-effort mirror a workspace file to S3. Does not throw on failure. */
+async function mirrorFileToS3(
+  groupFolder: string,
+  filePath: string,
+  content: Buffer | string,
+): Promise<void> {
+  try {
+    const { putWorkspaceFile } = await import('../object-store.js');
+    await putWorkspaceFile(groupFolder, filePath, content);
+  } catch {
+    // S3 unavailable — no-op
+  }
+}
+
+/** Best-effort delete a workspace file from S3. Does not throw on failure. */
+async function deleteFileFromS3(groupFolder: string, filePath: string): Promise<void> {
+  try {
+    const { deleteWorkspaceFile } = await import('../object-store.js');
+    await deleteWorkspaceFile(groupFolder, filePath);
+  } catch {
+    // S3 unavailable — no-op
+  }
+}
+
+/** Try to read a workspace file from S3 first. Returns null if not found or S3 unavailable. */
+async function readFileFromS3(
+  groupFolder: string,
+  filePath: string,
+): Promise<Buffer | null> {
+  try {
+    const { getWorkspaceFile } = await import('../object-store.js');
+    const buf = await getWorkspaceFile(groupFolder, filePath);
+    return buf ?? null;
+  } catch {
+    return null;
+  }
+}
+
 const VERSION_KEEP = 20;
 
 /**
@@ -487,6 +527,9 @@ fileRoutes.post('/:jid/files', authMiddleware, async (c) => {
       }
 
       uploadedFiles.push(file.name);
+
+      // K8s multi-pod: mirror to S3 so other pods can serve this file
+      mirrorFileToS3(group.folder, fullRelativePath, data).catch(() => { /* non-fatal */ });
     }
 
     invalidateGroupStorageUsage(group.folder, rootOverride);
@@ -933,7 +976,7 @@ fileRoutes.get('/:jid/files/libreoffice-status', authMiddleware, async (c) => {
 });
 
 // GET /api/groups/:jid/files/content/:path - 读取文本文件内容
-fileRoutes.get('/:jid/files/content/:path', authMiddleware, (c) => {
+fileRoutes.get('/:jid/files/content/:path', authMiddleware, async (c) => {
   const jid = c.req.param('jid');
   const encodedPath = c.req.param('path');
 
@@ -987,8 +1030,14 @@ fileRoutes.get('/:jid/files/content/:path', authMiddleware, (c) => {
       return c.json({ error: 'File too large to read (max 10MB)' }, 400);
     }
 
-    const content = fs.readFileSync(absolutePath, 'utf-8');
-    return c.json({ content, size: stats.size });
+    // K8s multi-pod: try S3 first (file may have been written by another pod)
+    let content = await readFileFromS3(group.folder, relativePath);
+    if (content) {
+      return c.json({ content: content.toString('utf-8'), size: content.length });
+    }
+
+    content = Buffer.from(fs.readFileSync(absolutePath, 'utf-8'));
+    return c.json({ content: content.toString('utf-8'), size: stats.size });
   } catch (error) {
     logger.error({ err: error }, `Failed to read file content for ${jid}`);
     return c.json({ error: 'Failed to read file content' }, 500);
@@ -1132,6 +1181,8 @@ fileRoutes.put('/:jid/files/content/:path', authMiddleware, async (c) => {
       }
       fs.renameSync(tmp, absolutePath);
       renameOk = true;
+      // K8s multi-pod: mirror text content to S3
+      mirrorFileToS3(group.folder, relativePath, body.content).catch(() => { /* non-fatal */ });
     } finally {
       if (!renameOk) {
         try { fs.unlinkSync(tmp); } catch { /* ignore */ }
@@ -1270,6 +1321,10 @@ fileRoutes.put('/:jid/files/binary/:path', authMiddleware, async (c) => {
     }
 
     invalidateGroupStorageUsage(group.folder, rootOverride);
+
+    // K8s multi-pod: mirror binary content to S3
+    mirrorFileToS3(group.folder, relativePath, buf).catch(() => { /* non-fatal */ });
+
     return c.json({ success: true, size: buf.byteLength });
   } catch (error) {
     logger.error({ err: error }, `Failed to save binary file for ${jid}`);

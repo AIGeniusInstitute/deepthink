@@ -5251,7 +5251,7 @@ async function runAgent(
         group.agentDefId,
         group.created_by,
       );
-      const enrichedAgentDef = applyTurnMounts(
+      const enrichedAgentDef = await applyTurnMounts(
         baseAgentDef,
         turnMounts,
         group.created_by,

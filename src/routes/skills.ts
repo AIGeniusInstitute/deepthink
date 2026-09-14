@@ -10,7 +10,7 @@ import type { Variables } from '../web-context.js';
 import type { AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { DATA_DIR } from '../config.js';
-import { getEffectiveExternalDir } from '../runtime-config.js';
+import { getEffectiveExternalDir, readProviderConfigFromDb, writeProviderConfigToDb } from '../runtime-config.js';
 import {
   assertResolvesToPublicAddress,
   validateSafeHttpsUrl,
@@ -115,19 +115,51 @@ function getSkillsManifestPath(userId: string): string {
   return path.join(DATA_DIR, 'skills', userId, '.skills-manifest.json');
 }
 
+interface SkillsManifestWithSourceType extends SkillsManifest {
+  skills: Record<
+    string,
+    {
+      packageName: string;
+      installedAt: string;
+      source: string;
+      sourceType?: 'generated' | 'uploaded' | 'edited' | 'optimized' | 'registry';
+    }
+  >;
+}
+
+/** PG config key for per-user skills manifest. */
+function manifestConfigKey(userId: string): string {
+  return `skills-manifest:${userId}`;
+}
+
 function readSkillsManifest(userId: string): SkillsManifest {
+  // DB-first with file fallback
+  const fromDb = readProviderConfigFromDb<SkillsManifest>(manifestConfigKey(userId), userId);
+  if (fromDb) return fromDb;
+
   try {
     const data = fs.readFileSync(getSkillsManifestPath(userId), 'utf-8');
-    return JSON.parse(data);
+    const parsed = JSON.parse(data) as SkillsManifest;
+    // Seed DB from file so next read hits DB
+    try { writeProviderConfigToDb(manifestConfigKey(userId), userId, parsed); } catch { /* non-fatal */ }
+    return parsed;
   } catch {
     return { skills: {} };
   }
 }
 
 function writeSkillsManifest(userId: string, manifest: SkillsManifest): void {
-  const manifestPath = getSkillsManifestPath(userId);
-  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  // Write to PostgreSQL (primary)
+  writeProviderConfigToDb(manifestConfigKey(userId), userId, manifest);
+
+  // Write to file (fallback, best-effort)
+  try {
+    const manifestPath = getSkillsManifestPath(userId);
+    fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  } catch (err) {
+    logger.warn({ err, userId }, 'Failed to write skills manifest file (non-fatal)');
+  }
 }
 
 /**
@@ -1072,17 +1104,7 @@ skillsRoutes.post('/:id/reinstall', authMiddleware, async (c) => {
 // Upgraded routes: AI generation, online edit, optimize, upload, debug.
 // ===========================================================================
 
-interface SkillsManifestWithSourceType {
-  skills: Record<
-    string,
-    {
-      packageName: string;
-      installedAt: string;
-      source: string;
-      sourceType?: 'generated' | 'uploaded' | 'edited' | 'optimized' | 'registry';
-    }
-  >;
-}
+// SkillsManifestWithSourceType is now defined above (line 118).
 
 function setManifestSourceType(
   userId: string,

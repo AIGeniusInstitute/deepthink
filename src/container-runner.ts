@@ -1223,10 +1223,10 @@ function getProjectSkillsDir(): string {
  * in the web UI dropdown would result in "no skill content found" and the
  * skill context would never reach the agent.
  */
-function getSkillContentsForTurn(
+async function getSkillContentsForTurn(
   ids: string[],
   userId?: string,
-): Array<{ id: string; name: string; content: string }> {
+): Promise<Array<{ id: string; name: string; content: string }>> {
   const dbRows = getSkillContents(ids);
   const found = new Set(dbRows.map((r) => r.id));
   let missing = ids.filter((id) => !found.has(id));
@@ -1243,12 +1243,26 @@ function getSkillContentsForTurn(
           const frontmatter = parseFrontmatter(content);
           dbRows.push({ id, name: frontmatter.name || id, content });
           found.add(id);
+          continue;
         } catch {
-          // ignore read errors
+          // ignore read errors, try S3 fallback below
         }
-      } else {
-        remaining.push(id);
       }
+      // S3 fallback for K8s multi-pod: skills installed on another pod
+      try {
+        const { getWorkspaceFile } = await import('./object-store.js');
+        const buf = await getWorkspaceFile('__skills__', `${userId}/${id}/SKILL.md`);
+        if (buf) {
+          const content = buf.toString('utf-8');
+          const frontmatter = parseFrontmatter(content);
+          dbRows.push({ id, name: frontmatter.name || id, content });
+          found.add(id);
+          continue;
+        }
+      } catch {
+        // S3 not available or file not found
+      }
+      remaining.push(id);
     }
     missing = remaining;
   }
@@ -1286,11 +1300,11 @@ function getSkillContentsForTurn(
  * Returns a NEW agentDefinition (does not mutate the input). Mounts deduped by
  * (resourceType, resourceId) to avoid double-mounting if already in agent_mounts.
  */
-export function applyTurnMounts(
+export async function applyTurnMounts(
   agentDef: ContainerInput['agentDefinition'] | undefined,
   turnMounts: SelectedMounts | undefined,
   ownerUserId: string | undefined,
-): ContainerInput['agentDefinition'] | undefined {
+): Promise<ContainerInput['agentDefinition'] | undefined> {
   if (!turnMounts) return agentDef;
   const hasSkills = !!turnMounts.skills?.length;
   const hasMcp = !!turnMounts.mcpServers?.length;
@@ -1306,7 +1320,7 @@ export function applyTurnMounts(
 
   // Skills → systemPrompt content injection
   if (hasSkills && turnMounts.skills) {
-    const skillRows = getSkillContentsForTurn(turnMounts.skills, ownerUserId);
+    const skillRows = await getSkillContentsForTurn(turnMounts.skills, ownerUserId);
     const pieces: string[] = [];
     for (const s of skillRows) {
       if (s.content && s.content.trim()) {
@@ -1566,6 +1580,35 @@ export async function runContainerAgent(
     const logsDir = path.join(GROUPS_DIR, group.folder, 'logs');
     fs.mkdirSync(logsDir, { recursive: true });
 
+    // Derive agent definition and engine info BEFORE the Promise executor
+    // (applyTurnMounts is async and needs S3 lookup for multi-pod skills).
+    const ownerLanguage = group.created_by
+      ? getUserById(group.created_by)?.language ?? DEFAULT_LANGUAGE
+      : DEFAULT_LANGUAGE;
+    const engine = (group.engine ?? 'claude') as
+      | 'claude'
+      | 'atomcode'
+      | 'codex'
+      | 'opencode';
+    const dockerAgentDef = await applyTurnMounts(
+      loadGroupAgentDefinition(group.agentDefId, group.created_by),
+      input.turnMounts,
+      group.created_by,
+    );
+    writeAgentProjectClaudeMd(group, dockerAgentDef, input.autonomous);
+    const contextAudit = buildClaudeContextPlan({
+      executionMode: 'container',
+      group,
+      ownerHomeFolder,
+      externalClaudeDir: getEffectiveExternalDir(),
+      projectRoot: process.cwd(),
+      dataDir: DATA_DIR,
+      groupSessionsDir: input.agentId
+        ? path.join(DATA_DIR, 'sessions', group.folder, 'agents', input.agentId, '.claude')
+        : path.join(DATA_DIR, 'sessions', group.folder, '.claude'),
+      mountUserSkills: shouldMountUserSkills,
+    }).audit;
+
     const result = await new Promise<ContainerOutput>((resolve) => {
       const container = spawn('docker', containerArgs, {
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -1584,22 +1627,7 @@ export async function runContainerAgent(
         );
         container.kill();
       });
-      // Derive a new input with docker-runtime plugins injected; never mutate
-      // the caller's `input` object (queue/log/retry paths reuse the same ref).
-      const ownerLanguage = group.created_by
-        ? getUserById(group.created_by)?.language ?? DEFAULT_LANGUAGE
-        : DEFAULT_LANGUAGE;
-      const engine = (group.engine ?? 'claude') as
-        | 'claude'
-        | 'atomcode'
-        | 'codex'
-        | 'opencode';
-      const dockerAgentDef = applyTurnMounts(
-        loadGroupAgentDefinition(group.agentDefId, group.created_by),
-        input.turnMounts,
-        group.created_by,
-      );
-      writeAgentProjectClaudeMd(group, dockerAgentDef, input.autonomous);
+      // Use pre-computed dockerAgentDef and contextAudit from above
       const dockerInput: ContainerInput = {
         ...input,
         userLanguage: input.userLanguage ?? ownerLanguage,
@@ -1608,18 +1636,7 @@ export async function runContainerAgent(
           ? loadUserPlugins(group.created_by, { runtime: 'docker' })
           : [],
         agentDefinition: dockerAgentDef,
-        contextAudit: buildClaudeContextPlan({
-          executionMode: 'container',
-          group,
-          ownerHomeFolder,
-          externalClaudeDir: getEffectiveExternalDir(),
-          projectRoot: process.cwd(),
-          dataDir: DATA_DIR,
-          groupSessionsDir: input.agentId
-            ? path.join(DATA_DIR, 'sessions', group.folder, 'agents', input.agentId, '.claude')
-            : path.join(DATA_DIR, 'sessions', group.folder, '.claude'),
-          mountUserSkills: shouldMountUserSkills,
-        }).audit,
+        contextAudit,
       };
       container.stdin.write(JSON.stringify(dockerInput));
       container.stdin.end();
@@ -2498,6 +2515,33 @@ export async function runHostAgent(
 
     const logsDir = logsBaseDir;
 
+    // Derive agent definition BEFORE the Promise executor
+    // (applyTurnMounts is async and needs S3 lookup for multi-pod skills).
+    const hostOwnerLanguage = group.created_by
+      ? getUserById(group.created_by)?.language ?? DEFAULT_LANGUAGE
+      : DEFAULT_LANGUAGE;
+    // 引擎 session 分流：atomcode/codex/opencode 各走专用列
+    const hostEngineSessionId =
+      groupEngine === 'atomcode'
+        ? (getAtomcodeSessionId(group.folder, input.agentId || '') ??
+          input.sessionId)
+        : groupEngine === 'codex'
+          ? (getCodexThreadId(group.folder, input.agentId || '') ??
+            input.sessionId)
+          : groupEngine === 'opencode'
+            ? (getOpencodeSessionId(group.folder, input.agentId || '') ??
+              input.sessionId)
+            : groupEngine === 'pi'
+              ? (getPiSessionId(group.folder, input.agentId || '') ??
+                input.sessionId)
+              : input.sessionId;
+    const hostAgentDef = await applyTurnMounts(
+      loadGroupAgentDefinition(group.agentDefId, group.created_by),
+      input.turnMounts,
+      group.created_by,
+    );
+    writeAgentProjectClaudeMd(group, hostAgentDef, input.autonomous);
+
     const hostResult = await new Promise<ContainerOutput>((resolve) => {
       let settled = false;
       const resolveOnce = (output: ContainerOutput): void => {
@@ -2531,41 +2575,12 @@ export async function runHostAgent(
         );
         killProcessTree(proc);
       });
-      // Derive a new input with host-runtime plugins injected; never mutate
-      // the caller's `input` object (queue/log/retry paths reuse the same ref).
-      // prepareHostPlugins mirrors the docker path's pre-spawn materialize so
-      // a freshly-enabled v2 user (no runtime/ on disk yet) doesn't see 0
-      // plugins.
-      const ownerLanguage = group.created_by
-        ? getUserById(group.created_by)?.language ?? DEFAULT_LANGUAGE
-        : DEFAULT_LANGUAGE;
-      // 引擎 session 分流：atomcode/codex/opencode 各走专用列；agent-runner
-      // 把对应 session_id 写回该列。Claude 走默认 session_id 列。
-      const engineSessionId =
-        groupEngine === 'atomcode'
-          ? (getAtomcodeSessionId(group.folder, input.agentId || '') ??
-            input.sessionId)
-          : groupEngine === 'codex'
-            ? (getCodexThreadId(group.folder, input.agentId || '') ??
-              input.sessionId)
-            : groupEngine === 'opencode'
-              ? (getOpencodeSessionId(group.folder, input.agentId || '') ??
-                input.sessionId)
-              : groupEngine === 'pi'
-                ? (getPiSessionId(group.folder, input.agentId || '') ??
-                  input.sessionId)
-                : input.sessionId;
-      const hostAgentDef = applyTurnMounts(
-        loadGroupAgentDefinition(group.agentDefId, group.created_by),
-        input.turnMounts,
-        group.created_by,
-      );
-      writeAgentProjectClaudeMd(group, hostAgentDef, input.autonomous);
+      // Use pre-computed hostAgentDef from above
       const hostInput: ContainerInput = {
         ...input,
-        sessionId: engineSessionId,
+        sessionId: hostEngineSessionId,
         engine: groupEngine,
-        userLanguage: input.userLanguage ?? ownerLanguage,
+        userLanguage: input.userLanguage ?? hostOwnerLanguage,
         plugins: prepareHostPlugins(group.created_by),
         agentDefinition: hostAgentDef,
         contextAudit: hostClaudeContextPlan.audit,

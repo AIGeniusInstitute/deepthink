@@ -88,7 +88,7 @@ export function setProviderConfigDb(db: ProviderConfigDbHandle): void {
   _providerConfigDb = db;
 }
 
-function readProviderConfigFromDb<T = unknown>(
+export function readProviderConfigFromDb<T = unknown>(
   configKey: string,
   userId = '',
 ): T | null {
@@ -110,7 +110,7 @@ function readProviderConfigFromDb<T = unknown>(
   }
 }
 
-function writeProviderConfigToDb(
+export function writeProviderConfigToDb(
   configKey: string,
   userId: string,
   data: unknown,
