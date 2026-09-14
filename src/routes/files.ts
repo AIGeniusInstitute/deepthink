@@ -601,7 +601,7 @@ fileRoutes.post('/:jid/files/open-directory', authMiddleware, async (c) => {
 });
 
 // GET /api/groups/:jid/files/download/:path - 下载文件
-fileRoutes.get('/:jid/files/download/:path', authMiddleware, (c) => {
+fileRoutes.get('/:jid/files/download/:path', authMiddleware, async (c) => {
   const jid = c.req.param('jid');
   const encodedPath = c.req.param('path');
 
@@ -632,17 +632,26 @@ fileRoutes.get('/:jid/files/download/:path', authMiddleware, (c) => {
       getFileRootOverride(group),
     );
 
-    if (!fs.existsSync(absolutePath)) {
+    let fileBuf: Buffer | null = null;
+    let fileExists = fs.existsSync(absolutePath);
+    let stats: fs.Stats | null = fileExists ? fs.statSync(absolutePath) : null;
+
+    // K8s multi-pod: try S3 if local file doesn't exist
+    if (!fileExists) {
+      fileBuf = await readFileFromS3(group.folder, relativePath);
+      if (fileBuf) fileExists = true;
+    }
+
+    if (!fileExists) {
       return c.json({ error: 'File not found' }, 404);
     }
 
-    const stats = fs.statSync(absolutePath);
-    if (stats.isDirectory()) {
+    if (stats?.isDirectory()) {
       return c.json({ error: 'Cannot download directory' }, 400);
     }
 
     const fileName = path.basename(absolutePath);
-    const fileSize = stats.size;
+    const fileSize = stats ? stats.size : fileBuf!.length;
     const commonHeaders = {
       'Content-Disposition': buildAttachmentContentDisposition(fileName),
       'Content-Type': 'application/octet-stream',
@@ -671,10 +680,10 @@ fileRoutes.get('/:jid/files/download/:path', authMiddleware, (c) => {
         }
 
         const { start, end } = parsedRange;
-        const stream = Readable.toWeb(
-          fs.createReadStream(absolutePath, { start, end }),
-        ) as ReadableStream<Uint8Array>;
-        return new Response(stream, {
+        const body = stats
+          ? Readable.toWeb(fs.createReadStream(absolutePath, { start, end })) as ReadableStream<Uint8Array>
+          : new Uint8Array(fileBuf!.subarray(start, end + 1));
+        return new Response(body, {
           status: 206,
           headers: {
             ...commonHeaders,
@@ -685,10 +694,10 @@ fileRoutes.get('/:jid/files/download/:path', authMiddleware, (c) => {
       }
     }
 
-    const stream = Readable.toWeb(
-      fs.createReadStream(absolutePath),
-    ) as ReadableStream<Uint8Array>;
-    return new Response(stream, {
+    const body = stats
+      ? Readable.toWeb(fs.createReadStream(absolutePath)) as ReadableStream<Uint8Array>
+      : fileBuf!;
+    return new Response(body, {
       status: 200,
       headers: {
         ...commonHeaders,
@@ -702,7 +711,7 @@ fileRoutes.get('/:jid/files/download/:path', authMiddleware, (c) => {
 });
 
 // GET /api/groups/:jid/files/preview/:path - 预览文件
-fileRoutes.get('/:jid/files/preview/:path', authMiddleware, (c) => {
+fileRoutes.get('/:jid/files/preview/:path', authMiddleware, async (c) => {
   const jid = c.req.param('jid');
   const encodedPath = c.req.param('path');
 
@@ -733,20 +742,29 @@ fileRoutes.get('/:jid/files/preview/:path', authMiddleware, (c) => {
       getFileRootOverride(group),
     );
 
-    if (!fs.existsSync(absolutePath)) {
+    let fileBuf: Buffer | null = null;
+    let fileExists = fs.existsSync(absolutePath);
+    let stats: fs.Stats | null = fileExists ? fs.statSync(absolutePath) : null;
+
+    // K8s multi-pod: try S3 if local file doesn't exist
+    if (!fileExists) {
+      fileBuf = await readFileFromS3(group.folder, relativePath);
+      if (fileBuf) fileExists = true;
+    }
+
+    if (!fileExists) {
       return c.json({ error: 'File not found' }, 404);
     }
 
-    const stats = fs.statSync(absolutePath);
-    if (stats.isDirectory()) {
+    if (stats?.isDirectory()) {
       return c.json({ error: 'Cannot preview directory' }, 400);
     }
 
     // 检测 MIME 类型（基于扩展名）
-    const ext = path.extname(absolutePath).slice(1).toLowerCase();
+    const ext = (stats ? path.extname(absolutePath) : relativePath.split('.').pop() || '').slice(1).toLowerCase();
     const mimeType = MIME_MAP[ext] || 'application/octet-stream';
-    const fileName = path.basename(absolutePath);
-    const fileSize = stats.size;
+    const fileName = stats ? path.basename(absolutePath) : (relativePath.split('/').pop() || 'file');
+    const fileSize = stats ? stats.size : fileBuf!.length;
 
     // 判断是否为流媒体类型（视频/音频），需支持 Range 请求
     const isStreamable =
@@ -782,7 +800,18 @@ fileRoutes.get('/:jid/files/preview/:path', authMiddleware, (c) => {
       'Content-Disposition': disposition,
     };
 
-    // 流媒体类型：支持 Range 请求（浏览器 <video>/<audio> seek 依赖此机制）
+    // Helper: build body from local stream or S3 buffer
+    const buildBody = (size: number, range?: { start: number; end: number }) => {
+      if (stats) {
+        const opts = range ? { start: range.start, end: range.end } : undefined;
+        return Readable.toWeb(fs.createReadStream(absolutePath, opts)) as ReadableStream<Uint8Array>;
+      }
+      return range
+        ? new Uint8Array(fileBuf!.subarray(range.start, range.end + 1))
+        : fileBuf!;
+    };
+
+    // 流媒体类型：支持 Range 请求
     if (isStreamable) {
       const rangeHeader = c.req.header('range');
       if (rangeHeader) {
@@ -804,10 +833,7 @@ fileRoutes.get('/:jid/files/preview/:path', authMiddleware, (c) => {
           }
 
           const { start, end } = parsedRange;
-          const stream = Readable.toWeb(
-            fs.createReadStream(absolutePath, { start, end }),
-          ) as ReadableStream<Uint8Array>;
-          return new Response(stream, {
+          return new Response(buildBody(fileSize, { start, end }), {
             status: 206,
             headers: {
               ...commonHeaders,
@@ -819,11 +845,7 @@ fileRoutes.get('/:jid/files/preview/:path', authMiddleware, (c) => {
         }
       }
 
-      // 无 Range 或多区间回退：流式返回完整文件
-      const stream = Readable.toWeb(
-        fs.createReadStream(absolutePath),
-      ) as ReadableStream<Uint8Array>;
-      return new Response(stream, {
+      return new Response(buildBody(fileSize), {
         status: 200,
         headers: {
           ...commonHeaders,
@@ -833,11 +855,8 @@ fileRoutes.get('/:jid/files/preview/:path', authMiddleware, (c) => {
       });
     }
 
-    // 非流媒体类型：也使用流式响应避免大文件占满内存
-    const stream = Readable.toWeb(
-      fs.createReadStream(absolutePath),
-    ) as ReadableStream<Uint8Array>;
-    return new Response(stream, {
+    // 非流媒体类型
+    return new Response(buildBody(fileSize), {
       status: 200,
       headers: {
         ...commonHeaders,
@@ -1524,6 +1543,9 @@ fileRoutes.delete('/:jid/files/:path', authMiddleware, (c) => {
     }
     invalidateGroupStorageUsage(group.folder, rootOverride);
 
+    // K8s multi-pod: mirror deletion to S3 (best-effort, non-blocking)
+    deleteFileFromS3(group.folder, relativePath).catch(() => {});
+
     return c.json({ success: true, softDeleted: true, trashId: trashed.trashId });
   } catch (error) {
     logger.error({ err: error }, `Failed to delete file for ${jid}`);
@@ -1603,7 +1625,7 @@ fileRoutes.post('/:jid/directories', authMiddleware, async (c) => {
 // ===========================================================================
 
 // GET /api/groups/:jid/files/search?q=keyword — 递归文件名搜索
-fileRoutes.get('/:jid/files/search', authMiddleware, (c) => {
+fileRoutes.get('/:jid/files/search', authMiddleware, async (c) => {
   const jid = c.req.param('jid');
   const group = getRegisteredGroup(jid);
   if (!group) return c.json({ error: 'Group not found' }, 404);
@@ -1618,6 +1640,26 @@ fileRoutes.get('/:jid/files/search', authMiddleware, (c) => {
     const q = c.req.query('q') || '';
     if (!q.trim()) return c.json({ files: [] });
     const results = searchFiles(group.folder, q.trim(), getFileRootOverride(group));
+
+    // K8s multi-pod: also search S3 for files written by other pods (best-effort)
+    try {
+      const { listWorkspaceFiles } = await import('../object-store.js');
+      const s3Files = await listWorkspaceFiles(group.folder, '');
+      for (const s3f of s3Files) {
+        const alreadyPresent = results.some((r: { name: string }) => r.name === s3f.name);
+        if (!alreadyPresent && s3f.name.toLowerCase().includes(q.trim().toLowerCase())) {
+          results.push({
+            name: s3f.name,
+            path: s3f.path,
+            type: s3f.type,
+            size: s3f.size,
+            modifiedAt: s3f.modifiedAt,
+            isSystem: false,
+          });
+        }
+      }
+    } catch { /* S3 unavailable — local results only */ }
+
     return c.json({ files: results, query: q.trim() });
   } catch (error) {
     logger.error({ err: error }, `Failed to search files for ${jid}`);
@@ -1644,6 +1686,13 @@ fileRoutes.post('/:jid/files/move', authMiddleware, async (c) => {
     const rootOverride = getFileRootOverride(group);
     const newPath = moveFile(group.folder, source, targetDir ?? '', rootOverride);
     invalidateGroupStorageUsage(group.folder, rootOverride);
+    // K8s multi-pod: mirror move to S3 (best-effort, non-blocking)
+    (async () => {
+      try {
+        const { moveWorkspaceFile } = await import('../object-store.js');
+        await moveWorkspaceFile(group.folder, source, newPath);
+      } catch { /* non-fatal */ }
+    })().catch(() => {});
     return c.json({ success: true, path: newPath });
   } catch (error) {
     const msg = (error as Error).message;
@@ -1673,6 +1722,13 @@ fileRoutes.post('/:jid/files/rename', authMiddleware, async (c) => {
     if (!newName) return c.json({ error: 'newName is required' }, 400);
     const rootOverride = getFileRootOverride(group);
     const newPath = renameFile(group.folder, relPath, newName, rootOverride);
+    // K8s multi-pod: mirror rename to S3 (best-effort, non-blocking)
+    (async () => {
+      try {
+        const { moveWorkspaceFile } = await import('../object-store.js');
+        await moveWorkspaceFile(group.folder, relPath, newPath);
+      } catch { /* non-fatal */ }
+    })().catch(() => {});
     return c.json({ success: true, path: newPath });
   } catch (error) {
     const msg = (error as Error).message;

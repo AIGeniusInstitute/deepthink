@@ -57,15 +57,37 @@
 
 ## 未推进项 (不在本次范围)
 
-- 下载/预览 streaming reads (createReadStream) 的 S3 支持 — 需要先缓存到本地再 stream，适合后续 Phase
-- 文件删除 S3 同步 — 已添加 helper 但未焊接 (软删除/回收站路径复杂，适合后续)
-- 文件搜索 S3 支持 — listWorkspaceFiles 已在 object-store.ts，但文件搜索仍走本地 fs
-- 文件移动/重命名 S3 同步 — moveWorkspaceFile 已在 object-store.ts，待后续焊接
+_（全部已推进完成）_
+
+---
+
+## Phase 2.5: S3 同步接线 (2026-09-14)
+
+### Task 4: 文件删除/移动/搜索/下载/预览 S3 同步 ✅
+
+**变更文件**:
+- `src/routes/files.ts` (+120/-60 行)
+
+**改动要点**:
+1. **DELETE handler** (~line 1525): 软删除成功后调用 `deleteFileFromS3` (best-effort, non-blocking)
+2. **MOVE handler** (~line 1648): `moveFile` 成功后调用 `moveWorkspaceFile` S3 copy+delete
+3. **RENAME handler** (~line 1695): `renameFile` 成功后调用 `moveWorkspaceFile` S3 copy+delete
+4. **SEARCH handler**: 改为 async，新增 S3 `listWorkspaceFiles` 源，结果与本地 fs 合并去重
+5. **DOWNLOAD handler**: 改为 async，本地文件不存在时 `readFileFromS3` fallback，Range 请求支持
+6. **PREVIEW handler**: 改为 async，同 download 模式：本地文件不存在时 S3 fallback，完整 CSP 头 + Range 支持 + MIME 检测
+
+**验证 (2026-09-14 kind Docker 冒烟)**:
+- Upload + 本地删除 → Download 200 (S3 fallback 生效)
+- Upload + 本地删除 → Preview 200 (S3 fallback 生效)
+- Rename → S3 moveWorkspaceFile 同步
+- Soft Delete → S3 deleteFileFromS3 同步 + Download 404
+- Search → 返回匹配文件 (含 S3 列表)
 
 ---
 
 ## 合并状态
 
 - [x] TypeScript 编译通过 (0 new errors)
-- [ ] 容器化回归测试
+- [x] 容器化回归测试 (Docker + kind — 2026-09-14 验证)
+- [x] Phase 2.5 S3 同步接线完成并冒烟验证
 - [ ] Git commit & push
