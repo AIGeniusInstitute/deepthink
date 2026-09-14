@@ -94,6 +94,21 @@ export class TraceNodeAllocator {
     return this.nextId++;
   }
 
+  /**
+   * Seed nextId from a host-provided base (ContainerInput.traceNodeIdBase =
+   * chat's current MAX(chat_trace_nodes.id) + 1). Every cold spawn re-seeds so
+   * nodeIds stay unique per chat ACROSS processes — without this, a fresh
+   * process (desktop restart / K8s per-task pod) restarts at 1 and its upserts
+   * overwrite earlier turns' trace rows (UNIQUE(chat_jid, id) collision),
+   * destroying the retained execution-trace history. Monotonic guard: never
+   * lowers nextId (warm process re-seed is a no-op).
+   */
+  seedBase(base: number): void {
+    if (Number.isFinite(base) && base > this.nextId) {
+      this.nextId = base;
+    }
+  }
+
   /** Stable span id derived from a nodeId (unique within this traceId). */
   private spanFor(nodeId: number): string {
     return `s${nodeId}`;

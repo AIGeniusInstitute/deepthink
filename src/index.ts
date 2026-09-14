@@ -8361,6 +8361,10 @@ async function processAgentConversation(
         }
         return;
       }
+      // 轨迹节点按虚拟 JID 落库，与会话 Tab 隔离。主对话的 trace 节点
+      // 落在基础 chatJid，会话 Agent 的 trace 节点落在 chatJid#agent:agentId，
+      // 避免会话 Agent 的工具轨迹串到主对话消息下方。
+      persistTraceNodeFromStreamEvent(virtualChatJid, output.streamEvent);
       broadcastStreamEvent(chatJid, output.streamEvent, agentId);
 
       // ── 累积 text_delta 文本（中断时用于保存已输出内容）──
@@ -8912,7 +8916,108 @@ async function processAgentConversation(
     const ownerHomeFolder = resolveOwnerHomeFolder(effectiveGroup);
 
     let output: ContainerOutput;
-    if (executionMode === 'host') {
+
+    if (isRedisConnected() && await hasDistributedRunners()) {
+      // Distributed mode: dispatch to remote agent-runner via Redis.
+      // Mirror of runAgent's distributed path (lines 5224-5386).
+      // Per-user workspace paths resolve the owner so each user's global
+      // CLAUDE.md and memory land in the correct per-owner directories.
+      const ownerId = effectiveGroup.created_by;
+      const distWorkspaceGlobal = ownerId
+        ? path.join(GROUPS_DIR, 'user-global', ownerId)
+        : path.join(GROUPS_DIR, 'global');
+      const distMemoryFolder = effectiveGroup.is_home
+        ? effectiveGroup.folder
+        : ownerHomeFolder || effectiveGroup.folder;
+      const distWorkspaceMemory = path.join(DATA_DIR, 'memory', distMemoryFolder);
+      fs.mkdirSync(distWorkspaceGlobal, { recursive: true });
+      fs.mkdirSync(distWorkspaceMemory, { recursive: true });
+
+      // Enrich agentDefinition with per-turn mounts
+      const baseAgentDef = effectiveGroup.agentDefId
+        ? loadGroupAgentDefinition(effectiveGroup.agentDefId, effectiveGroup.created_by)
+        : undefined;
+      const enrichedAgentDef = await applyTurnMounts(
+        baseAgentDef,
+        turnMounts,
+        effectiveGroup.created_by,
+      );
+
+      const taskInput = {
+        prompt: prompt || '',
+        sessionId,
+        turnId: lastProcessed.id,
+        groupFolder: effectiveGroup.folder,
+        chatJid,
+        isMain: isAdminHome,
+        isHome,
+        isAdminHome,
+        images: imagesForAgent,
+        engine: effectiveGroup.engine,
+        workspaceGlobal: distWorkspaceGlobal,
+        workspaceMemory: distWorkspaceMemory,
+        agentDefinition: enrichedAgentDef,
+        turnMounts,
+        agentId,
+        agentName: agent.name,
+        autonomous: autonomousForRun || undefined,
+      };
+
+      // Register handler that forwards agent_output from Redis to wrappedOnOutput
+      let _distributedHandler: ((agentOutput: ContainerOutput) => Promise<void>) | undefined;
+      const finalOutputPromise = new Promise<ContainerOutput>((resolve) => {
+        _distributedHandler = async (agentOutput: ContainerOutput) => {
+          try {
+            await wrappedOnOutput(agentOutput);
+          } catch (err) {
+            logger.warn(
+              { err, folder: effectiveGroup.folder, agentId, status: agentOutput.status },
+              'Distributed onOutput handler error (agent conv, non-fatal)',
+            );
+          } finally {
+            if (
+              agentOutput.status === 'success' ||
+              agentOutput.status === 'error' ||
+              agentOutput.status === 'closed'
+            ) {
+              resolve(agentOutput);
+            }
+          }
+        };
+      });
+
+      const timeoutPromise = new Promise<ContainerOutput>((resolve) => {
+        setTimeout(() => {
+          resolve({ status: 'error', result: null, error: 'Distributed agent-runner timeout (10min)' });
+        }, 600_000);
+      });
+
+      await ipcWatcherManager?.ensureSubscriptionsReady(effectiveGroup.folder);
+
+      if (ownerId) await incrUserActive(ownerId);
+      let published = false;
+      try {
+        published = await publishAgentTask(taskInput);
+        if (!published) {
+          logger.info({ agentId, turnId: lastProcessed.id }, 'Agent conv task already claimed by another pod');
+          output = { status: 'success', result: null };
+        } else {
+          if (_distributedHandler) {
+            ipcWatcherManager?.registerDistributedOutput(
+              effectiveGroup.folder,
+              _distributedHandler,
+            );
+          }
+          output = await Promise.race([finalOutputPromise, timeoutPromise]);
+        }
+      } finally {
+        if (published && isRedisConnected()) {
+          publishAgentIpc(effectiveGroup.folder, { type: '_close', text: '' }).catch(() => {});
+        }
+        ipcWatcherManager?.unregisterDistributedOutput(effectiveGroup.folder);
+        if (ownerId) await decrUserActive(ownerId);
+      }
+    } else if (executionMode === 'host') {
       output = await runHostAgent(
         effectiveGroup,
         containerInput,

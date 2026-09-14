@@ -58,6 +58,7 @@ import {
   listAgentMounts,
   getKnowledgeBase,
   getSkillContents,
+  getMaxChatTraceNodeId,
 } from './db.js';
 import { DEFAULT_LANGUAGE } from './i18n-languages.js';
 import { isApiError } from './agent-output-parser.js';
@@ -337,6 +338,14 @@ export interface ContainerInput {
    *  Merged into agentDefinition at cold-start: skills→systemPrompt content
    *  (DB-stored, no disk SKILL.md in container), MCP/KB→mounts array. */
   turnMounts?: SelectedMounts;
+  /** Trace-node nodeId allocation base, populated just-in-time by
+   *  runContainerAgent/runHostAgent from the chat's current
+   *  MAX(chat_trace_nodes.id). Agent-runner seeds its allocator from this
+   *  so nodeIds stay unique per chat ACROSS processes (every cold spawn
+   *  would otherwise restart at 1 and upsert-overwrite earlier turns' trace
+   *  rows — UNIQUE(chat_jid, id)). Never set by the caller; undefined
+   *  on older runners → allocator default (1). */
+  traceNodeIdBase?: number;
 }
 
 export interface ContainerOutput {
@@ -1632,6 +1641,7 @@ export async function runContainerAgent(
         ...input,
         userLanguage: input.userLanguage ?? ownerLanguage,
         engine,
+        traceNodeIdBase: getMaxChatTraceNodeId(input.chatJid) + 1,
         plugins: group.created_by
           ? loadUserPlugins(group.created_by, { runtime: 'docker' })
           : [],
@@ -2580,6 +2590,7 @@ export async function runHostAgent(
         ...input,
         sessionId: hostEngineSessionId,
         engine: groupEngine,
+        traceNodeIdBase: getMaxChatTraceNodeId(input.chatJid) + 1,
         userLanguage: input.userLanguage ?? hostOwnerLanguage,
         plugins: prepareHostPlugins(group.created_by),
         agentDefinition: hostAgentDef,

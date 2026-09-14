@@ -5822,6 +5822,20 @@ export function getChatTraceNode(
     .get(chatJid, nodeId) as ChatTraceNodeRow | undefined;
 }
 
+/** Current MAX(id) of trace nodes for a chat. Used by container-runner to seed
+ *  the next agent-runner process's nodeId allocator (ContainerInput.traceNodeIdBase),
+ *  so every cold spawn (desktop restart / K8s per-task pod) allocates nodeIds
+ *  ABOVE all existing rows instead of restarting at 1 and upsert-overwriting
+ *  earlier turns' trace history (UNIQUE(chat_jid, id) collision). */
+export function getMaxChatTraceNodeId(chatJid: string): number {
+  const row = db
+    .prepare(
+      'SELECT COALESCE(MAX(id), 0) AS max_id FROM chat_trace_nodes WHERE chat_jid = ?',
+    )
+    .get(chatJid) as { max_id: number | string } | undefined;
+  return Number(row?.max_id ?? 0);
+}
+
 export function saveChatTraceNodeAnnotation(
   chatJid: string,
   nodeId: number,

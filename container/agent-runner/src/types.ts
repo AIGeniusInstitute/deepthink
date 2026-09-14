@@ -112,6 +112,12 @@ export interface ContainerInput {
    *  absent). Optional — single-pod mode still uses env vars. */
   workspaceGlobal?: string;
   workspaceMemory?: string;
+  /** Trace-node nodeId allocation base, set by the host to the chat's current
+   *  MAX(chat_trace_nodes.id) + 1. Seeds the trace allocator so nodeIds stay
+   *  unique per chat ACROSS agent-runner processes (a fresh process would
+   *  otherwise restart at 1 and upsert-overwrite earlier turns' trace rows —
+   *  UNIQUE(chat_jid, id)). Undefined on older hosts → allocator default (1). */
+  traceNodeIdBase?: number;
 }
 
 export interface ContainerOutput {

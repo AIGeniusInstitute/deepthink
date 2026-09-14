@@ -2526,6 +2526,17 @@ async function processOneTask(): Promise<void> {
     currentGroupFolder = containerInput.groupFolder;
     log(`Received input for group: ${containerInput.groupFolder}`);
 
+    // Host-provided nodeId base: keeps trace nodeIds unique per chat across
+    // agent-runner processes. Without this, a fresh process restarts at 1
+    // and its upserts overwrite earlier turns' trace rows in K8s/distributed
+    // mode (UNIQUE(chat_jid, id) collision). Monotonic guard (seedBase won't
+    // lower nextId) — warm process re-seeds to the same or higher value, so
+    // a re-seed is a no-op.
+    if (containerInput.traceNodeIdBase && containerInput.traceNodeIdBase > 0) {
+      traceAllocator.seedBase(containerInput.traceNodeIdBase);
+      log(`Trace node id base seeded to ${containerInput.traceNodeIdBase}`);
+    }
+
     // 分布式模式：按 group 把 workspace 重算到共享 PVC 上（与 web-server 的
     // DATA_DIR 布局一致），确保 agent 能读写用户文件/记忆/技能且重启不丢。
     // 非分布式模式（DATA_DIR 为空）保持原 env 默认值，向后兼容。
