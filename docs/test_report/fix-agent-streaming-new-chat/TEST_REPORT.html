@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 流式输出 + 新建会话 Tab 修复 — 测试报告</title>
+<style>
+:root {
+  --bg: #f8f9fa; --panel: #ffffff; --text: #1a1a2e; --text2: #555;
+  --accent: #2563eb; --gold: #f59e0b; --border: #e2e8f0;
+  --pass: #16a34a; --fail: #dc2626; --skip: #6b7280;
+}
+.dark { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --text2: #94a3b8; --border: #334155; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height:1.6; }
+.container { max-width: 1100px; margin:0 auto; padding:2rem; }
+header { background: var(--panel); border-bottom:1px solid var(--border); padding:2rem 0; text-align:center; margin-bottom:2rem; }
+h1 { font-size:1.8rem; color:var(--accent); }
+h2 { font-size:1.3rem; margin:2rem 0 1rem; padding-bottom:0.5rem; border-bottom:2px solid var(--accent); }
+h3 { font-size:1.1rem; margin:1.5rem 0 0.8rem; }
+.meta { color:var(--text2); font-size:0.9rem; margin-top:0.5rem; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:1.5rem; margin-bottom:1.5rem; }
+.pass { color:var(--pass); font-weight:700; }
+.fail { color:var(--fail); font-weight:700; }
+.skip { color:var(--skip); font-weight:700; }
+.badge { display:inline-block; padding:2px 10px; border-radius:12px; font-size:0.8rem; font-weight:700; }
+.badge-pass { background:#dcfce7; color:#166534; }
+.badge-fail { background:#fee2e2; color:#991b1b; }
+table { width:100%; border-collapse:collapse; margin:1rem 0; }
+th, td { padding:0.75rem; text-align:left; border-bottom:1px solid var(--border); font-size:0.9rem; }
+th { background:var(--bg); font-weight:600; }
+img { max-width:100%; border-radius:6px; border:1px solid var(--border); margin:0.5rem 0; }
+.screenshots { display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:1rem; margin:1rem 0; }
+.screenshots figure { margin:0; }
+.screenshots figcaption { font-size:0.8rem; color:var(--text2); margin-top:0.3rem; }
+.summary-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin:1rem 0; }
+.summary-item { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:1rem; text-align:center; }
+.summary-item .value { font-size:2rem; font-weight:700; }
+pre { background:#1e293b; color:#e2e8f0; padding:1rem; border-radius:6px; overflow-x:auto; font-size:0.85rem; }
+code { font-family:'JetBrains Mono','Fira Code',monospace; font-size:0.85rem; }
+
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --text2: #94a3b8; --border: #334155; }
+  .badge-pass { background:#064e3b; color:#6ee7b7; }
+  .badge-fail { background:#7f1d1d; color:#fca5a5; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🐛 Agent 流式输出缺失 + 新建会话 Tab 无响应</h1>
+  <p class="meta">测试报告 · 2026-09-15 · K8s kind 集群 · http://192.168.1.25:30080</p>
+</header>
+
+<div class="container">
+
+<h2>📊 测试概要</h2>
+
+<div class="summary-grid">
+  <div class="summary-item">
+    <div class="value" style="color:var(--pass)">3/3</div>
+    <div>全部通过</div>
+  </div>
+  <div class="summary-item">
+    <div class="value" style="color:var(--accent)">3</div>
+    <div>测试用例</div>
+  </div>
+  <div class="summary-item">
+    <div class="value" style="color:var(--gold)">K8s</div>
+    <div>部署环境</div>
+  </div>
+  <div class="summary-item">
+    <div class="value" style="color:var(--pass)">15+</div>
+    <div>截图数量</div>
+  </div>
+</div>
+
+<table>
+<tr><th>#</th><th>测试项</th><th>状态</th><th>详情</th></tr>
+<tr>
+  <td>1</td>
+  <td>主对话流式输出</td>
+  <td><span class="badge badge-pass">PASS</span></td>
+  <td>思考过程可见 (thinking refs=1)，Agent 正确回答 "2+3=5"，Assistant 消息块渲染正常</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>技能选择与加载</td>
+  <td><span class="badge badge-pass">PASS</span></td>
+  <td>技能弹窗正常弹出，agent-browser 技能 checkbox 勾选成功，Agent 响应中包含浏览器技能引用</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>新建会话 Tab (🦜 Agent)</td>
+  <td><span class="badge badge-pass">PASS</span></td>
+  <td>🦜 Agent Tab 点击后正常打开，发送消息后 Agent 响应 (bodyLen=1923)，流式输出证据可见</td>
+</tr>
+</table>
+
+<h2>1. 主对话流式输出 ✅</h2>
+
+<div class="card">
+  <h3>测试步骤</h3>
+  <ol>
+    <li>打开 DeepThink 聊天页 http://192.168.1.25:30080/chat</li>
+    <li>发送消息：<code>请用中文回答：2+3等于多少？请先思考再回答</code></li>
+    <li>分别在 1.5s / 3.5s / 6.5s / 20s 截图观察流式输出</li>
+  </ol>
+
+  <h3>验证结果</h3>
+  <ul>
+    <li><strong>Thinking/Reasoning 引用</strong>: 1 个（思考过程可见）</li>
+    <li><strong>答案正确性</strong>: ✅ 回答 "2 + 3 = <strong>5</strong>"</li>
+    <li><strong>Assistant 消息块</strong>: 2 个 DOM block 正常渲染</li>
+    <li><strong>流式输出</strong>: 从 1.5s 到 20s 的截图中可见逐字输出过程</li>
+  </ul>
+
+  <div class="screenshots">
+    <figure>
+      <img src="screenshots/02-stream-1.5s.png" alt="流式输出 1.5s">
+      <figcaption>1.5s — 开始流式输出</figcaption>
+    </figure>
+    <figure>
+      <img src="screenshots/03-stream-3.5s.png" alt="流式输出 3.5s">
+      <figcaption>3.5s — 持续输出中</figcaption>
+    </figure>
+    <figure>
+      <img src="screenshots/04-stream-6.5s.png" alt="流式输出 6.5s">
+      <figcaption>6.5s — 中间过程可见</figcaption>
+    </figure>
+    <figure>
+      <img src="screenshots/05-final-20s.png" alt="最终结果">
+      <figcaption>20s — 完整的最终回复</figcaption>
+    </figure>
+  </div>
+</div>
+
+<h2>2. 技能选择与加载 ✅</h2>
+
+<div class="card">
+  <h3>测试步骤</h3>
+  <ol>
+    <li>点击输入框上方的 <strong>"技能"</strong> 按钮</li>
+    <li>在弹出的技能列表中找到 <strong>agent-browser</strong> 技能</li>
+    <li>勾选 checkbox 启用该技能</li>
+    <li>按 Escape 关闭弹窗</li>
+    <li>发送消息：<code>请使用浏览器搜索今天的天气</code></li>
+  </ol>
+
+  <h3>验证结果</h3>
+  <ul>
+    <li><strong>技能弹窗</strong>: ✅ 正常弹出，显示 9 个可用技能</li>
+    <li><strong>Checkbox 勾选</strong>: agent-browser checkbox 从 unchecked → checked</li>
+    <li><strong>技能加载到上下文</strong>: ✅ Agent 响应中包含浏览器相关引用 (browser reference: true)</li>
+    <li><strong>Agent 响应</strong>: ✅ 正常回复 (body length=2001)</li>
+  </ul>
+
+  <div class="screenshots">
+    <figure>
+      <img src="screenshots/s4-02-popup.png" alt="技能弹窗">
+      <figcaption>技能弹窗 — 9个可用技能</figcaption>
+    </figure>
+    <figure>
+      <img src="screenshots/s4-03-skill-checked.png" alt="技能已勾选">
+      <figcaption>agent-browser 技能已勾选 ✅</figcaption>
+    </figure>
+    <figure>
+      <img src="screenshots/s4-05-streaming-3s.png" alt="技能对话流式输出">
+      <figcaption>勾选技能后发送消息 — 3s 流式输出</figcaption>
+    </figure>
+    <figure>
+      <img src="screenshots/s4-07-response-20s.png" alt="技能对话完整响应">
+      <figcaption>20s — Agent 使用技能完成回复</figcaption>
+    </figure>
+  </div>
+</div>
+
+<h2>3. 新建会话 Tab ✅</h2>
+
+<div class="card">
+  <h3>测试步骤</h3>
+  <ol>
+    <li>在聊天页面找到 🦜 Agent 会话 Tab</li>
+    <li>点击 🦜 打开 Agent 会话界面</li>
+    <li>在 Agent Tab 中输入消息：<code>用一句话介绍你自己</code></li>
+    <li>分别在 3s / 8s / 15s / 25s 截图观察响应</li>
+  </ol>
+
+  <h3>验证结果</h3>
+  <ul>
+    <li><strong>🦜 Tab 数量</strong>: 2 个 Agent 会话 Tab</li>
+    <li><strong>Agent UI 可见</strong>: ✅ 包含 Agent 标识</li>
+    <li><strong>输入框可用</strong>: ✅ textarea 正常显示</li>
+    <li><strong>Agent 响应</strong>: ✅ 收到回复 "我是 Claude，一个能帮你写代码、搜信息、处理文件的 AI 助手。"</li>
+    <li><strong>流式输出</strong>: ✅ 包含 thinking/思考过程引用</li>
+    <li><strong>Body 长度</strong>: 1923 字符（完整内容）</li>
+  </ul>
+
+  <div class="screenshots">
+    <figure>
+      <img src="screenshots/11-agent-tab-opened.png" alt="Agent Tab 打开">
+      <figcaption>🦜 Agent Tab 成功打开</figcaption>
+    </figure>
+    <figure>
+      <img src="screenshots/12-agent-3s.png" alt="Agent 响应 3s">
+      <figcaption>3s — Agent 开始响应</figcaption>
+    </figure>
+    <figure>
+      <img src="screenshots/13-agent-8s.png" alt="Agent 响应 8s">
+      <figcaption>8s — 流式输出进行中</figcaption>
+    </figure>
+    <figure>
+      <img src="screenshots/15-agent-25s.png" alt="Agent 响应 25s">
+      <figcaption>25s — 完整回复</figcaption>
+    </figure>
+  </div>
+</div>
+
+<h2>🔧 修复清单</h2>
+
+<div class="card">
+  <table>
+  <tr><th>文件</th><th>修改内容</th><th>修复的 Bug</th></tr>
+  <tr>
+    <td><code>src/index.ts</code></td>
+    <td>agent conversation stream handler 添加 <code>persistTraceNodeFromStreamEvent</code></td>
+    <td>Bug 1: 流式输出缺失</td>
+  </tr>
+  <tr>
+    <td><code>src/index.ts</code></td>
+    <td><code>processAgentConversation</code> 添加分布式调度 (<code>isRedisConnected + publishAgentTask</code>)</td>
+    <td>Bug 2: 新建会话 Tab 无响应</td>
+  </tr>
+  <tr>
+    <td><code>container/agent-runner/src/trace-node-allocator.ts</code></td>
+    <td>添加 <code>seedBase()</code> 方法</td>
+    <td>Trace Node ID 碰撞 (辅助)</td>
+  </tr>
+  <tr>
+    <td><code>container/agent-runner/src/types.ts</code></td>
+    <td><code>ContainerInput</code> 添加 <code>traceNodeIdBase</code></td>
+    <td>Trace Node ID 碰撞 (辅助)</td>
+  </tr>
+  <tr>
+    <td><code>src/db.ts</code></td>
+    <td>添加 <code>getMaxChatTraceNodeId()</code></td>
+    <td>Trace Node ID 碰撞 (辅助)</td>
+  </tr>
+  <tr>
+    <td><code>src/container-runner.ts</code></td>
+    <td>传递 <code>traceNodeIdBase</code> 到 agent-runner</td>
+    <td>Trace Node ID 碰撞 (辅助)</td>
+  </tr>
+  </table>
+</div>
+
+<h2>📋 测试环境</h2>
+
+<div class="card">
+  <table>
+  <tr><th>项目</th><th>详情</th></tr>
+  <tr><td>部署环境</td><td>K8s kind 集群 (desktop-worker)</td></tr>
+  <tr><td>URL</td><td>http://192.168.1.25:30080</td></tr>
+  <tr><td>deepthink pods</td><td>2 replicas (Running)</td></tr>
+  <tr><td>agent-runner pods</td><td>2 replicas (Running)</td></tr>
+  <tr><td>Redis</td><td>redis:7-alpine (Running)</td></tr>
+  <tr><td>PostgreSQL</td><td>pgvector/pgvector:pg16 (Running)</td></tr>
+  <tr><td>浏览器</td><td>Google Chrome 1440×900 headless</td></tr>
+  <tr><td>测试框架</td><td>Playwright Core</td></tr>
+  </table>
+</div>
+
+<h2>✅ 结论</h2>
+
+<div class="card">
+  <p><strong>3/3 测试全部通过</strong>。两个核心 Bug 已在 K8s 分布式环境中验证修复：</p>
+  <ul>
+    <li>✅ <strong>Bug 1 (流式输出缺失)</strong>: 主对话和 Agent Tab 均可见思考过程、逐字流式输出、DOM 消息块正常渲染</li>
+    <li>✅ <strong>Bug 2 (新建会话 Tab 无响应)</strong>: 🦜 Agent 会话 Tab 正常打开，发送消息后 Agent 通过 Redis 分布式调度正确响应</li>
+    <li>✅ <strong>技能选择加载</strong>: 技能弹窗正常工作，checkbox 勾选后技能成功加载到对话上下文</li>
+  </ul>
+</div>
+
+</div>
+</body>
+</html>
