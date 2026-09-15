@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>K8s 流式输出修复 — 测试报告</title>
+<style>
+:root {
+  --bg: #1a1a2e;
+  --panel: #16213e;
+  --text: #e0e0e0;
+  --gold: #f0c060;
+  --accent: #4fc3f7;
+  --pass: #66bb6a;
+  --fail: #ef5350;
+  --warn: #ffa726;
+  --muted: #888;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height:1.6; }
+.container { max-width:1100px; margin:0 auto; padding:20px 24px; }
+h1 { color: var(--gold); font-size:2em; margin-bottom:4px; }
+h2 { color: var(--accent); font-size:1.4em; margin:28px 0 12px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px; }
+h3 { color: var(--text); margin:16px 0 8px; }
+.meta { color: var(--muted); margin-bottom:24px; font-size:0.9em; }
+.card { background:var(--panel); border-radius:10px; padding:20px; margin-bottom:16px; }
+.pass { color:var(--pass); font-weight:bold; }
+.fail { color:var(--fail); font-weight:bold; }
+.warn { color:var(--warn); }
+table { width:100%; border-collapse:collapse; margin:12px 0; }
+th, td { padding:10px 14px; text-align:left; border-bottom:1px solid rgba(255,255,255,0.08); }
+th { color: var(--gold); font-weight:600; }
+.pill { display:inline-block; padding:2px 10px; border-radius:12px; font-size:0.85em; font-weight:600; }
+.pill-pass { background:rgba(102,187,106,0.2); color:var(--pass); }
+.pill-info { background:rgba(79,195,247,0.2); color:var(--accent); }
+.code { background:rgba(0,0,0,0.3); border-radius:6px; padding:12px 16px; font-family:'Fira Code',monospace; font-size:0.85em; overflow-x:auto; margin:8px 0; }
+.screenshot { max-width:100%; border-radius:8px; border:1px solid rgba(255,255,255,0.1); margin:8px 0; }
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.grid2 img { width:100%; border-radius:6px; border:1px solid rgba(255,255,255,0.1); }
+.badge { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:20px; font-size:0.85em; margin-right:8px; }
+.badge-ok { background:rgba(102,187,106,0.15); color:var(--pass); }
+.summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:16px 0; }
+.summary-item { background:var(--panel); border-radius:10px; padding:16px; text-align:center; }
+.summary-item .num { font-size:2em; font-weight:bold; color:var(--gold); }
+.summary-item .label { color:var(--muted); font-size:0.85em; }
+ol { padding-left:20px; }
+ol li { margin:4px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🧪 K8s 流式输出修复 — 验收测试报告</h1>
+<div class="meta">
+  📅 2026-09-15 &nbsp;|&nbsp; 🔖 Issue: <code>docs/issues/2026-09-15-agent-streaming-new-chat-fix.md</code> &nbsp;|&nbsp;
+  🔧 Commit: <code>7536f07</code> &nbsp;|&nbsp; 🎯 Branch: <code>feat/fix-k8s-streaming-output</code>
+</div>
+
+<!-- Summary -->
+<div class="summary-grid">
+  <div class="summary-item"><div class="num">3/3</div><div class="label">验收标准 通过</div></div>
+  <div class="summary-item"><div class="num">17+</div><div class="label">WS 流式事件/轮</div></div>
+  <div class="summary-item"><div class="num">4</div><div class="label">工具调用事件</div></div>
+  <div class="summary-item"><div class="num">14</div><div class="label">技能加载到上下文</div></div>
+</div>
+
+<!-- AC Matrix -->
+<h2>1. 验收标准矩阵</h2>
+<table>
+<tr><th>#</th><th>验收标准</th><th>结果</th><th>证据</th></tr>
+<tr>
+  <td>AC-1</td>
+  <td>主对话 Agent 流式输出（思考过程、工具调用、技能调用等中间过程可见）</td>
+  <td><span class="pill pill-pass">✅ PASS</span></td>
+  <td>WS 捕获 thinking_delta(8) + tool_use_start/end/progress/result(4) + text_delta(20) + context_audit(1) + usage(1)</td>
+</tr>
+<tr>
+  <td>AC-2</td>
+  <td>技能选择区域选择技能后对话，技能正常加载到上下文</td>
+  <td><span class="pill pill-pass">✅ PASS</span></td>
+  <td>context_audit 事件显示 "14 skills · 0 rules"，test-mount-skill 响应 "技能已加载成功"</td>
+</tr>
+<tr>
+  <td>AC-3</td>
+  <td>新建会话 Tab 输入消息后 Agent 正常响应</td>
+  <td><span class="pill pill-pass">✅ PASS</span></td>
+  <td>点击 🦜 按钮创建 Agent Tab，发送消息后收到完整流式响应（9 事件）</td>
+</tr>
+</table>
+
+<!-- Bug Analysis -->
+<h2>2. Bug 根因与修复</h2>
+
+<div class="card">
+<h3>Bug 1: Agent 对话无中间流式输出</h3>
+<p><strong>根因：</strong><code>src/index.ts</code> 中 <code>processAgentConversation</code> 的 <code>wrappedOnOutput</code> 回调在分布式模式下缺少 <code>persistTraceNodeFromStreamEvent</code> 调用，导致 trace node 未持久化。</p>
+<div class="code">// 修复前（仅 broadcastStreamEvent）
+broadcastStreamEvent(chatJid, output.streamEvent, agentId);
+
+// 修复后（增加 trace node 持久化）
+persistTraceNodeFromStreamEvent(virtualChatJid, output.streamEvent);
+broadcastStreamEvent(chatJid, output.streamEvent, agentId);</div>
+</div>
+
+<div class="card">
+<h3>Bug 2: 新建 Agent 会话 Tab 无响应</h3>
+<p><strong>根因：</strong><code>processAgentConversation</code> 缺少分布式调度检查 <code>isRedisConnected() && hasDistributedRunners()</code>，在 K8s 环境下未将任务发布到 agent-runner pods。</p>
+<div class="code">// 修复前：直接调用 runContainerAgent / runHostAgent（K8s 不存在）
+// 修复后：增加分布式分发路径
+if (isRedisConnected() && await hasDistributedRunners()) {
+  // 构建 taskInput → 注册 distributedOutputHandlers → publishAgentTask
+} else {
+  // 回退到本地执行
+}</div>
+</div>
+
+<!-- Test Details -->
+<h2>3. 测试详情</h2>
+
+<div class="card">
+<h3>3.1 AC-1: 主对话流式输出（含工具调用）</h3>
+<p><strong>测试方法：</strong>发送消息 "请执行 ls 命令列出当前工作目录的文件"，监听 WebSocket stream_event</p>
+<table>
+<tr><th>事件类型</th><th>数量</th><th>说明</th></tr>
+<tr><td><code>status</code></td><td>4</td><td>turn_start, turn_progress 等状态事件</td></tr>
+<tr><td><code>context_audit</code></td><td>1</td><td>上下文审计（14 skills, 0 rules, 1931 tokens）</td></tr>
+<tr><td><code>thinking_delta</code></td><td>8</td><td>✅ 思考过程流式输出</td></tr>
+<tr><td><code>tool_use_start</code></td><td>1</td><td>✅ Bash 工具调用开始 (toolu_0c4203)</td></tr>
+<tr><td><code>tool_progress</code></td><td>1</td><td>✅ 工具执行中</td></tr>
+<tr><td><code>tool_result</code></td><td>1</td><td>✅ 工具执行结果返回</td></tr>
+<tr><td><code>tool_use_end</code></td><td>1</td><td>✅ 工具调用结束</td></tr>
+<tr><td><code>text_delta</code></td><td>20</td><td>✅ 文本流式输出</td></tr>
+<tr><td><code>usage</code></td><td>1</td><td>Token 用量统计</td></tr>
+<tr><td><strong>总计</strong></td><td><strong>38</strong></td><td></td></tr>
+</table>
+<img class="screenshot" src="v4-01-tool-call.png" alt="工具调用流式输出截图">
+</div>
+
+<div class="card">
+<h3>3.2 AC-2: 技能选择与加载</h3>
+<p><strong>测试方法：</strong>点击"技能"按钮 → 选择 test-mount-skill → 发送"测试技能" → 验证 context_audit 和响应</p>
+<table>
+<tr><th>检查项</th><th>结果</th></tr>
+<tr><td>技能按钮可见</td><td>✅ "技能" 按钮找到</td></tr>
+<tr><td>技能菜单展开</td><td>✅ 显示 14 个技能项（📈Excel/🔍OCR/📝Markdown/📄PDF 等）</td></tr>
+<tr><td>context_audit 含技能</td><td>✅ "14 skills · 0 rules · 1931 tokens"</td></tr>
+<tr><td>test-mount-skill 响应</td><td>✅ 页面文本包含"技能已加载成功"</td></tr>
+<tr><td>thinking_delta 在技能对话中可见</td><td>✅ 14 个 thinking_delta 事件</td></tr>
+</table>
+<div class="grid2">
+  <img src="v5-01-skill-menu-open.png" alt="技能菜单展开">
+  <img src="v5-03-skill-response.png" alt="技能响应">
+</div>
+</div>
+
+<div class="card">
+<h3>3.3 AC-3: 新建 Agent 会话 Tab</h3>
+<p><strong>测试方法：</strong>点击 🦜 按钮创建 Agent Tab → 发送"你好" → 监控响应</p>
+<table>
+<tr><th>检查项</th><th>结果</th></tr>
+<tr><td>Agent Tab 创建</td><td>✅ 点击 🦜 后成功切换</td></tr>
+<tr><td>消息发送</td><td>✅ 发送成功</td></tr>
+<tr><td>Agent 响应</td><td>✅ 收到回复（不再是 hang 状态）</td></tr>
+<tr><td>流式事件</td><td>✅ 9 个 WS 事件（thinking/text/usage/status）</td></tr>
+</table>
+<div class="grid2">
+  <img src="v3-03-agent-tab.png" alt="Agent Tab">
+  <img src="v3-04-agent-response.png" alt="Agent 响应">
+</div>
+</div>
+
+<!-- Deployment Info -->
+<h2>4. 部署信息</h2>
+<div class="card">
+<table>
+<tr><th>项</th><th>值</th></tr>
+<tr><td>集群</td><td>kind "desktop" (K8s v1.32.2)</td></tr>
+<tr><td>命名空间</td><td>deepthink</td></tr>
+<tr><td>Docker 镜像</td><td>deepthink-server:latest (从 main commit 7536f07 构建)</td></tr>
+<tr><td>Deployments</td><td>deepthink (2 replicas) + agent-runner (2 replicas)</td></tr>
+<tr><td>基础设施</td><td>PostgreSQL + Redis + MinIO + Milvus + etcd</td></tr>
+<tr><td>访问地址</td><td>http://192.168.1.25:30080/chat</td></tr>
+</table>
+</div>
+
+<!-- Conclusion -->
+<h2>5. 结论</h2>
+<div class="card">
+<p><span class="badge badge-ok">✅ 全部通过</span> 3/3 验收标准均通过 Playwright 浏览器自动化测试验证。</p>
+<ul style="margin:12px 0 0 20px;">
+  <li>Bug 1（Agent 中间流式输出缺失）— <span class="pass">已修复</span>：thinking_delta + tool_use_* + text_delta 完整链路</li>
+  <li>Bug 2（Agent Tab 无响应）— <span class="pass">已修复</span>：分布式任务分发正常工作</li>
+  <li>技能加载 — <span class="pass">已验证</span>：14 skills 正常加载到上下文</li>
+</ul>
+<p style="margin-top:12px;">修复已在 main 分支 commit <code>7536f07</code>，经重新构建镜像 deploy 到 kind 集群后所有功能正常。</p>
+</div>
+
+</div>
+</body>
+</html>
