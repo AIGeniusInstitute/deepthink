@@ -1327,7 +1327,7 @@ export async function applyTurnMounts(
   // Dedupe key set from existing mounts
   const existingKeys = new Set(base.mounts.map((m) => `${m.resourceType}:${m.resourceId}`));
 
-  // Skills → systemPrompt content injection
+  // Skills → systemPrompt content injection + mounts array
   if (hasSkills && turnMounts.skills) {
     const skillRows = await getSkillContentsForTurn(turnMounts.skills, ownerUserId);
     const pieces: string[] = [];
@@ -1337,8 +1337,33 @@ export async function applyTurnMounts(
       }
     }
     if (pieces.length > 0) {
+      // Inject skill content into systemPrompt for the agent to read
       base.systemPrompt = (base.systemPrompt ? base.systemPrompt + '\n' : '') + pieces.join('\n');
-      logger.info({ skillCount: pieces.length, skillIds: turnMounts.skills }, 'applyTurnMounts: skills injected into systemPrompt');
+      // Also add skills to mounts array so agent-runner can determine which
+      // skills were explicitly selected (skillsOption filtering)
+      for (const skillId of turnMounts.skills) {
+        const key = `skill:${skillId}`;
+        if (!existingKeys.has(key)) {
+          base.mounts.push({
+            resourceType: 'skill',
+            resourceId: skillId,
+            resourceName: skillId,
+          });
+          existingKeys.add(key);
+        }
+      }
+      // Add explicit skill selection directive so the agent knows these skills
+      // were selected by the user for this conversation and should be prioritized
+      const skillNames = skillRows
+        .filter((s) => s.content?.trim())
+        .map((s) => s.name)
+        .join('、');
+      if (skillNames) {
+        base.systemPrompt =
+          (base.systemPrompt ? base.systemPrompt + '\n\n' : '') +
+          `用户已选择以下技能用于本对话，当用户请求涉及相关领域时请优先使用对应技能：${skillNames}。`;
+      }
+      logger.info({ skillCount: pieces.length, skillIds: turnMounts.skills }, 'applyTurnMounts: skills injected into systemPrompt + mounts');
     } else {
       logger.warn({ skillIds: turnMounts.skills, rowsFound: skillRows.length }, 'applyTurnMounts: no skill content found for requested skills');
     }
@@ -1396,10 +1421,11 @@ export async function applyTurnMounts(
   }
   const mcpMounted = base.mounts.filter((m) => m.resourceType === 'mcp_server').length;
   const kbMounted = base.mounts.filter((m) => m.resourceType === 'knowledge_base').length;
-  if (mcpMounted > 0 || kbMounted > 0) {
+  const skillMounted = base.mounts.filter((m) => m.resourceType === 'skill').length;
+  if (mcpMounted > 0 || kbMounted > 0 || skillMounted > 0) {
     logger.info(
-      { mcpMounted, kbMounted, totalMounts: base.mounts.length },
-      'applyTurnMounts: MCP/KB mounts appended',
+      { mcpMounted, kbMounted, skillMounted, totalMounts: base.mounts.length },
+      'applyTurnMounts: mounts appended',
     );
   }
 

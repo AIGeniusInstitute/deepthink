@@ -2,7 +2,7 @@ import { useState, memo, lazy, Suspense } from 'react';
 import { Copy, Check, ChevronDown, ChevronUp, Ellipsis, ImageDown, Rocket } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Message } from '../../stores/chat';
+import { Message, StreamingTraceEvent } from '../../stores/chat';
 import { useAuthStore } from '../../stores/auth';
 import { EmojiAvatar } from '../common/EmojiAvatar';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -22,6 +22,8 @@ interface MessageBubbleProps {
   showTime: boolean;
   thinkingContent?: string;
   thinkingDurationMs?: number;
+  /** Persisted trace events (tool calls, skill calls) from completed streaming */
+  traceEvents?: StreamingTraceEvent[];
   isShared?: boolean;
 }
 
@@ -148,7 +150,7 @@ function TokenUsageDisplay({ tokenUsageJson }: { tokenUsageJson: string }) {
   );
 }
 
-export const MessageBubble = memo(function MessageBubble({ message, showTime, thinkingContent, thinkingDurationMs, isShared }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message, showTime, thinkingContent, thinkingDurationMs, traceEvents, isShared }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const [lightboxState, setLightboxState] = useState<{ images: string[]; index: number } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -371,6 +373,41 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
 
         {/* Reasoning */}
         {thinkingContent && <ReasoningBlock content={thinkingContent} durationMs={thinkingDurationMs} />}
+
+        {/* Persisted trace — tool calls, skill calls from completed streaming */}
+        {traceEvents && traceEvents.length > 0 && (
+          <div className="mb-3 py-2 px-3 rounded-xl bg-muted/30 border border-border/50 text-xs">
+            <div className="font-medium text-muted-foreground mb-1.5">运行轨迹</div>
+            <div className="flex flex-wrap gap-1">
+              {traceEvents.slice(0, 20).map((e, i) => {
+                const label = e.kind === 'tool'
+                  ? `🔧 ${e.title.slice(0, 30)}`
+                  : e.kind === 'skill'
+                    ? `📦 ${e.title.slice(0, 30)}`
+                    : e.kind === 'task'
+                      ? `📋 ${e.title.slice(0, 30)}`
+                      : e.kind === 'hook'
+                        ? `🪝 ${e.title.slice(0, 30)}`
+                        : e.kind === 'context'
+                          ? '📊 上下文'
+                          : e.kind === 'memory'
+                            ? '🧠 记忆'
+                            : e.kind === 'permission'
+                              ? '🔒 权限'
+                              : null;
+                if (!label) return null;
+                return (
+                  <span key={i} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground">
+                    {label}
+                  </span>
+                );
+              })}
+              {traceEvents.length > 20 && (
+                <span className="text-xs text-muted-foreground">+{traceEvents.length - 20} more</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Images */}
         {images.length > 0 && (
@@ -730,5 +767,6 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
   prev.showTime === next.showTime &&
   prev.thinkingContent === next.thinkingContent &&
   prev.thinkingDurationMs === next.thinkingDurationMs &&
+  prev.traceEvents === next.traceEvents &&
   prev.isShared === next.isShared
 );

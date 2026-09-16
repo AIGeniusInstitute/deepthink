@@ -5328,6 +5328,21 @@ async function runAgent(
       // on the agent-runner side and dropped agent output.
       await ipcWatcherManager?.ensureSubscriptionsReady(group.folder);
 
+      // Register the distributed output handler BEFORE publishing the task.
+      // This eliminates the race condition where the agent-runner starts
+      // producing output before the handler is registered, which would cause
+      // the first few stream events to be lost (logged as "no handler registered").
+      // If this pod is NOT the publisher (another pod already claimed the task),
+      // the handler is immediately unregistered below.
+      let handlerPreRegistered = false;
+      if (_distributedHandler) {
+        ipcWatcherManager?.registerDistributedOutput(
+          group.folder,
+          _distributedHandler,
+        );
+        handlerPreRegistered = true;
+      }
+
       // Publish the task to the distributed agent-runner queue
       // Per-user distributed active counter (计费并发上限跨 Pod 生效):
       // incr before dispatch, decr in finally on completion/timeout.
@@ -5342,24 +5357,20 @@ async function runAgent(
         }
         if (!published) {
           // Another web-server pod already claimed this task (dedup via Redis SET NX).
-          // Do NOT register the output handler or wait for output — the publishing
+          // Do NOT keep the output handler or wait for output — the publishing
           // pod will broadcast agent output to all WS clients (including ours) via
-          // Redis cross-pod safeBroadcast.  If both pods register handlers, each
+          // Redis cross-pod safeBroadcast.  If both pods keep handlers, each
           // receives the agent-runner output via Pub/Sub and forwards it to WS,
           // causing every message to appear N×POD_COUNT times.
           logger.info({ turnId }, 'Task already claimed by another pod; skipping output handling');
+          // Unregister the handler we pre-registered (this pod is not the publisher)
+          if (handlerPreRegistered) {
+            ipcWatcherManager?.unregisterDistributedOutput(group.folder);
+            handlerPreRegistered = false;
+          }
           output = { status: 'success', result: null };
         } else {
-          // Only the publishing pod registers the distributed output handler.
-          // Both pods subscribe to the ipc-out channel (pub/sub is fan-out),
-          // but only the publisher forwards agent output to WS clients.
-          if (_distributedHandler) {
-            ipcWatcherManager?.registerDistributedOutput(
-              group.folder,
-              _distributedHandler,
-            );
-          }
-
+          // Handler was already registered before publish — no race condition.
           // Wait for the final output (or timeout)
           output = await Promise.race([finalOutputPromise, timeoutPromise]);
         }
@@ -8994,20 +9005,28 @@ async function processAgentConversation(
 
       await ipcWatcherManager?.ensureSubscriptionsReady(effectiveGroup.folder);
 
+      // Pre-register handler to avoid race condition with fast agent-runners
+      let handlerPreRegistered = false;
+      if (_distributedHandler) {
+        ipcWatcherManager?.registerDistributedOutput(
+          effectiveGroup.folder,
+          _distributedHandler,
+        );
+        handlerPreRegistered = true;
+      }
+
       if (ownerId) await incrUserActive(ownerId);
       let published = false;
       try {
         published = await publishAgentTask(taskInput);
         if (!published) {
           logger.info({ agentId, turnId: lastProcessed.id }, 'Agent conv task already claimed by another pod');
+          if (handlerPreRegistered) {
+            ipcWatcherManager?.unregisterDistributedOutput(effectiveGroup.folder);
+            handlerPreRegistered = false;
+          }
           output = { status: 'success', result: null };
         } else {
-          if (_distributedHandler) {
-            ipcWatcherManager?.registerDistributedOutput(
-              effectiveGroup.folder,
-              _distributedHandler,
-            );
-          }
           output = await Promise.race([finalOutputPromise, timeoutPromise]);
         }
       } finally {

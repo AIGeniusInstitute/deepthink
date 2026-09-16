@@ -54,6 +54,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
   const { mode: displayMode } = useDisplayMode();
   const thinkingCache = useChatStore(s => s.thinkingCache ?? {});
   const thinkingDurationCache = useChatStore(s => s.thinkingDurationCache ?? {});
+  const traceCache = useChatStore(s => s.traceCache ?? {});
   const isShared = useChatStore(s => !!s.groups[groupJid ?? '']?.is_shared);
   // Spawn agents: selector returns stable reference (the agents array itself),
   // then useMemo filters for spawn kind. Direct .filter() in selector causes
@@ -497,7 +498,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
                 data-index={virtualItem.index}
               >
                 <ErrorBoundary>
-                  <MessageBubble message={message} showTime={showTime} thinkingContent={thinkingCache[message.id]} thinkingDurationMs={thinkingDurationCache[message.id]} isShared={isShared} />
+                  <MessageBubble message={message} showTime={showTime} thinkingContent={thinkingCache[message.id]} thinkingDurationMs={thinkingDurationCache[message.id]} traceEvents={traceCache[message.id]} isShared={isShared} />
                 </ErrorBoundary>
               </div>
             );

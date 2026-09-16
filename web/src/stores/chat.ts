@@ -305,6 +305,9 @@ interface ChatState {
   thinkingCache: Record<string, string>;
   /** Per-message-id duration in ms; rendered as "已思考 Xs" inside ReasoningBlock. */
   thinkingDurationCache: Record<string, number>;
+  /** Per-message-id trace events (tool calls, skill calls, etc.) persisted after
+   * streaming finalizes. Survives page refresh via session snapshot. */
+  traceCache: Record<string, StreamingTraceEvent[]>;
   pendingThinking: Record<string, string>;
   pendingThinkingDuration: Record<string, number>;
   /** Per-group lock: true while clearHistory is in-flight, prevents race re-injection */
@@ -564,6 +567,34 @@ function restoreStreamingFromSession(chatJid: string): StreamingState | null {
       toolStepsSinceReminder: entry.toolStepsSinceReminder || 0,
     };
   } catch { return null; }
+}
+
+// ─── Trace cache sessionStorage persistence ─────────────────────────
+// Survives page refresh so agents' thinking/tool-call/skill-call trace
+// events remain visible in the message list post-completion.
+const TRACE_CACHE_KEY = 'hc_trace_cache';
+const MAX_TRACE_CACHE_ENTRIES = 200; // max message ids kept
+
+function saveTraceCacheToSession(cache: Record<string, StreamingTraceEvent[]>): void {
+  try {
+    const payload: Record<string, StreamingTraceEvent[]> = {};
+    const ids = Object.keys(cache).slice(-MAX_TRACE_CACHE_ENTRIES);
+    for (const id of ids) {
+      const events = cache[id];
+      if (events?.length) {
+        payload[id] = events.slice(-80); // cap per-message trace count
+      }
+    }
+    sessionStorage.setItem(TRACE_CACHE_KEY, JSON.stringify(payload));
+  } catch { /* quota exceeded */ }
+}
+
+function restoreTraceCacheFromSession(): Record<string, StreamingTraceEvent[]> {
+  try {
+    const raw = sessionStorage.getItem(TRACE_CACHE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<string, StreamingTraceEvent[]>;
+  } catch { return {}; }
 }
 
 /**
@@ -1306,6 +1337,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streaming: {},
   thinkingCache: {},
   thinkingDurationCache: {},
+  traceCache: restoreTraceCacheFromSession(),
   pendingThinking: {},
   pendingThinkingDuration: {},
   clearing: {},
@@ -2510,6 +2542,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const thinkingDuration = isAgentReply
           ? (streamState?.thinkingDurationMs ?? s.pendingThinkingDuration[chatJid])
           : undefined;
+        // Persist trace events (tool calls, skill calls, etc.) alongside the
+        // message so they survive page refresh. Only keep the last N entries.
+        const traceEvents = isAgentReply
+          ? (streamState?.traceEvents?.length ? streamState.traceEvents.slice(-100) : undefined)
+          : undefined;
         const nextStreaming = { ...s.streaming };
         delete nextStreaming[chatJid];
         const nextPending = { ...s.pendingThinking };
@@ -2533,6 +2570,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           unreadReplies: nextUnread,
           ...(thinkingText ? { thinkingCache: capThinkingCache({ ...s.thinkingCache, [msg.id]: thinkingText }) } : {}),
           ...(thinkingDuration != null ? { thinkingDurationCache: capThinkingCache({ ...s.thinkingDurationCache, [msg.id]: thinkingDuration }) } : {}),
+          ...(traceEvents ? { traceCache: capThinkingCache({ ...s.traceCache, [msg.id]: traceEvents }) } : {}),
         };
       }
 
@@ -3434,3 +3472,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
   },
 }));
+
+// ─── Persist trace cache to sessionStorage on every change ─────────
+// This keeps tool/skill call traces visible in the message list even
+// after page refresh (they would otherwise only exist in-memory).
+let _lastTraceCacheJson = '';
+useChatStore.subscribe((s) => {
+  const json = JSON.stringify(s.traceCache);
+  if (json !== _lastTraceCacheJson) {
+    _lastTraceCacheJson = json;
+    saveTraceCacheToSession(s.traceCache);
+  }
+});
