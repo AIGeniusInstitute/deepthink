@@ -1,5 +1,5 @@
 import { useState, memo, lazy, Suspense } from 'react';
-import { Copy, Check, ChevronDown, ChevronUp, Ellipsis, ImageDown, Rocket } from 'lucide-react';
+import { Copy, Check, ChevronDown, ChevronUp, Ellipsis, ImageDown, Rocket, FileDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Message, StreamingTraceEvent } from '../../stores/chat';
@@ -16,6 +16,14 @@ import { formatThinkingDuration } from '../../utils/thinking-duration';
 import { resolveSystemMessage } from '../../lib/system-message-registry';
 
 const ShareImageDialog = lazy(() => import('./ShareImageDialog').then(m => ({ default: m.ShareImageDialog })));
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 interface MessageBubbleProps {
   message: Message;
@@ -74,7 +82,85 @@ function ReasoningBlock({ content, durationMs }: { content: string; durationMs?:
   );
 }
 
-/** Parse and display token usage for AI messages */
+function formatNum(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+/** Parse and display execution summary from traceEvents + token usage */
+function ExecutionSummary({ traceEvents, tokenUsageJson }: { traceEvents?: StreamingTraceEvent[]; tokenUsageJson?: string }) {
+  const usage = (() => {
+    if (!tokenUsageJson) return null;
+    try {
+      return JSON.parse(tokenUsageJson) as {
+        inputTokens?: number;
+        outputTokens?: number;
+        cacheReadInputTokens?: number;
+        cacheCreationInputTokens?: number;
+        costUSD?: number;
+        durationMs?: number;
+        numTurns?: number;
+        modelUsage?: Record<string, { inputTokens: number; outputTokens: number; costUSD: number }>;
+      };
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!traceEvents || traceEvents.length === 0) {
+    // Still show token/duration if available even without trace
+    if (!usage) return null;
+    const totalTokens = (usage.inputTokens || 0) + (usage.outputTokens || 0);
+    if (totalTokens === 0 && !usage.durationMs) return null;
+    return (
+      <div className="mt-2 py-1.5 px-2.5 rounded-lg bg-muted/20 border border-border/30 text-xs">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
+          {totalTokens > 0 && <span>🪙 {formatNum(totalTokens)} tokens</span>}
+          {usage.durationMs ? <span>⏱️ {(usage.durationMs / 1000).toFixed(1)}s</span> : null}
+        </div>
+      </div>
+    );
+  }
+
+  const toolCount = traceEvents.filter(e => e.kind === 'tool').length;
+  const skillCount = traceEvents.filter(e => e.kind === 'skill').length;
+  const taskCount = traceEvents.filter(e => e.kind === 'task').length;
+  const kbCount = traceEvents.filter(e => e.kind === 'context').length;
+  const memoryCount = traceEvents.filter(e => e.kind === 'memory').length;
+  const permissionCount = traceEvents.filter(e => e.kind === 'permission').length;
+  const hookCount = traceEvents.filter(e => e.kind === 'hook').length;
+  const stepCount = traceEvents.length;
+
+  const totalTokens = usage ? (usage.inputTokens || 0) + (usage.outputTokens || 0) : 0;
+  const hasAnyMetric = totalTokens > 0 || usage?.durationMs || stepCount > 0;
+
+  if (!hasAnyMetric) return null;
+
+  const items: string[] = [];
+  if (totalTokens > 0) items.push(`🪙 ${formatNum(totalTokens)} tokens`);
+  if (usage?.durationMs) items.push(`⏱️ ${(usage.durationMs / 1000).toFixed(1)}s`);
+  if (toolCount > 0) items.push(`🔧 ${toolCount} 工具`);
+  if (skillCount > 0) items.push(`📦 ${skillCount} 技能`);
+  if (taskCount > 0) items.push(`📋 ${taskCount} 任务`);
+  if (kbCount > 0) items.push(`📚 ${kbCount} 知识库`);
+  if (memoryCount > 0) items.push(`🧠 ${memoryCount} 记忆`);
+  if (permissionCount > 0) items.push(`🔒 ${permissionCount} 权限`);
+  if (hookCount > 0) items.push(`🪝 ${hookCount} Hook`);
+  if (items.length === 0 && stepCount > 0) items.push(`📊 ${stepCount} 步骤`);
+
+  return (
+    <div className="mt-2 py-1.5 px-2.5 rounded-lg bg-muted/20 border border-border/30 text-xs">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
+        {items.map((item, i) => (
+          <span key={i}>{item}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Token usage display for AI messages */
 function TokenUsageDisplay({ tokenUsageJson }: { tokenUsageJson: string }) {
   const usage = (() => {
     try {
@@ -102,12 +188,6 @@ function TokenUsageDisplay({ tokenUsageJson }: { tokenUsageJson: string }) {
   const primaryInput = primary ? primary[1].inputTokens : (usage.inputTokens || 0);
   const primaryOutput = primary ? primary[1].outputTokens : (usage.outputTokens || 0);
   const totalTokens = primaryInput + primaryOutput;
-
-  const formatNum = (n: number): string => {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-    return String(n);
-  };
 
   const summaryContent = (
     <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-default">
@@ -209,6 +289,77 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }
+  };
+
+  const handlePdfExport = () => {
+    // Build a clean HTML document for PDF printing
+    const title = message.sender_name || 'AI';
+    const lines = message.content.split('\n');
+    const htmlContent = lines.map(line => {
+      // Basic markdown-to-HTML conversion for the print document
+      const trimmed = line.trim();
+      if (/^#{1,6}\s/.test(trimmed)) {
+        const level = trimmed.match(/^(#{1,6})/)![1].length;
+        const text = trimmed.replace(/^#{1,6}\s+/, '');
+        const sizes = ['2em', '1.5em', '1.17em', '1em', '0.83em', '0.67em'];
+        return `<h${level} style="font-size:${sizes[level-1]};margin:0.5em 0;">${escapeHtml(text)}</h${level}>`;
+      }
+      if (/^[-*]\s/.test(trimmed)) {
+        return `<li>${escapeHtml(trimmed.replace(/^[-*]\s+/, ''))}</li>`;
+      }
+      // Bold, italic, code
+      let html = escapeHtml(line);
+      html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+      html = html.replace(/`(.+?)`/g, '<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">$1</code>');
+      return `<p style="margin:0.3em 0;">${html}</p>`;
+    }).join('\n');
+
+    const doc = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #1a1a1a; }
+  h1,h2,h3,h4,h5,h6 { color: #111; }
+  code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-family: 'SF Mono', monospace; }
+  pre { background: #f5f5f5; padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+  @media print { body { margin: 0; padding: 0 20px; } }
+</style></head>
+<body>
+${htmlContent}
+</body>
+</html>`;
+
+    const blob = new Blob([doc], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const printFrame = document.createElement('iframe');
+    printFrame.style.position = 'fixed';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = 'none';
+    printFrame.style.top = '0';
+    printFrame.style.left = '0';
+    document.body.appendChild(printFrame);
+
+    printFrame.onload = () => {
+      try {
+        if (printFrame.contentWindow) {
+          printFrame.contentWindow.focus();
+          printFrame.contentWindow.print();
+        }
+      } catch {
+        // fallback: open in new window
+        window.open(url, '_blank');
+      }
+      // Cleanup after a delay
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        if (printFrame.parentNode) {
+          document.body.removeChild(printFrame);
+        }
+      }, 3000);
+    };
+    printFrame.src = url;
   };
 
   const handleMenuButton = (e: React.MouseEvent | React.TouchEvent) => {
@@ -369,6 +520,16 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
               <ImageDown className="w-3 h-3" />
             </button>
           )}
+          {isAI && (
+            <button
+              onClick={handlePdfExport}
+              className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground/50 hover:text-foreground/70 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+              title="导出为 PDF"
+              aria-label="导出为 PDF"
+            >
+              <FileDown className="w-3 h-3" />
+            </button>
+          )}
         </div>
 
         {/* Reasoning */}
@@ -389,12 +550,16 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
                       : e.kind === 'hook'
                         ? `🪝 ${e.title.slice(0, 30)}`
                         : e.kind === 'context'
-                          ? '📊 上下文'
+                          ? `📚 ${e.title.slice(0, 30)}`
                           : e.kind === 'memory'
                             ? '🧠 记忆'
                             : e.kind === 'permission'
                               ? '🔒 权限'
-                              : null;
+                              : e.kind === 'debug'
+                                ? null // skip debug events in the trace UI
+                                : e.kind === 'status'
+                                  ? `📌 ${e.title.slice(0, 30)}`
+                                  : `📎 ${e.title.slice(0, 30)}`;
                 if (!label) return null;
                 return (
                   <span key={i} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground">
@@ -442,6 +607,11 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
         {/* Token usage (compact mode) */}
         {isAI && message.token_usage && (
           <TokenUsageDisplay tokenUsageJson={message.token_usage} />
+        )}
+
+        {/* Execution summary (compact mode) */}
+        {isAI && (
+          <ExecutionSummary traceEvents={traceEvents} tokenUsageJson={message.token_usage} />
         )}
 
         {lightboxState && (
@@ -701,6 +871,11 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
             {message.is_from_me && message.token_usage && (
               <TokenUsageDisplay tokenUsageJson={message.token_usage} />
             )}
+
+            {/* Execution summary */}
+            {message.is_from_me && (
+              <ExecutionSummary traceEvents={traceEvents} tokenUsageJson={message.token_usage} />
+            )}
           </div>
 
           {/* Action toolbar — below content, Claude-style */}
@@ -720,6 +895,14 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
               aria-label="生成分享图片"
             >
               <ImageDown className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={handlePdfExport}
+              className="h-7 px-2 rounded-md flex items-center gap-1 text-muted-foreground hover:text-foreground hover:bg-foreground/5 text-xs cursor-pointer transition-colors"
+              title="导出 PDF"
+              aria-label="导出为 PDF"
+            >
+              <FileDown className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={handleMenuButton}
