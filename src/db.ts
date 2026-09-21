@@ -1510,6 +1510,12 @@ export function initDatabase(): void {
   ensureColumn('registered_groups', 'sender_allowlist', 'TEXT');
   ensureColumn('registered_groups', 'engine', "TEXT DEFAULT 'claude'");
   ensureColumn('registered_groups', 'agent_def_id', 'TEXT');
+  // v67: swarm support columns for registered_groups
+  ensureColumn('registered_groups', 'group_kind', "TEXT NOT NULL DEFAULT 'chat'");
+  ensureColumn('registered_groups', 'orchestrator_agent_id', 'TEXT');
+  ensureColumn('registered_groups', 'graph_definition_id', 'TEXT');
+  ensureColumn('registered_groups', 'floor_policy', "TEXT NOT NULL DEFAULT 'orchestrator_driven'");
+  ensureColumn('registered_groups', 'swarm_status', "TEXT DEFAULT 'active'");
   ensureColumn('sessions', 'atomcode_session_id', 'TEXT');
   ensureColumn('sessions', 'sandbox_session_id', 'TEXT');
   ensureColumn('sessions', 'codex_thread_id', 'TEXT');
@@ -1530,6 +1536,8 @@ export function initDatabase(): void {
   ensureColumn('agents', 'root_message_id', 'TEXT');
   ensureColumn('agents', 'title_source', 'TEXT');
   ensureColumn('agents', 'last_active_at', 'TEXT');
+  ensureColumn('registered_groups', 'group_kind', "TEXT DEFAULT 'chat'");
+  ensureColumn('registered_groups', 'floor_policy', 'TEXT');
 
   // Add index on target_agent_id for fast lookup of IM bindings
   db.exec(
@@ -2688,7 +2696,55 @@ export function initDatabase(): void {
     }
   }
 
-  const SCHEMA_VERSION = '66';
+  // v67: agent group chat — swarm multi-agent group seats & messages
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS group_seats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id TEXT NOT NULL,
+        agent_definition_id TEXT NOT NULL,
+        agent_version TEXT NOT NULL DEFAULT 'latest',
+        role_prompt TEXT NOT NULL DEFAULT '',
+        speak_policy TEXT NOT NULL DEFAULT 'auto',
+        mounts TEXT NOT NULL DEFAULT '{}',
+        max_turns INTEGER NOT NULL DEFAULT 10,
+        token_budget INTEGER NOT NULL DEFAULT 100000,
+        time_budget_ms INTEGER NOT NULL DEFAULT 600000,
+        max_parallel INTEGER NOT NULL DEFAULT 1,
+        seat_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT,
+        UNIQUE(group_id, agent_definition_id)
+      );
+      ALTER TABLE group_seats ADD COLUMN IF NOT EXISTS updated_at TEXT;
+      CREATE INDEX IF NOT EXISTS idx_group_seats_gid ON group_seats(group_id);
+      CREATE INDEX IF NOT EXISTS idx_group_seats_agent ON group_seats(agent_definition_id);
+
+      CREATE TABLE IF NOT EXISTS group_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id TEXT NOT NULL,
+        run_id TEXT,
+        node_run_id TEXT,
+        sender_type TEXT NOT NULL DEFAULT 'user',
+        sender_seat_id INTEGER,
+        msg_type TEXT NOT NULL DEFAULT 'text',
+        content_ref TEXT,
+        mentions TEXT NOT NULL DEFAULT '[]',
+        parent_msg_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'completed',
+        token_in INTEGER NOT NULL DEFAULT 0,
+        token_out INTEGER NOT NULL DEFAULT 0,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_group_msgs_gid ON group_messages(group_id);
+      CREATE INDEX IF NOT EXISTS idx_group_msgs_time ON group_messages(group_id, created_at);
+    `);
+  } catch (err) {
+    logger.warn({ err }, 'group_seats / group_messages migration v67 failed (non-blocking)');
+  }
+
+  const SCHEMA_VERSION = '70';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -6474,7 +6530,46 @@ type RegisteredGroupRow = {
   sender_allowlist: string | null;
   engine: string | null;
   agent_def_id: string | null;
+  group_kind: string;
+  orchestrator_agent_id: string | null;
+  graph_definition_id: string | null;
+  floor_policy: string;
+  swarm_status: string | null;
 };
+
+export interface GroupSeatRow {
+  id: number;
+  group_id: string;
+  agent_definition_id: string;
+  agent_version: string;
+  role_prompt: string;
+  speak_policy: string;
+  mounts: string;
+  max_turns: number;
+  token_budget: number;
+  time_budget_ms: number;
+  max_parallel: number;
+  seat_order: number;
+  created_at: string;
+}
+
+export interface GroupMessageRow {
+  id: number;
+  group_id: string;
+  run_id: string | null;
+  node_run_id: string | null;
+  sender_type: string;
+  sender_seat_id: number | null;
+  msg_type: string;
+  content_ref: string | null;
+  mentions: string;
+  parent_msg_id: number | null;
+  status: string;
+  token_in: number;
+  token_out: number;
+  duration_ms: number;
+  created_at: string;
+}
 
 /** Convert a raw DB row into a RegisteredGroup domain object. */
 function parseGroupRow(
@@ -6553,6 +6648,11 @@ function parseGroupRow(
         ? (row.engine as 'atomcode' | 'codex' | 'opencode' | 'pi')
         : 'claude',
     agentDefId: row.agent_def_id ?? null,
+    groupKind: (row.group_kind === 'swarm' ? 'swarm' : 'chat') as 'chat' | 'swarm',
+    orchestratorAgentId: row.orchestrator_agent_id ?? undefined,
+    graphDefinitionId: row.graph_definition_id ?? undefined,
+    floorPolicy: (row.floor_policy === 'round_robin' ? 'round_robin' : row.floor_policy === 'free' ? 'free' : 'orchestrator_driven') as 'orchestrator_driven' | 'round_robin' | 'free',
+    swarmStatus: (row.swarm_status ?? 'active') as 'active' | 'archived',
   };
 }
 
@@ -6584,8 +6684,8 @@ export function getRegisteredGroup(
 
 export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
   db.prepare(
-    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, added_at, container_config, execution_mode, custom_cwd, init_source_path, init_git_url, created_by, is_home, selected_skills, target_agent_id, target_main_jid, reply_policy, require_mention, activation_mode, owner_im_id, mcp_mode, selected_mcps, conversation_source, conversation_nav_mode, binding_mode, feishu_chat_mode, feishu_group_message_type, sender_allowlist, engine, agent_def_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, added_at, container_config, execution_mode, custom_cwd, init_source_path, init_git_url, created_by, is_home, selected_skills, target_agent_id, target_main_jid, reply_policy, require_mention, activation_mode, owner_im_id, mcp_mode, selected_mcps, conversation_source, conversation_nav_mode, binding_mode, feishu_chat_mode, feishu_group_message_type, sender_allowlist, engine, agent_def_id, group_kind, orchestrator_agent_id, graph_definition_id, floor_policy, swarm_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     jid,
     group.name,
@@ -6615,6 +6715,11 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
     group.sender_allowlist != null ? JSON.stringify(group.sender_allowlist) : null,
     group.engine ?? 'claude',
     group.agentDefId ?? null,
+    group.groupKind ?? 'chat',
+    group.orchestratorAgentId ?? null,
+    group.graphDefinitionId ?? null,
+    group.floorPolicy ?? 'orchestrator_driven',
+    group.swarmStatus ?? 'active',
   );
 }
 
@@ -12772,4 +12877,289 @@ export function listStaffTeamEvents(teamId: string, limit: number = 50): StaffTe
 export function listStaffTaskEvents(taskId: string): StaffTeamEventRow[] {
   return db.prepare('SELECT * FROM sw_events WHERE task_id = ? ORDER BY created_at ASC')
     .all(taskId) as StaffTeamEventRow[];
+}
+
+// ─── Multi-Agent Group Chat: Group Seats CRUD ──────────────────────────
+
+/**
+ * Assign an agent to a seat in a swarm group. Each agent_definition_id can
+ * occupy at most one seat per group (UNIQUE constraint).
+ */
+export function createGroupSeat(opts: {
+  groupId: string;
+  agentDefinitionId: string;
+  agentVersion?: string;
+  rolePrompt?: string;
+  speakPolicy?: string;
+  mounts?: string;
+  maxTurns?: number;
+  tokenBudget?: number;
+  timeBudgetMs?: number;
+  maxParallel?: number;
+  seatOrder?: number;
+}): GroupSeatRow {
+  const now = new Date().toISOString();
+  const result = db.prepare(
+    `INSERT INTO group_seats
+       (group_id, agent_definition_id, agent_version, role_prompt, speak_policy,
+        mounts, max_turns, token_budget, time_budget_ms, max_parallel, seat_order,
+        created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    opts.groupId,
+    opts.agentDefinitionId,
+    opts.agentVersion ?? 'latest',
+    opts.rolePrompt ?? '',
+    opts.speakPolicy ?? 'auto',
+    opts.mounts ?? '{}',
+    opts.maxTurns ?? 10,
+    opts.tokenBudget ?? 100000,
+    opts.timeBudgetMs ?? 600000,
+    opts.maxParallel ?? 1,
+    opts.seatOrder ?? 0,
+    now,
+  );
+  return getGroupSeat(result.lastInsertRowid as number) as GroupSeatRow;
+}
+
+/** List all agent seats for a swarm group, ordered by seat_order. */
+export function listGroupSeats(groupId: string): GroupSeatRow[] {
+  return db
+    .prepare(
+      'SELECT * FROM group_seats WHERE group_id = ? ORDER BY seat_order ASC, id ASC',
+    )
+    .all(groupId) as GroupSeatRow[];
+}
+
+/** Get a single seat by its primary key. */
+export function getGroupSeat(seatId: number): GroupSeatRow | undefined {
+  return db
+    .prepare('SELECT * FROM group_seats WHERE id = ?')
+    .get(seatId) as GroupSeatRow | undefined;
+}
+
+/**
+ * Partially update a group seat. Only the keys present in `fields` are
+ * applied; all others are left unchanged.
+ */
+export function updateGroupSeat(
+  seatId: number,
+  fields: Record<string, unknown>,
+): void {
+  const allowed = new Set([
+    'agent_version',
+    'role_prompt',
+    'speak_policy',
+    'mounts',
+    'max_turns',
+    'token_budget',
+    'time_budget_ms',
+    'max_parallel',
+    'seat_order',
+  ]);
+  const entries = Object.entries(fields).filter(([k]) => allowed.has(k));
+  if (entries.length === 0) return;
+
+  const setClauses = entries.map(([k]) => `${k} = ?`);
+  const values = entries.map(([, v]) => v);
+  values.push(seatId);
+
+  db.prepare(
+    `UPDATE group_seats SET ${setClauses.join(', ')} WHERE id = ?`,
+  ).run(...values);
+}
+
+/** Remove an agent seat from a swarm group. */
+export function deleteGroupSeat(seatId: number): void {
+  db.prepare('DELETE FROM group_seats WHERE id = ?').run(seatId);
+}
+
+// ─── Multi-Agent Group Chat: Group Messages CRUD ──────────────────────
+
+/**
+ * Insert a message into the swarm group conversation log.
+ * Returns the newly created row (including the generated id).
+ */
+export function createGroupMessage(opts: {
+  groupId: string;
+  runId?: string;
+  nodeRunId?: string;
+  senderType: 'user' | 'agent' | 'system';
+  senderSeatId?: number;
+  msgType?: string;
+  contentRef?: string;
+  mentions?: string;
+  parentMsgId?: number;
+  status?: string;
+}): GroupMessageRow {
+  const now = new Date().toISOString();
+  const result = db.prepare(
+    `INSERT INTO group_messages
+       (group_id, run_id, node_run_id, sender_type, sender_seat_id, msg_type,
+        content_ref, mentions, parent_msg_id, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    opts.groupId,
+    opts.runId ?? null,
+    opts.nodeRunId ?? null,
+    opts.senderType,
+    opts.senderSeatId ?? null,
+    opts.msgType ?? 'text',
+    opts.contentRef ?? null,
+    opts.mentions ?? '[]',
+    opts.parentMsgId ?? null,
+    opts.status ?? 'completed',
+    now,
+  );
+  return getGroupMessage(result.lastInsertRowid as number) as GroupMessageRow;
+}
+
+/**
+ * List messages for a swarm group, ordered by id descending (most recent first).
+ * Optional `before` (message id) acts as a cursor for pagination:
+ * only messages with id < before are returned. `limit` defaults to 50.
+ */
+export function listGroupMessages(
+  groupId: string,
+  before?: number,
+  limit?: number,
+): GroupMessageRow[] {
+  const effectiveLimit = limit ?? 50;
+  if (before != null) {
+    return db
+      .prepare(
+        `SELECT * FROM group_messages
+         WHERE group_id = ? AND id < ?
+         ORDER BY id DESC
+         LIMIT ?`,
+      )
+      .all(groupId, before, effectiveLimit) as GroupMessageRow[];
+  }
+  return db
+    .prepare(
+      `SELECT * FROM group_messages
+       WHERE group_id = ?
+       ORDER BY id DESC
+       LIMIT ?`,
+    )
+    .all(groupId, effectiveLimit) as GroupMessageRow[];
+}
+
+/** Get a single group message by its primary key. */
+export function getGroupMessage(id: number): GroupMessageRow | undefined {
+  return db
+    .prepare('SELECT * FROM group_messages WHERE id = ?')
+    .get(id) as GroupMessageRow | undefined;
+}
+
+/**
+ * Partially update a group message. Only the keys present in `fields` are
+ * applied; all others are left unchanged.
+ */
+export function updateGroupMessage(
+  id: number,
+  fields: Record<string, unknown>,
+): void {
+  const allowed = new Set([
+    'content_ref',
+    'mentions',
+    'status',
+    'token_in',
+    'token_out',
+    'duration_ms',
+  ]);
+  const entries = Object.entries(fields).filter(([k]) => allowed.has(k));
+  if (entries.length === 0) return;
+
+  const setClauses = entries.map(([k]) => `${k} = ?`);
+  const values = entries.map(([, v]) => v);
+  values.push(id);
+
+  db.prepare(
+    `UPDATE group_messages SET ${setClauses.join(', ')} WHERE id = ?`,
+  ).run(...values);
+}
+
+// ─── Multi-Agent Group Chat: Swarm Group Queries ──────────────────────
+
+/**
+ * List all swarm groups created by a given user.
+ * Swarm groups are registered_groups rows with group_kind = 'swarm'.
+ */
+export function listSwarmGroups(userId: string): (RegisteredGroup & { jid: string })[] {
+  const rows = db
+    .prepare(
+      "SELECT * FROM registered_groups WHERE group_kind = 'swarm' AND created_by = ? ORDER BY added_at DESC",
+    )
+    .all(userId) as RegisteredGroupRow[];
+  return rows.map((row) => parseGroupRow(row));
+}
+
+/** Get a swarm group by its jid. Returns undefined if not found or not a swarm. */
+export function getSwarmGroup(
+  jid: string,
+): (RegisteredGroup & { jid: string }) | undefined {
+  const row = db
+    .prepare(
+      "SELECT * FROM registered_groups WHERE jid = ? AND group_kind = 'swarm'",
+    )
+    .get(jid) as RegisteredGroupRow | undefined;
+  if (!row) return undefined;
+  return parseGroupRow(row);
+}
+
+/**
+ * Create a swarm group by building a full RegisteredGroup object and
+ * delegating to setRegisteredGroup. This is the canonical creation path
+ * that ensures all v67+ columns are written correctly.
+ */
+export function createSwarmGroup(params: {
+  jid: string;
+  name: string;
+  folder: string;
+  created_by: string;
+  groupKind?: string;
+  floorPolicy?: string | null;
+}): void {
+  const group: RegisteredGroup = {
+    name: params.name,
+    folder: params.folder,
+    added_at: new Date().toISOString(),
+    created_by: params.created_by,
+    groupKind: (params.groupKind === 'chat' ? 'chat' : 'swarm') as 'chat' | 'swarm',
+    floorPolicy: (params.floorPolicy === 'round_robin' ? 'round_robin' : params.floorPolicy === 'free' ? 'free' : 'orchestrator_driven') as 'orchestrator_driven' | 'round_robin' | 'free',
+    swarmStatus: 'active',
+  };
+  setRegisteredGroup(params.jid, group);
+}
+
+/**
+ * Update swarm group metadata (name, floor_policy).
+ * Only touches swarm groups (group_kind='swarm').
+ */
+export function updateSwarmGroup(
+  jid: string,
+  updates: { name?: string; floorPolicy?: string | null },
+): boolean {
+  const group = getSwarmGroup(jid);
+  if (!group) return false;
+  if (updates.name !== undefined) group.name = updates.name;
+  if (updates.floorPolicy !== undefined) {
+    group.floorPolicy = (updates.floorPolicy === 'round_robin' ? 'round_robin' : updates.floorPolicy === 'free' ? 'free' : 'orchestrator_driven') as 'orchestrator_driven' | 'round_robin' | 'free';
+  }
+  setRegisteredGroup(jid, group);
+  return true;
+}
+
+/**
+ * Delete a swarm group and cascade: seats and messages are cleaned up
+ * via DELETE statements before removing the group row.
+ */
+export function deleteSwarmGroup(jid: string): void {
+  const tx = db.transaction((gid: string) => {
+    db.prepare('DELETE FROM group_messages WHERE group_id = ?').run(gid);
+    db.prepare('DELETE FROM group_seats WHERE group_id = ?').run(gid);
+    db.prepare("DELETE FROM registered_groups WHERE jid = ? AND group_kind = 'swarm'").run(gid);
+  });
+  tx(jid);
 }

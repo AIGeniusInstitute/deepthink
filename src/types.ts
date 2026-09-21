@@ -74,6 +74,11 @@ export interface RegisteredGroup {
   feishu_group_message_type?: string; // 飞书群消息形式：chat/thread
   engine?: 'claude' | 'atomcode' | 'codex' | 'opencode' | 'pi'; // Agent 执行引擎（默认 'claude')
   agentDefId?: string | null; // 群组绑定的 Agent 定义 ID
+  groupKind?: 'chat' | 'swarm'; // 群组类型：chat=普通群聊，swarm=多Agent群聊（默认 'chat'）
+  orchestratorAgentId?: string; // swarm 模式下编排者 Agent 定义 ID
+  graphDefinitionId?: string; // swarm 模式下绑定的图定义 ID
+  floorPolicy?: 'orchestrator_driven' | 'round_robin' | 'free'; // swarm 模式下发言权策略（默认 'orchestrator_driven'）
+  swarmStatus?: 'active' | 'archived'; // swarm 群状态（默认 'active'）
 }
 
 // ─── Agent PaaS Types ────────────────────────────────────

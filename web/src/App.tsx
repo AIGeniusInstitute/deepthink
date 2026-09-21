@@ -40,6 +40,8 @@ const StaffEmployeesPage = lazy(() => import('./pages/StaffEmployeesPage').then(
 const StaffTeamsPage = lazy(() => import('./pages/StaffTeamsPage').then(m => ({ default: m.StaffTeamsPage })));
 const StaffTeamDetailPage = lazy(() => import('./pages/StaffTeamDetailPage').then(m => ({ default: m.StaffTeamDetailPage })));
 const DiskPage = lazy(() => import('./pages/DiskPage').then(m => ({ default: m.DiskPage })));
+const AgentGroupsListPage = lazy(() => import('./pages/AgentGroupsListPage').then(m => ({ default: m.AgentGroupsListPage })));
+const AgentGroupChatPage = lazy(() => import('./pages/AgentGroupChatPage').then(m => ({ default: m.AgentGroupChatPage })));
 const EvalCenterPage = lazy(() => import('./pages/EvalCenterPage').then(m => ({ default: m.EvalCenterPage })));
 
 export function App() {
@@ -81,6 +83,8 @@ export function App() {
         >
           <Route path="/chat/:groupFolder?" element={<Suspense fallback={null}><ChatPage /></Suspense>} />
           <Route path="/disk" element={<Suspense fallback={null}><DiskPage /></Suspense>} />
+          <Route path="/agent-groups" element={<Suspense fallback={null}><AgentGroupsListPage /></Suspense>} />
+          <Route path="/agent-groups/:jid" element={<Suspense fallback={null}><AgentGroupChatPage /></Suspense>} />
           <Route path="/eval-center" element={<Suspense fallback={null}><EvalCenterPage /></Suspense>} />
           <Route path="/groups" element={<Navigate to="/settings?tab=groups" replace />} />
           <Route path="/tasks" element={<Suspense fallback={null}><TasksPage /></Suspense>} />

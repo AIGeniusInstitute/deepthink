@@ -27,7 +27,10 @@ export type StreamEventType =
   | 'autonomous_started' | 'autonomous_continued' | 'autonomous_aborted' | 'autonomous_brake'
   | 'autonomous_recovering' | 'autonomous_recovered'
   | 'graph_start' | 'graph_node_start' | 'graph_node_status' | 'graph_node_end'
-  | 'graph_edge_taken' | 'graph_end';
+  | 'graph_edge_taken' | 'graph_end'
+  | 'group_message_created' | 'group_message_delta' | 'group_message_done'
+  | 'group_seat_status' | 'group_floor_changed'
+  | 'run_started' | 'run_status_changed' | 'run_completed';
 
 export type StreamAgentScope = 'main' | 'task' | 'subagent' | 'system';
 export type StreamDisplayLevel = 'primary' | 'detail' | 'debug';
