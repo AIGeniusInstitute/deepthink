@@ -116,28 +116,71 @@ export interface SendMessagePayload {
 
 export interface PipelineRun {
   id: string;
+  runId?: string;
   groupJid?: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  executedSeat?: { id: string | number; agentDefinitionId: string; speakPolicy: string };
+  nodeId?: string;
   nodes?: PipelineNode[];
+  nodesLoading?: boolean;
 }
 
+/** Backend returns snake_case from graph_node_runs table. */
 export interface PipelineNode {
   id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  graph_run_id?: string;
+  node_id?: string;
+  node_type?: string;
+  status: 'pending' | 'running' | 'success' | 'completed' | 'failed' | 'skipped' | 'cancelled';
   title?: string;
   nodeType?: string;
+  attempt?: string | number;
+  input_summary?: string;
+  output_summary?: string;
+  started_at?: string;
+  ended_at?: string;
+  input_tokens?: string | number;
+  output_tokens?: string | number;
+  cost_usd?: number;
+  error?: string | null;
 }
 
 export interface TraceDetail {
-  node: PipelineNode;
-  events: TraceEvent[];
+  node?: PipelineNode;
+  traceNodes: TraceNode[];
+  toolCalls: TraceToolCall[];
 }
 
-export interface TraceEvent {
-  id: string;
-  eventType: string;
-  content: string;
-  createdAt: string;
+export interface TraceNode {
+  id: number;
+  loop_run_id: string;
+  iteration_id: number | null;
+  node_type: string;
+  parent_node_id: number | null;
+  tool_name: string | null;
+  tool_use_id: string | null;
+  title: string | null;
+  input_summary: string | null;
+  output_summary: string | null;
+  started_at: string;
+  ended_at: string | null;
+  tokens: number;
+  status: string | null;
+}
+
+export interface TraceToolCall {
+  id: number;
+  graph_run_id: string | null;
+  graph_node_id: string | null;
+  chat_jid: string | null;
+  tool_use_id: string;
+  tool_name: string;
+  input_json: string | null;
+  output_json: string | null;
+  status: string | null;
+  started_at: string;
+  ended_at: string | null;
+  output_ref: string | null;
 }
 
 // ── API Functions ─────────────────────────────────────────────────
@@ -209,18 +252,20 @@ export function listGroupMessages(
   );
 }
 
-export function startGroupRun(jid: string): Promise<{ run: PipelineRun }> {
-  return apiFetch<{ run: PipelineRun }>(`${BASE}/${jid}/runs`, { method: 'POST' });
+/** Backend returns flat {runId, groupJid, status, executedSeat, nodeId, prompt}. */
+export function startGroupRun(jid: string): Promise<PipelineRun> {
+  return apiFetch<PipelineRun>(`${BASE}/${jid}/runs`, { method: 'POST' });
 }
 
-export function getRunNodes(runId: string): Promise<{ run: PipelineRun; nodes: PipelineNode[] }> {
-  return apiFetch<{ run: PipelineRun; nodes: PipelineNode[] }>(`${BASE}/runs/${runId}/nodes`);
+/** Backend returns {runId, nodes: PipelineNode[]}. */
+export function getRunNodes(runId: string): Promise<{ runId: string; nodes: PipelineNode[] }> {
+  return apiFetch<{ runId: string; nodes: PipelineNode[] }>(`${BASE}/runs/${runId}/nodes`);
 }
 
-export function getNodeRunDetail(nodeRunId: string): Promise<{ node: PipelineNode }> {
-  return apiFetch<{ node: PipelineNode }>(`${BASE}/nodes/${nodeRunId}`);
+export function getNodeRunDetail(nodeRunId: string): Promise<{ nodeRun: PipelineNode }> {
+  return apiFetch<{ nodeRun: PipelineNode }>(`${BASE}/node-runs/${nodeRunId}`);
 }
 
 export function getNodeTrace(nodeRunId: string): Promise<TraceDetail> {
-  return apiFetch<TraceDetail>(`${BASE}/nodes/${nodeRunId}/trace`);
+  return apiFetch<TraceDetail>(`${BASE}/node-runs/${nodeRunId}/trace`);
 }

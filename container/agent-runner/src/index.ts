@@ -2495,6 +2495,10 @@ async function main(): Promise<void> {
  */
 async function processOneTask(): Promise<void> {
   let containerInput: ContainerInput;
+  // Saved before turnId rotation by generateTurnId() during query loop.
+  // Swarm pipeline tasks use turnId="run-<uuid>" and must be recognized
+  // as single-shot to avoid blocking in waitForIpcMessage().
+  let originalTurnId: string | undefined;
 
   try {
     let stdinData: string;
@@ -2506,6 +2510,12 @@ async function processOneTask(): Promise<void> {
       stdinData = await readStdin();
     }
     containerInput = JSON.parse(stdinData);
+    // Save original turnId BEFORE it gets rotated by generateTurnId() during
+    // the query loop (emit sdk_final → rotate). Swarm pipeline tasks carry
+    // turnId="run-<uuid>" from agent-groups.ts and must be detected as
+    // single-shot so the runner breaks out of the query loop instead of
+    // blocking forever in waitForIpcMessage().
+    originalTurnId = containerInput.turnId;
     // Defensive: reject tasks with missing prompt instead of crashing deep
     // inside runQuery with "Cannot read properties of undefined (reading 'slice')".
     // In distributed mode, skip the bad task and loop to BLPOP the next one;
@@ -3328,6 +3338,20 @@ async function processOneTask(): Promise<void> {
       // the container closes, the promise resolves, and the node is回写.
       if (containerInput.graphRunId) {
         log(`Graph single-shot mode (graphRunId=${containerInput.graphRunId}), exiting after query — not entering waitForIpcMessage`);
+        break;
+      }
+
+      // Swarm pipeline tasks are also single-shot: turnId starts with "run-"
+      // (set by agent-groups.ts POST /:jid/runs). The swarm host publishes
+      // one task per seat execution and subscribes to IPC output; no follow-up
+      // _close/_drain sentinel is ever written. Without this break the agent-
+      // runner blocks in waitForIpcMessage() forever, never returning to the
+      // BLPOP loop, starving the Redis task queue.
+      // NOTE: containerInput.turnId gets rotated by generateTurnId() after
+      // each sdk_final result emission, so we must check originalTurnId which
+      // was saved before any rotations.
+      if (originalTurnId?.startsWith('run-')) {
+        log(`Swarm pipeline task (originalTurnId=${originalTurnId}), exiting after single-shot query`);
         break;
       }
 

@@ -9,8 +9,12 @@
 import { Hono } from 'hono';
 import type { Variables } from '../web-context.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { logger } from '../logger.js';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import type { AuthUser } from '../types.js';
 import {
   listSwarmGroups,
@@ -26,6 +30,7 @@ import {
   createGroupMessage,
   listGroupMessages,
 } from '../db.js';
+import { DATA_DIR } from '../config.js';
 import type { GroupSeatRow, GroupMessageRow } from '../db.js';
 
 export const agentGroupRoutes = new Hono<{ Variables: Variables }>();
@@ -380,7 +385,74 @@ agentGroupRoutes.get('/:jid/messages', (c) => {
   });
 });
 
+// ─── Helpers: Agent Execution ───────────────────────────────────
+
+/** Load agent definition content from the file-based agent-definitions store. */
+function loadSwarmAgentDefContent(agentDefId: string): string {
+  const agentsDir = path.join(os.homedir(), '.claude', 'agents');
+  try {
+    return fs.readFileSync(path.join(agentsDir, `${agentDefId}.md`), 'utf-8');
+  } catch {
+    // Fallback: some deployments store agents under DATA_DIR
+    try {
+      return fs.readFileSync(path.join(DATA_DIR, 'agents', `${agentDefId}.md`), 'utf-8');
+    } catch {
+      return '';
+    }
+  }
+}
+
+/** Create a pipeline node record for tracking agent execution progress. */
+async function createPipelineNode(
+  runId: string,
+  nodeType: string,
+  title: string,
+  status: string,
+  groupFolder: string,
+  detail?: Record<string, unknown>,
+): Promise<string | null> {
+  try {
+    const { getDb } = await import('../db.js');
+    const db = getDb();
+    const nodeId = `node-${randomUUID().slice(0, 8)}`;
+    const now = new Date().toISOString();
+    // PG schema: id, graph_run_id, node_id, node_type, status, attempt, input_summary, output_summary,
+    // state_patch_json, parent_node_run_id, started_at, ended_at, input_tokens, output_tokens,
+    // cost_usd, error, is_idempotent
+    db.prepare(
+      `INSERT INTO graph_node_runs (id, graph_run_id, node_id, node_type, status, attempt, input_summary, started_at, is_idempotent)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?, 0)`,
+    ).run(nodeId, runId, nodeType, nodeType, status, detail ? JSON.stringify(detail) : null, now);
+    return nodeId;
+  } catch (e) {
+    console.error('[createPipelineNode] INSERT failed:', (e as Error)?.message || e, 'runId:', runId);
+    return null;
+  }
+}
+
+/** Update pipeline node status. */
+async function updatePipelineNode(
+  nodeId: string,
+  status: string,
+  detail?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const { getDb } = await import('../db.js');
+    const db = getDb();
+    const updates: string[] = ['status = ?', 'ended_at = ?'];
+    const values: unknown[] = [status, new Date().toISOString()];
+    if (detail) { updates.push('output_summary = ?'); values.push(JSON.stringify(detail)); }
+    db.prepare(`UPDATE graph_node_runs SET ${updates.join(', ')} WHERE id = ?`)
+      .run(...values, nodeId);
+  } catch (e) { console.error('[updatePipelineNode] UPDATE failed:', (e as Error)?.message || e); }
+}
+
 // ─── Routes: Pipeline Runs ─────────────────────────────────────
+
+const RunSchema = z.object({
+  prompt: z.string().max(50000).optional(),
+  seatId: z.number().int().optional(),
+});
 
 agentGroupRoutes.post('/:jid/runs', async (c) => {
   const authUser = c.get('user') as AuthUser;
@@ -388,14 +460,159 @@ agentGroupRoutes.post('/:jid/runs', async (c) => {
   const { group, owner } = checkOwnership(authUser, jid);
   if (!group) return c.json({ error: 'Group not found' }, 404);
   if (!owner) return c.json({ error: 'Forbidden' }, 403);
+
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = RunSchema.safeParse(body);
+  const userPrompt = parsed.success ? (parsed.data.prompt || '') : '';
+
   const runId = `run-${randomUUID()}`;
+  const now = new Date().toISOString();
+
+  // Create run record
   try {
     const { getDb } = await import('../db.js');
     const db = getDb();
-    const now = new Date().toISOString();
-    db.prepare('INSERT INTO graph_run_states (run_id, definition_id, definition_version, owner_user_id, group_folder, status, goal_text, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(runId, 'swarm-pipeline', 1, authUser.id, group.folder, 'running', `Swarm group run for ${group.name}`, now, now);
-  } catch { /* graph_run_states may not exist */ }
-  return c.json({ runId, groupJid: jid, status: 'running' }, 201);
+    // PG schema: id, definition_id, definition_version, owner_user_id, group_folder, chat_jid,
+    // goal_text, status, current_node_id, state_json, max_parallel, started_at, ended_at, ...
+    db.prepare(
+      'INSERT INTO graph_runs (id, definition_id, definition_version, owner_user_id, group_folder, chat_jid, goal_text, status, state_json, max_parallel, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(runId, 'swarm-pipeline', 1, authUser.id, group.folder, jid,
+      userPrompt || `Swarm group run for ${group.name}`, 'running', '{}', 4, now);
+  } catch (e) { console.error('[runSwarmPipeline] INSERT graph_runs failed:', (e as Error)?.message || e, 'runId:', runId); }
+
+  // Find target seats to execute
+  const allSeats = listGroupSeats(jid);
+  const targetSeats = parsed.success && parsed.data.seatId
+    ? allSeats.filter(s => s.id === parsed.data.seatId)
+    : allSeats.filter(s => s.speak_policy === 'auto');
+
+  if (targetSeats.length === 0) {
+    return c.json({
+      runId, groupJid: jid, status: 'running',
+      warning: 'No seats found matching the execution criteria',
+      nodes: [],
+    }, 201);
+  }
+
+  // Execute the first matching seat (MVP: single-seat run)
+  const seat = targetSeats[0];
+  const agentContent = loadSwarmAgentDefContent(seat.agent_definition_id);
+  const systemPrompt = agentContent
+    ? `${agentContent}\n\n## Role\n${seat.role_prompt || 'You are an AI assistant in a swarm group.'}`
+    : (seat.role_prompt || 'You are an AI assistant in a swarm group.');
+
+  // Build workspace dirs for the swarm group
+  const workspaceGlobal = path.join(DATA_DIR, 'groups', group.folder, 'workspace');
+  const workspaceMemory = path.join(DATA_DIR, 'memory', group.folder);
+  fs.mkdirSync(workspaceGlobal, { recursive: true });
+  fs.mkdirSync(workspaceMemory, { recursive: true });
+
+  const prompt = userPrompt || `You are agent "${seat.agent_definition_id}" in swarm group "${group.name}". Respond to the latest discussion or provide your analysis.`;
+
+  const taskInput = {
+    prompt,
+    sessionId: `swarm-${group.folder}-${seat.id}-${runId.slice(-8)}`,
+    turnId: runId,
+    groupFolder: group.folder,
+    chatJid: jid,
+    isMain: false,
+    isHome: false,
+    isAdminHome: false,
+    workspaceGlobal,
+    workspaceMemory,
+    agentDefinition: {
+      id: seat.agent_definition_id,
+      systemPrompt,
+      mounts: [] as Array<{ resourceType: string; resourceId: string; resourceName?: string; kbId?: string }>,
+    },
+    engine: 'claude',
+  };
+
+  // Create pipeline node for this seat's execution
+  const nodeId = await createPipelineNode(
+    runId, 'agent', `Agent: ${seat.agent_definition_id}`,
+    'running', group.folder,
+    { seatId: seat.id, agentDefId: seat.agent_definition_id, speakPolicy: seat.speak_policy },
+  );
+
+  // Subscribe to agent output BEFORE publishing the task
+  let agentResponse = '';
+  let streamEvents = 0;
+
+  const { subscribeIpcOutput, publishAgentTask } = await import('../redis-bus.js');
+  const unsub = await subscribeIpcOutput(group.folder, 'messages', async (payload: any) => {
+    // Agent-runner wraps output in { type: "agent_output", output: { status, ... } }
+    const msg = payload?.output || payload;
+    if (!msg || msg.status === 'not_agent_output') return;
+
+    if (msg.status === 'stream') {
+      streamEvents++;
+      // Accumulate text from text_delta or message events
+      if (msg.streamEvent?.eventType === 'text_delta' || msg.streamEvent?.eventType === 'message') {
+        const delta = msg.streamEvent?.delta || msg.streamEvent?.text || '';
+        agentResponse += delta;
+      }
+    }
+
+    if (msg.status === 'closed' || msg.status === 'success' || msg.status === 'error') {
+      const finalContent = msg.result || agentResponse || msg.error || '(Agent execution completed)';
+
+      // Store agent response as group message
+      try {
+        createGroupMessage({
+          groupId: jid,
+          runId,
+          nodeRunId: nodeId ?? undefined,
+          senderType: 'agent',
+          senderSeatId: seat.id,
+          msgType: 'text',
+          contentRef: typeof finalContent === 'string'
+            ? finalContent.slice(0, 10000)
+            : JSON.stringify(finalContent).slice(0, 10000),
+          status: msg.status === 'error' ? 'failed' : 'completed',
+        });
+      } catch (err) {
+        // best-effort: message storage shouldn't block the run
+        console.error('[runSwarmPipeline] createGroupMessage failed:', (err as Error)?.message || err);
+      }
+
+      // Update pipeline node
+      const isError = msg.status === 'error';
+      await updatePipelineNode(nodeId ?? '', isError ? 'failed' : 'completed', {
+        outputLength: typeof finalContent === 'string' ? finalContent.length : 0,
+        streamEvents,
+        error: isError ? (msg.error || 'Unknown error') : undefined,
+      });
+
+      // Update run status
+      try {
+        const { getDb } = await import('../db.js');
+        const db = getDb();
+        db.prepare('UPDATE graph_runs SET status = ?, ended_at = ? WHERE id = ?')
+          .run(isError ? 'failed' : 'completed', new Date().toISOString(), runId);
+      } catch (e) { console.error('[runSwarmPipeline] UPDATE graph_runs status failed:', (e as Error)?.message || e); }
+
+      // Unsubscribe after completion
+      try { unsub(); } catch { /* ignore */ }
+    }
+  });
+
+  // Publish the agent task to Redis
+  let published = false;
+  try {
+    published = await publishAgentTask(taskInput);
+  } catch (err) {
+    // publishAgentTask may fail if Redis is not connected
+  }
+
+  return c.json({
+    runId,
+    groupJid: jid,
+    status: published ? 'running' : 'queued',
+    executedSeat: { id: seat.id, agentDefinitionId: seat.agent_definition_id, speakPolicy: seat.speak_policy },
+    nodeId,
+    prompt: prompt.slice(0, 200),
+  }, 201);
 });
 
 agentGroupRoutes.get('/runs/:id/nodes', async (c) => {
@@ -403,7 +620,7 @@ agentGroupRoutes.get('/runs/:id/nodes', async (c) => {
   try {
     const { getDb } = await import('../db.js');
     const db = getDb();
-    const nodes = db.prepare('SELECT * FROM graph_node_runs WHERE run_id = ? ORDER BY started_at ASC').all(runId);
+    const nodes = db.prepare('SELECT * FROM graph_node_runs WHERE graph_run_id = ? ORDER BY started_at ASC').all(runId);
     return c.json({ runId, nodes });
   } catch { return c.json({ runId, nodes: [] }); }
 });
@@ -424,10 +641,37 @@ agentGroupRoutes.get('/node-runs/:id/trace', async (c) => {
   try {
     const { getDb } = await import('../db.js');
     const db = getDb();
-    const traceNodes = db.prepare("SELECT * FROM loop_trace_nodes WHERE extra_ref = ? ORDER BY timestamp ASC").all(nodeId);
-    const toolCalls = db.prepare('SELECT * FROM trace_tool_calls WHERE node_id = ? ORDER BY created_at ASC').all(nodeId);
-    return c.json({ traceNodes, toolCalls });
-  } catch { return c.json({ traceNodes: [], toolCalls: [] }); }
+    // Get the node run to access its graph_run_id;
+    // loop_trace_nodes may be linked via extra_ref col (sqlite) or absent (pg).
+    const node = db.prepare('SELECT * FROM graph_node_runs WHERE id = ?').get(nodeId) as any;
+    const graphRunId: string | undefined = node?.graph_run_id;
+
+    // trace_tool_calls links via graph_node_id (= graph_node_runs.id)
+    const toolCalls = db.prepare(
+      'SELECT * FROM trace_tool_calls WHERE graph_node_id = ? ORDER BY started_at ASC',
+    ).all(nodeId);
+
+    // loop_trace_nodes: prefer extra_ref (sqlite col), fallback to loop_run_id
+    let traceNodes: unknown[] = [];
+    try {
+      traceNodes = db
+        .prepare('SELECT * FROM loop_trace_nodes WHERE extra_ref = ? ORDER BY started_at ASC')
+        .all(nodeId);
+    } catch {
+      if (graphRunId) {
+        try {
+          traceNodes = db
+            .prepare('SELECT * FROM loop_trace_nodes WHERE loop_run_id = ? ORDER BY started_at ASC')
+            .all(graphRunId);
+        } catch { /* empty – loop_trace_nodes table may not be available */ }
+      }
+    }
+
+    return c.json({ node, traceNodes, toolCalls });
+  } catch (err) {
+    logger.warn({ err }, 'Failed to get node trace');
+    return c.json({ traceNodes: [], toolCalls: [] });
+  }
 });
 
 export default agentGroupRoutes;

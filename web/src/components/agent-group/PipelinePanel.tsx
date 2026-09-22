@@ -28,12 +28,26 @@ export function PipelinePanel({ groupJid, onNodeClick }: { groupJid: string; onN
   };
 
   const statusIcon = (status: string) => {
-    switch (status) {
+    const s = (status ?? '').toLowerCase();
+    switch (s) {
       case 'running': return <Loader2 className="size-3.5 animate-spin text-blue-500" />;
-      case 'completed': return <CheckCircle2 className="size-3.5 text-green-500" />;
+      case 'completed':
+      case 'success': return <CheckCircle2 className="size-3.5 text-green-500" />;
       case 'failed': return <XCircle className="size-3.5 text-red-500" />;
       default: return <Circle className="size-3.5 text-gray-400" />;
     }
+  };
+
+  const nodeTitle = (node: typeof nodes[0]): string => {
+    const nt = node.node_type || node.nodeType || '';
+    const seatLabel = (() => {
+      try {
+        const s = typeof node.input_summary === 'string' ? JSON.parse(node.input_summary) : null;
+        return s?.agentDefId ?? s?.seatId ?? '';
+      } catch { return ''; }
+    })();
+    const typeLabel = nt === 'agent' ? '🤖 Agent' : nt;
+    return seatLabel ? `${typeLabel} · ${seatLabel}` : typeLabel || node.id.slice(0, 8);
   };
 
   return (
@@ -83,7 +97,12 @@ export function PipelinePanel({ groupJid, onNodeClick }: { groupJid: string; onN
                 >
                   <span className="text-[10px] text-muted-foreground w-5">{i + 1}</span>
                   {statusIcon(node.status)}
-                  <span className="text-xs text-foreground truncate flex-1">{node.title || node.nodeType || node.id.slice(0, 6)}</span>
+                  <span className="text-xs text-foreground truncate flex-1">{nodeTitle(node)}</span>
+                  {(node.input_tokens || node.output_tokens) ? (
+                    <span className="text-[10px] text-muted-foreground">
+                      {Number(node.input_tokens || 0) + Number(node.output_tokens || 0)} tok
+                    </span>
+                  ) : null}
                 </button>
                 {i < nodes.length - 1 && <div className="w-px h-3 bg-border ml-[21px]" />}
               </div>

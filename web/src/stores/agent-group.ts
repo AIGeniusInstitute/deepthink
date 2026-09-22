@@ -211,8 +211,17 @@ export const useAgentGroupStore = create<AgentGroupState>((set, get) => ({
   startRun: async (jid) => {
     try {
       const result = await startGroupRun(jid);
-      set({ currentRun: result.run, nodes: [] });
-      return result.run;
+      // Backend returns flat {runId, status, groupJid, ...}
+      const run: PipelineRun = {
+        id: result.runId ?? result.id,
+        runId: result.runId,
+        groupJid: result.groupJid,
+        status: result.status,
+        executedSeat: result.executedSeat,
+        nodeId: result.nodeId,
+      };
+      set({ currentRun: run, nodes: [] });
+      return run;
     } catch { return null; }
   },
 
@@ -220,7 +229,13 @@ export const useAgentGroupStore = create<AgentGroupState>((set, get) => ({
     set({ runsLoading: true });
     try {
       const data = await getRunNodes(runId);
-      set({ currentRun: data.run, nodes: data.nodes ?? [], runsLoading: false });
+      // Backend returns {runId, nodes: [...]} — no "run" wrapper
+      const current = get().currentRun;
+      set({
+        currentRun: current ? { ...current, status: data.nodes.some(n => n.status === 'running') ? 'running' as const : 'completed' as const } : null,
+        nodes: data.nodes ?? [],
+        runsLoading: false,
+      });
     } catch { set({ runsLoading: false }); }
   },
 
