@@ -151,6 +151,7 @@ async function runNodeWithRetry(
           }),
         );
       } catch { /* ignore */ }
+      await notifyNodeSettled(deps, ctx, node, lastOutcome);
       return lastOutcome;
     }
     if (lastOutcome.status === 'paused') return lastOutcome; // human node
@@ -172,7 +173,26 @@ async function runNodeWithRetry(
       }),
     );
   } catch { /* ignore */ }
+  await notifyNodeSettled(deps, ctx, node, lastOutcome);
   return lastOutcome;
+}
+
+/**
+ * Fire GraphDeps.onNodeSettled (Agent Group Chat seat mirroring). Never lets a
+ * hook failure break the run.
+ */
+async function notifyNodeSettled(
+  deps: GraphDeps,
+  ctx: GraphRunContext,
+  node: GraphNode,
+  outcome: NodeRunOutcome,
+): Promise<void> {
+  try {
+    await deps.onNodeSettled?.(ctx, node, outcome);
+  } catch (err) {
+    logger.error({ err, graphRunId: ctx.graphRunId, nodeId: node.id },
+      'onNodeSettled hook failed');
+  }
 }
 
 /** Merge a node's state patch into the shared state. */

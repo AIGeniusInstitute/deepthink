@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader2, Send } from 'lucide-react';
 import { useAgentGroupStore } from '@/stores/agent-group';
+import { wsManager } from '@/api/ws';
 import type { GroupMessage } from '@/api/agent-groups';
 
 function MessageBubble({ msg }: { msg: GroupMessage }) {
@@ -58,12 +59,26 @@ export function GroupChatArea({ groupJid }: { groupJid: string }) {
   const hasMore = useAgentGroupStore(s => s.hasMoreMessages);
   const sendMessage = useAgentGroupStore(s => s.sendMessage);
   const fetchMessages = useAgentGroupStore(s => s.fetchMessages);
+  const appendMessage = useAgentGroupStore(s => s.appendMessage);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
     void fetchMessages(groupJid);
+    // Seat replies are produced by a background graph run, long after the
+    // send request returned — append them as the backend broadcasts them.
+    const unsub = wsManager.on('stream_event', (data: any) => {
+      if (data?.chatJid !== groupJid) return;
+      const event = data.event;
+      if (event?.eventType !== 'group_message_created' || !event.groupMessage) return;
+      appendMessage({
+        ...event.groupMessage,
+        mentions: [],
+        parentMsgId: null,
+      } as GroupMessage);
+    });
+    return () => { unsub(); };
   }, [groupJid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

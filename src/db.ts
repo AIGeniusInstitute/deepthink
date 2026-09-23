@@ -13125,12 +13125,19 @@ export function createSwarmGroup(params: {
   created_by: string;
   groupKind?: string;
   floorPolicy?: string | null;
+  executionMode?: 'host' | 'container';
 }): void {
   const group: RegisteredGroup = {
     name: params.name,
     folder: params.folder,
     added_at: new Date().toISOString(),
     created_by: params.created_by,
+    // Seats run with their owner's environment, so they inherit the owner's
+    // home execution mode (same rule as schedule_task's source-workspace
+    // inheritance). Omitting it would fall back to setRegisteredGroup's
+    // 'container' default, which on a host-mode owner cannot even reach the
+    // owner's own provider endpoint.
+    executionMode: params.executionMode ?? 'container',
     groupKind: (params.groupKind === 'chat' ? 'chat' : 'swarm') as 'chat' | 'swarm',
     floorPolicy: (params.floorPolicy === 'round_robin' ? 'round_robin' : params.floorPolicy === 'free' ? 'free' : 'orchestrator_driven') as 'orchestrator_driven' | 'round_robin' | 'free',
     swarmStatus: 'active',
@@ -13154,6 +13161,22 @@ export function updateSwarmGroup(
   }
   setRegisteredGroup(jid, group);
   return true;
+}
+
+/**
+ * Bind (or unbind) the graph definition backing a swarm group.
+ *
+ * Uses a targeted UPDATE instead of round-tripping setRegisteredGroup, which
+ * is INSERT OR REPLACE over every column and would clobber concurrent edits.
+ * Only touches swarm groups.
+ */
+export function setSwarmGroupDefinitionId(
+  jid: string,
+  definitionId: string | null,
+): void {
+  db.prepare(
+    "UPDATE registered_groups SET graph_definition_id = ? WHERE jid = ? AND group_kind = 'swarm'",
+  ).run(definitionId, jid);
 }
 
 /**

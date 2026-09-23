@@ -56,3 +56,31 @@ describe('composeAgentPrompt — F6 gate-feedback injection (AC6.1.3)', () => {
     expect(composeAgentPrompt(node, state)).toBe('写一个登录表单');
   });
 });
+
+// Agent Group Chat: the swarm runner injects the user's message as state.goal
+// (startGraphRun initialState → graph_runs.state_json → ctx.state.goal).
+describe('composeAgentPrompt — state.goal injection (swarm)', () => {
+  test('absent goal leaves the prompt unchanged', () => {
+    expect(composeAgentPrompt(baseNode(), {})).toBe('写一个登录表单');
+  });
+
+  test('blank goal leaves the prompt unchanged', () => {
+    expect(composeAgentPrompt(baseNode(), { goal: '   ' })).toBe('写一个登录表单');
+  });
+
+  test('non-string goal is ignored (no crash)', () => {
+    expect(composeAgentPrompt(baseNode(), { goal: 42 })).toBe('写一个登录表单');
+  });
+
+  test('goal prepended before base prompt', () => {
+    const p = composeAgentPrompt(baseNode(), { goal: '世界的本质是什么？' });
+    expect(p).toBe('【用户消息】\n世界的本质是什么？\n\n---\n\n写一个登录表单');
+  });
+
+  test('order: goal → goalAnchor → base', () => {
+    const node = baseNode({ goalAnchor: '【目标】交付登录页' });
+    const p = composeAgentPrompt(node, { goal: '世界的本质是什么？' });
+    expect(p.indexOf('【用户消息】')).toBeLessThan(p.indexOf('【目标】交付登录页'));
+    expect(p.indexOf('【目标】交付登录页')).toBeLessThan(p.indexOf('写一个登录表单'));
+  });
+});

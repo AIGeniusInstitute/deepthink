@@ -64,6 +64,7 @@ export interface AgentGroupState {
   removeSeat: (jid: string, seatId: number) => Promise<boolean>;
   sendMessage: (jid: string, data: SendMessagePayload) => Promise<GroupMessage | null>;
   fetchMessages: (jid: string, before?: string) => Promise<void>;
+  appendMessage: (msg: GroupMessage) => void;
   startRun: (jid: string) => Promise<PipelineRun | null>;
   fetchRunNodes: (runId: string) => Promise<void>;
   fetchNodeTrace: (nodeRunId: string) => Promise<void>;
@@ -206,6 +207,11 @@ export const useAgentGroupStore = create<AgentGroupState>((set, get) => ({
     } catch (err) {
       set({ messagesError: (err as Error).message, messagesLoading: false });
     }
+  },
+
+  appendMessage: (msg) => {
+    if (get().messages.some(m => m.id === msg.id)) return;
+    set({ messages: [...get().messages, msg] });
   },
 
   startRun: async (jid) => {

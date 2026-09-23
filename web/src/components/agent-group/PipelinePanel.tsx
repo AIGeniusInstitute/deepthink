@@ -47,7 +47,11 @@ export function PipelinePanel({ groupJid, onNodeClick }: { groupJid: string; onN
       } catch { return ''; }
     })();
     const typeLabel = nt === 'agent' ? '🤖 Agent' : nt;
-    return seatLabel ? `${typeLabel} · ${seatLabel}` : typeLabel || node.id.slice(0, 8);
+    // Graph-engine nodes carry their identity in node_id (e.g. `seat-3`) and
+    // their input_summary is just the run state, so fall back to it rather
+    // than rendering a bare type label.
+    const idLabel = (seatLabel || node.node_id || node.id).slice(0, 40);
+    return typeLabel ? `${typeLabel} · ${idLabel}` : idLabel;
   };
 
   return (

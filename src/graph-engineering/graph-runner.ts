@@ -25,6 +25,8 @@ import {
   addGraphRunUsage,
   acquireNodeLock,
   createGraphNodeRun,
+  getJidsByFolder,
+  getRegisteredGroup,
   releaseNodeLock,
   updateGraphNodeRun,
 } from '../db.js';
@@ -109,6 +111,19 @@ export interface GraphDeps {
       stateKey?: string;
     },
   ) => Promise<void>;
+  /**
+   * Called once per node when it settles at a terminal status — the same two
+   * points where graph_node_end is broadcast (completed, and failed after
+   * retries are exhausted). Unlike that event (output sliced to 500 chars in
+   * graph-events.ts), this receives the node's full NodeRunOutcome, so an
+   * Agent Group Chat seat's reply can be persisted verbatim.
+   * Optional — no-op for every existing graph run.
+   */
+  onNodeSettled?: (
+    ctx: GraphRunContext,
+    node: GraphNode,
+    outcome: NodeRunOutcome,
+  ) => void | Promise<void>;
 }
 
 /** Resolve execution mode for the owner's home group (mirrors loop-orchestrator). */
@@ -116,6 +131,15 @@ function resolveExecutionMode(ctx: GraphRunContext, deps: GraphDeps): ExecutionM
   const groups = deps.registeredGroups();
   const homeGroup = Object.values(groups).find((g) => g.folder === ctx.groupFolder);
   if (homeGroup?.executionMode) return homeGroup.executionMode;
+  // The in-memory map only holds groups loaded at startup or touched through
+  // the IM/IPC paths — a workspace created via the Web API after startup is
+  // absent until the next restart. Fall back to the DB (the same cache-then-DB
+  // convention the rest of the codebase uses) instead of guessing from the
+  // folder name, which would silently demote a host workspace to container.
+  const persisted = getJidsByFolder(ctx.groupFolder)
+    .map((jid) => getRegisteredGroup(jid))
+    .find((g) => g?.executionMode);
+  if (persisted?.executionMode) return persisted.executionMode;
   return ctx.groupFolder === 'main' ? 'host' : 'container';
 }
 
@@ -306,14 +330,22 @@ async function dispatchByTypeInner(
 
 /**
  * Compose the effective prompt for an agent node: goal anchor + base prompt,
- * and (F6) prepend any downstream-gate failure feedback the orchestrator wrote
- * into state when it reset this node for re-run. Pure so it is unit-testable.
+ * the live `goal` when the caller injected one, and (F6) prepend any
+ * downstream-gate failure feedback the orchestrator wrote into state when it
+ * reset this node for re-run. Pure so it is unit-testable.
  */
 export function composeAgentPrompt(node: GraphNode, state: GraphState): string {
   const basePrompt = node.prompt ?? node.title;
   let prompt = node.goalAnchor
     ? `${node.goalAnchor}\n\n---\n\n${basePrompt}`
     : basePrompt;
+  // Agent Group Chat: the user message captured when the run started
+  // (startGraphRun initialState → graph_runs.state_json → ctx.state.goal).
+  // Additive — absent for every other graph run, so their prompts are unchanged.
+  const goal = typeof state.goal === 'string' ? state.goal.trim().slice(0, 8000) : '';
+  if (goal) {
+    prompt = `【用户消息】\n${goal}\n\n---\n\n${prompt}`;
+  }
   const gateFeedbackKey = `gate_feedback_${node.id}`;
   const gateFeedback =
     typeof state[gateFeedbackKey] === 'string'
