@@ -49,13 +49,18 @@ DeepThink، یک پلتفرم خود-تکامل‌یافته ابر-هوش Agent
 - **Harness و Loop Engineering** — manifestهای نسخه‌بندی‌شدهٔ harness (system prompt / subagents / tools / skills) با snapshot / diff / eval / promote / rollback، به‌علاوهٔ حلقه‌های وظیفهٔ خودمختار طولانی‌مدت با بازبینی هر تکرار و تزریق مجدد شکست
 - **Autonomy Layer و Autonomous Mode** *(v1.1.0)* — یک Autonomy Layer میان‌برشی ۷ قابلیت (perception / cognition / decision / execution / learning / adaptation / monitoring) را با metrics collection و E2E acceptance یکپارچه می‌کند؛ به‌علاوه یک Autonomous Mode کامل که به Agent اجازه می‌دهد یک وظیفه را end-to-end بدون دست‌هدایت انسانی کامل کند، سه defense layers را پوشش می‌دهد (CLAUDE.md لغو قانون اساسی / Supervisor دور زدن شفاف‌سازی / RLHF مؤدبت پایان نوبت) و four hard brakes (دستورات مخرب / محدودیت نوبت / محدودیت token / تشخیص حلقه)
 - **Agent-as-a-Service (PaaS)** — تعریف Agentهای مبتنی بر DB با ایجاد، نسخه‌بندی، mount، اشتراک و نصب بین مستاجر، همراه با سهمیهٔ per-user، بازبینی ادمین و یک بازارچهٔ قالب قابل انتشار
+- **Cloud-Native و مقیاس‌پذیر افقی** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3 پشتهٔ وضعیت تک‌گره را جایگزین می‌کنند: یک event bus با Redis برای fan-out بین پادها، انتخاب رهبر توزیع‌شده (کانال‌های IM / زمان‌بند / کارهای دوره‌ای)، و ذخیره‌سازی شیء S3/MinIO برای I/O ردیابی و فایل‌های فضای کار. اگر `DATABASE_URL` / `REDIS_URL` تنظیم نشوند، به حالت SQLite تک‌فرآیندی تنزل می‌کند
+- **گفت‌وگوی گروهی Agent (Swarm)** *(v1.4.0)* — گفت‌وگوهای گروهی چند-Agent بر پایهٔ صندلی، که هر صندلی یک تعریف Agent را با پرامپت نقش، سیاست صحبت‌کردن، mountها و بودجهٔ token/زمان خودش می‌بندد، به‌علاوهٔ یک پنل زندهٔ اجرای pipeline
+- **میزکار همکاری کارمند دیجیتال** *(v1.4.0)* — تیم‌های پایدار کارمندان دیجیتال با ماشین حالت وظیفه (`pending → in_progress → review → done` به‌علاوهٔ بازکاری)، یک تختهٔ سیاه مشترک، و یک داشبورد throughput
+- **دیسک AgentNet** *(v1.4.0)* — درایو فایل سازمانی با درخت پوشه، بارگذاری / دانلود / جابه‌جایی / حذف / جست‌وجو، سطل بازیافت با بازیابی، و تاریخچهٔ نسخهٔ فایل
+- **مرکز Eval** *(v1.4.0)* — ارزیابی مستقل روی PostgreSQL خودش: پروژه‌ها → مجموعه‌داده‌ها → نسخه‌ها → موارد آزمون → روبریک‌ها → اجراهای eval، با اظهارات قطعی، امتیازدهی LLM-judge، حاشیه‌نویسی Golden و تشخیص drift مبتنی بر embedding
 - **جداسازی چندکاربره** — workspace هر کاربر، کانال IM هر کاربر، سیستم دسترسی RBAC، ثبت‌نام با کد دعوت، لاگ ممیزی
 - **مسیریابی یکپارچهٔ هشت‌کاناله** — Feishu، Telegram، QQ، DingTalk، WeChat، Discord، WhatsApp و رابط وب — همه به‌طور یکنواخت مسیریابی می‌شوند
 - **چندموتوره و چندprovider** — موتورهای کد-Agent قابل تعویض (Claude Code / AtomCode / Codex / OpenCode) و چند providerهای Claude API با سه راهبرد موازنهٔ بار (round-robin / weighted / failover) و بررسی سلامت خودکار
 - **اجرای کد در sandbox** — sandbox سخت‌شدهٔ Docker + seccomp + cgroups برای اجرای کد Python / Node / shell و اتوماسیون مرورگر Chromium CDP
 - **صورتحساب و آمار استفاده** — سیستم صورتحساب کامل (اشتراک، کیف پول، کدهای بازخرید)، ردیابی توکن به تفکیک مدل با نمودار
 - **PWA موبایل** — بهینه برای موبایل، نصب روی صفحهٔ اصلی با یک کلیک، سازگار با iOS و Android
-- **بین‌المللی** — 29 زبان رابط کاربری با endonym بومی و پشتیبانی RTL؛ Agent به زبان انتخابی کاربر پاسخ می‌گوید
+- **بین‌المللی** — 30 زبان رابط کاربری با endonym بومی و پشتیبانی RTL؛ Agent به زبان انتخابی کاربر پاسخ می‌گوید
 
 ## نمایش ویژگی‌ها
 
@@ -101,6 +106,8 @@ cd deepthink
 make start
 ```
 
+برای استقرار چند-نسخه‌ای، از `make k8s-deploy` استفاده کنید — برای `DATABASE_URL` / `REDIS_URL` بخش Environment Variables در README انگلیسی را ببینید.
+
 به http://localhost:9898 بروید و جادوگر نصب را دنبال کنید: ایجاد ادمین (بدون حساب پیش‌فرض)، پیکربندی Claude API و در صورت نیاز کانال‌های IM. همه‌چیز از رابط وب پیکربندی می‌شود و نیازی به فایل پیکربندی نیست. کلیدهای API با AES-256-GCM رمزنگاری و ذخیره می‌شوند.
 
 ### فعال‌سازی حالت container
@@ -123,9 +130,9 @@ make start
 
 DeepThink از چهار پروژهٔ مستقل Node.js تشکیل شده است:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): سرویس اصلی با مسیریاب پیام (polling 2s + حذف تکرار)، صف همزمان (تا 20 container + 5 فرآیند host)، زمان‌بند وظایف (cron / interval / once)، سرور WebSocket برای streaming بلادرنگ و ترمینال، احراز هویت bcrypt + HMAC Cookie، RBAC، و مدیریت پیکربندی رمزنگاری‌شده AES-256-GCM. ماندگاری SQLite (حالت WAL، schema v1→v51). همچنین لایه‌های Harness / Loop Engineering، Agent-as-a-Service (PaaS)، Sandbox و Claude Code Plugins را در بر می‌گیرد.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): سرویس اصلی با مسیریاب پیام (polling 2s + حذف تکرار)، صف همزمان (تا 20 container + 5 فرآیند host)، زمان‌بند وظایف (cron / interval / once)، سرور WebSocket برای streaming بلادرنگ و ترمینال، احراز هویت bcrypt + HMAC Cookie، RBAC، و مدیریت پیکربندی رمزنگاری‌شده AES-256-GCM. لایهٔ داده روی یک گرهٔ واحد SQLite (حالت WAL، schema v1→v70)، یا هنگام مقیاس افقی روی Kubernetes PostgreSQL + pgvector با Redis (event bus + انتخاب رهبر) و MinIO/S3 (ذخیره‌سازی شیء). همچنین لایه‌های Harness / Loop Engineering، Agent-as-a-Service (PaaS)، Sandbox و Claude Code Plugins را در بر می‌گیرد.
 - **Frontend** (`web/`): یک SPA با React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4، همراه با react-markdown، mermaid، recharts، xterm.js و PWA موبایل.
-- **Agent Runner** (`container/agent-runner/`): موتور اجرایی که در Docker container یا به‌عنوان فرآیند host اجرا می‌شود؛ تابع `query()` از Claude Agent SDK را فراخوانی می‌کند، بیش از 30 نوع StreamEvent را از طریق stdout emit می‌کند و 27 ابزار MCP را از طریق کانال‌های IPC فایلی با نوشتن اتمیک به فرآیند اصلی ارائه می‌دهد.
+- **Agent Runner** (`container/agent-runner/`): موتور اجرایی که در Docker container یا به‌عنوان فرآیند host اجرا می‌شود؛ تابع `query()` از Claude Agent SDK را فراخوانی می‌کند، بیش از 30 نوع StreamEvent را از طریق stdout emit می‌کند و 36 ابزار MCP را از طریق کانال‌های IPC فایلی با نوشتن اتمیک به فرآیند اصلی ارائه می‌دهد.
 - **Desktop** (`desktop/`): یک پوستهٔ Electron که یک اپ مستقل برای macOS / Windows / Linux بسته‌بندی می‌کند.
 
 هشت کانال IM (Feishu، Telegram، QQ، DingTalk، WeChat، Discord، WhatsApp، Web) از طریق مسیریاب وارد می‌شوند، پس از حذف تکرار در صف قرار می‌گیرند، کلید API / موتور را از طریق ProviderPool انتخاب می‌کنند و container، فرآیند host یا sandbox راه‌اندازی می‌گردد. رویدادهای streaming با WebSocket به کلاینت‌های وب و از طریق IM API به هر کانال بازمی‌گردند.

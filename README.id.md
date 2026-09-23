@@ -49,13 +49,18 @@ DeepThink, platform evolusi-diri superinteligensi Agent otonom kelas enterprise,
 - **Harness & Loop Engineering** — Manifes harness berversi (system prompt / subagents / tools / skills) dengan snapshot / diff / eval / promote / rollback, plus loop tugas otonom berjalan lama dengan tinjauan per iterasi dan reinjeksi kegagalan
 - **Autonomy Layer dan Autonomous Mode** *(v1.1.0)* — Autonomy Layer lintas-sistem menyatukan 7 kapabilitas (perception / cognition / decision / execution / learning / adaptation / monitoring) dengan metrics collection dan E2E acceptance; plus Autonomous Mode penuh yang memungkinkan Agent menyelesaikan tugas end-to-end tanpa bimbingan manusia, mencakup three defense layers (CLAUDE.md pengesampingan konstitusional / Supervisor penembusan klarifikasi / RLHF kesopanan akhir giliran) dan four hard brakes (perintah destruktif / batas giliran / batas token / deteksi loop)
 - **Agent-as-a-Service (PaaS)** — Buat, versi, mount, bagikan, dan pasang definisi Agent berbasis DB lintas tenant, dengan kuota per pengguna, tinjauan admin, dan marketplace template yang dapat dipublikasikan
+- **Cloud-Native & Skalabel Horizontal** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3 menggantikan stack state single-node: event bus Redis untuk fan-out antar-pod, pemilihan leader terdistribusi (kanal IM / penjadwal / pekerjaan periodik), dan penyimpanan objek S3/MinIO untuk I/O trace dan file workspace. Tanpa `DATABASE_URL` / `REDIS_URL`, sistem turun ke mode SQLite satu proses
+- **Agent Group Chat (Swarm)** *(v1.4.0)* — Percakapan grup multi-Agent berbasis kursi, di mana setiap kursi mengikat definisi Agent dengan prompt peran, kebijakan bicara, mount, dan anggaran token/waktunya sendiri, plus panel eksekusi pipeline langsung
+- **Workbench Kolaborasi Karyawan Digital** *(v1.4.0)* — Tim karyawan digital yang persisten dengan mesin status tugas (`pending → in_progress → review → done` plus rework), blackboard bersama, dan dashboard throughput
+- **AgentNet Disk** *(v1.4.0)* — Drive file enterprise dengan pohon folder, unggah / unduh / pindah / hapus / cari, recycle bin dengan pemulihan, dan riwayat versi file
+- **Eval Center** *(v1.4.0)* — Evaluasi mandiri pada PostgreSQL-nya sendiri: proyek → dataset → versi → kasus uji → rubrik → eval run, dengan assertion deterministik, penilaian LLM-judge, anotasi Golden, dan deteksi drift berbasis embedding
 - **Isolasi multi-pengguna** — Workspace per pengguna, kanal IM per pengguna, sistem izin RBAC, pendaftaran kode undangan, log audit
 - **Routing terpadu delapan kanal** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, dan antarmuka Web — semuanya dirutekan seragam
 - **Multi-engine & multi-provider** — Engine code-agent pluggable (Claude Code / AtomCode / Codex / OpenCode) dan beberapa provider Claude API dengan tiga strategi load balancing (round-robin / weighted / failover) dengan deteksi kesehatan otomatis
 - **Eksekusi kode sandboxed** — Sandbox Docker + seccomp + cgroups untuk eksekusi kode Python / Node / shell dan otomatisasi browser Chromium CDP
 - **Billing dan statistik penggunaan** — sistem billing lengkap (paket langganan, dompet, kode penukaran), pelacakan token per model dengan grafik
 - **PWA mobile** — Dioptimalkan mendalam untuk mobile, instalasi satu ketuk ke layar utama, iOS / Android disesuaikan
-- **Internasionalisasi** — 29 bahasa UI dengan endonim asli dan dukungan RTL; Agent membalas dalam bahasa yang dipilih pengguna
+- **Internasionalisasi** — 30 bahasa UI dengan endonim asli dan dukungan RTL; Agent membalas dalam bahasa yang dipilih pengguna
 
 ## Peragaan Fitur
 
@@ -101,6 +106,8 @@ cd deepthink
 make start
 ```
 
+Untuk penerapan multi-replika, gunakan `make k8s-deploy` — lihat bagian Variabel Lingkungan di README bahasa Inggris untuk `DATABASE_URL` / `REDIS_URL`.
+
 Kunjungi http://localhost:9898 dan ikuti panduan pengaturan: buat administrator (tidak ada akun default), konfigurasikan Claude API, dan opsional konfigurasikan kanal IM. Semua konfigurasi dilakukan dari antarmuka Web, tanpa file konfigurasi. Kunci API disimpan terenkripsi dengan AES-256-GCM.
 
 ### Mengaktifkan mode kontainer
@@ -123,9 +130,9 @@ Setelah pendaftaran, setiap pengguna baru otomatis mendapatkan workspace utama d
 
 DeepThink terdiri dari empat proyek Node.js independen:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): layanan utama dengan router pesan (polling 2s + dedup), antrean konkurensi (hingga 20 kontainer + 5 proses host), penjadwal tugas (cron / interval / once), server WebSocket untuk streaming real-time dan terminal, autentikasi bcrypt + HMAC Cookie, RBAC, dan manajemen konfigurasi terenkripsi AES-256-GCM. Persistensi SQLite (mode WAL, skema v1→v51). Termasuk juga lapisan Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox, dan Claude Code Plugins.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): layanan utama dengan router pesan (polling 2s + dedup), antrean konkurensi (hingga 20 kontainer + 5 proses host), penjadwal tugas (cron / interval / once), server WebSocket untuk streaming real-time dan terminal, autentikasi bcrypt + HMAC Cookie, RBAC, dan manajemen konfigurasi terenkripsi AES-256-GCM. Bidang data SQLite (mode WAL, skema v1→v70) pada satu node, atau PostgreSQL + pgvector dengan Redis (event bus + pemilihan leader) dan MinIO/S3 (penyimpanan objek) saat diskalakan secara horizontal di Kubernetes. Termasuk juga lapisan Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox, dan Claude Code Plugins.
 - **Frontend** (`web/`): SPA React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4, dengan react-markdown, mermaid, recharts, xterm.js, dan PWA mobile.
-- **Agent Runner** (`container/agent-runner/`): mesin eksekusi yang berjalan di dalam kontainer Docker atau sebagai proses host; memanggil `query()` dari Claude Agent SDK, memancarkan 30+ jenis StreamEvent via stdout, dan menyediakan 27 alat MCP ke proses utama melalui kanal IPC berbasis file dengan penulisan atomik.
+- **Agent Runner** (`container/agent-runner/`): mesin eksekusi yang berjalan di dalam kontainer Docker atau sebagai proses host; memanggil `query()` dari Claude Agent SDK, memancarkan 30+ jenis StreamEvent via stdout, dan menyediakan 36 alat MCP ke proses utama melalui kanal IPC berbasis file dengan penulisan atomik.
 - **Desktop** (`desktop/`): shell Electron yang memaketkan aplikasi standalone untuk macOS / Windows / Linux.
 
 Delapan kanal IM (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) masuk ke router, dideduplikasi dan dirutekan ke antrean, yang melalui provider pool memilih kunci API / engine dan memulai kontainer, proses host, atau sandbox. Event streaming disiarkan melalui WebSocket ke klien Web atau dibalas via API IM ke setiap kanal.

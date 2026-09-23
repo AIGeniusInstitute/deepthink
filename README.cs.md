@@ -49,13 +49,18 @@ DeepThink, platforma pro samo-vyvíjející se superinteligenci autonomního Age
 - **Harness & Loop Engineering** — verzované harness manifesty (system prompt / subagenti / nástroje / skills) se snapshot / diff / eval / promote / rollback, plus dlouho běžící autonomní smyčky úloh s revizí po každé iteraci a reinjekcí selhání
 - **Autonomy Layer a Autonomous Mode** *(v1.1.0)* — Průřezová Autonomy Layer sjednocuje 7 capabilities (perception / cognition / decision / execution / learning / adaptation / monitoring) s metrics collection a E2E acceptance; plus plný Autonomous Mode, který umožňuje Agentovi dokončit úkol end-to-end bez lidského vedení, pokrývá three defense layers (CLAUDE.md ústavní přepsání / Supervisor obejití upřesnění / RLHF slušnost konce kola) a four hard brakes (destruktivní příkazy / limit kol / limit tokenů / detekce smyčky)
 - **Agent-as-a-Service (PaaS)** — vytváření, verzování, mountování, sdílení a instalace DB-backed Agent definic napříč tenanty, s per-user kvótami, schválením adminem a publikovatelným tržištěm šablon
+- **Cloud-native a horizontálně škálovatelné** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3 nahrazují jednouzlový stavový stack: Redis event bus pro fan-out mezi pody, distribuovaná volba lídra (IM kanály / plánovač / periodické úlohy) a objektové úložiště S3/MinIO pro trace I/O a soubory pracovního prostoru. Pokud `DATABASE_URL` / `REDIS_URL` nenastavíte, degraduje to na jednoprocesový režim SQLite
+- **Skupinový chat Agent (Swarm)** *(v1.4.0)* — Skupinové konverzace více Agent založené na sedadlech, kde každé sedadlo váže definici Agent s vlastním promptem role, politikou mluvení, mounty a rozpočtem tokenů/času, plus živý panel pro spouštění pipeline
+- **Pracovní stůl pro spolupráci digitálních zaměstnanců** *(v1.4.0)* — Trvalé týmy digitálních zaměstnanců se stavovým automatem úloh (`pending → in_progress → review → done` plus přepracování), sdílenou tabulí a dashboardem propustnosti
+- **AgentNet Disk** *(v1.4.0)* — Podnikový souborový disk se stromem složek, nahráváním / stahováním / přesunem / smazáním / hledáním, košem s obnovou a historií verzí souborů
+- **Eval Center** *(v1.4.0)* — Samostatné vyhodnocování na vlastním PostgreSQL: projekty → datasety → verze → testovací případy → rubriky → eval běhy, s deterministickými assertiony, skórováním LLM-judge, Golden anotacemi a detekcí driftu založenou na embedding
 - **Izolace více uživatelů** — uživatelské workspaces, per-user IM kanály, RBAC oprávnění, registrace přes pozvánkové kódy, audit log
 - **Osmikanálové sjednocené směrování** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp a webové rozhraní — vše směrováno jednotně
 - **Multi-Engine a Multi-Provider** — plug-in code-agent enginy (Claude Code / AtomCode / Codex / OpenCode) a více Claude API providerů se třemi strategiemi load balancingu (round-robin / weighted / failover) s automatickým health checkem
 - **Sandboxed spuštění kódu** — Docker + seccomp + cgroups ztučněný sandbox pro spouštění Python / Node / shell kódu a Chromium CDP browser automatizaci
 - **Billing a statistiky využití** — kompletní billing (subscription, wallet, redemption kódy), sledování tokenů dle modelu s grafy
 - **Mobilní PWA** — hluboce optimalizováno pro mobil, instalace na domovskou obrazovku jedním klikem, iOS i Android
-- **Internationalizováno** — 29 UI jazyků s nativními endonymy a podporou RTL; Agent odpovídá v jazyce, který si uživatel zvolí
+- **Internationalizováno** — 30 UI jazyků s nativními endonymy a podporou RTL; Agent odpovídá v jazyce, který si uživatel zvolí
 
 ## Ukázka funkcí
 
@@ -101,6 +106,8 @@ cd deepthink
 make start
 ```
 
+Pro nasazení s více replikami použijte `make k8s-deploy` — viz sekce Environment Variables v anglickém README pro `DATABASE_URL` / `REDIS_URL`.
+
 Otevřete http://localhost:9898 a následujte setup průvodce: vytvořte administrátora (žádný výchozí účet), nastavte Claude API a případně IM kanály. Vše se konfiguruje z webového rozhraní, žádné konfigurační soubory. API klíče se ukládají šifrované pomocí AES-256-GCM.
 
 ### Aktivace kontejnerového režimu
@@ -123,9 +130,9 @@ Po registraci nového uživatele se automaticky vytvoří jeho hlavní workspace
 
 DeepThink se skládá ze čtyř nezávislých Node.js projektů:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): hlavní služba se směrovačem zpráv (2s polling + deduplikace), konkurenční frontou (až 20 kontejnerů + 5 host procesů), plánovačem úloh (cron / interval / once), WebSocket serverem pro real-time streaming a terminál, bcrypt + HMAC Cookie auth, RBAC a AES-256-GCM šifrovanou správou konfigurace. Perzistence v SQLite (WAL režim, schema v1→v51). Zahrnuje také vrstvy Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox a Claude Code Plugins.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): hlavní služba se směrovačem zpráv (2s polling + deduplikace), konkurenční frontou (až 20 kontejnerů + 5 host procesů), plánovačem úloh (cron / interval / once), WebSocket serverem pro real-time streaming a terminál, bcrypt + HMAC Cookie auth, RBAC a AES-256-GCM šifrovanou správou konfigurace. Datová vrstva je na jednom uzlu SQLite (WAL režim, schema v1→v70), nebo při horizontálním škálování na Kubernetes PostgreSQL + pgvector s Redis (event bus + volba lídra) a MinIO/S3 (objektové úložiště). Zahrnuje také vrstvy Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox a Claude Code Plugins.
 - **Frontend** (`web/`): React 19 SPA + Vite 6 + Zustand 5 + Tailwind CSS 4, s react-markdown, mermaid, recharts, xterm.js a mobilní PWA.
-- **Agent Runner** (`container/agent-runner/`): provozní engine běžící v Docker kontejneru nebo jako host proces. Volá `query()` z Claude Agent SDK, emituje 30+ typů StreamEvent přes stdout a přes souborové IPC kanály s atomickým zápisem poskytuje 27 MCP nástrojů rodičovskému procesu.
+- **Agent Runner** (`container/agent-runner/`): provozní engine běžící v Docker kontejneru nebo jako host proces. Volá `query()` z Claude Agent SDK, emituje 30+ typů StreamEvent přes stdout a přes souborové IPC kanály s atomickým zápisem poskytuje 36 MCP nástrojů rodičovskému procesu.
 - **Desktop** (`desktop/`): Electron shell balící standalone aplikaci pro macOS / Windows / Linux.
 
 Osm IM kanálů (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) vstupuje do směrovače, probíhá deduplikací, zařazuje se do fronty, která přes ProviderPool vybere API klíč / engine a spustí kontejner, host proces nebo sandbox. Streamovací události se vysílají přes WebSocket webovým klientům nebo se odpovídají přes IM API do jednotlivých kanálů.

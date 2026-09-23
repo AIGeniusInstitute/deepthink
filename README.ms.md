@@ -49,13 +49,18 @@ DeepThink, platform evolusi-diri superinteligensi Agent autonomi gred enterprise
 - **Harness & Loop Engineering** — manifest harness berversi (system prompt / subagents / tools / skills) dengan snapshot / diff / eval / promote / rollback, serta loop tugasan autonomi jangka panjang dengan semakan setiap lelaran dan suntikan semula kegagalan
 - **Autonomy Layer dan Autonomous Mode** *(v1.1.0)* — Autonomy Layer melintasi sistem menyatukan 7 keupayaan (perception / cognition / decision / execution / learning / adaptation / monitoring) dengan metrics collection dan E2E acceptance; tambah Autonomous Mode penuh yang membolehkan Agent menyelesaikan tugas end-to-end tanpa bimbingan manusia, meliputi three defense layers (CLAUDE.md pembatalan perlembagaan / Supervisor pintasan penjelasan / RLHF kesopanan hujung giliran) dan four hard brakes (arahan memusnahkan / had giliran / had token / pengesanan gelung)
 - **Agent-as-a-Service (PaaS)** — cipta, versi, lekap, kongsi dan pasang definisi Agent berasaskan pangkalan data merentasi tenant, dengan kuota setiap pengguna, semakan pentadbir dan pasaran templat boleh terbit
+- **Cloud-Native & Boleh Skala Secara Mendatar** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3 menggantikan stak keadaan nod tunggal: bas peristiwa Redis untuk fan-out merentas pod, pemilihan pemimpin teragih (saluran IM / penjadual / kerja berkala), dan storan objek S3/MinIO untuk I/O jejak dan fail workspace. Jika `DATABASE_URL` / `REDIS_URL` tidak ditetapkan, ia turun ke mod SQLite satu proses
+- **Agent Group Chat (Swarm)** *(v1.4.0)* — Perbualan kumpulan berbilang-Agent berasaskan kerusi, di mana setiap kerusi mengikat definisi Agent dengan prompt peranan, dasar bercakap, lekap dan bajet token/masa tersendiri, serta panel pelaksanaan saluran paip secara langsung
+- **Meja Kerja Kerjasama Pekerja Digital** *(v1.4.0)* — Pasukan kekal pekerja digital dengan mesin keadaan tugas (`pending → in_progress → review → done` serta rework), papan hitam kongsi, dan papan pemuka daya pemprosesan
+- **AgentNet Disk** *(v1.4.0)* — Pemacu fail gred enterprise dengan pokok folder, muat naik / muat turun / alih / padam / cari, tong kitar semula dengan pemulihan, dan sejarah versi fail
+- **Eval Center** *(v1.4.0)* — Penilaian kendiri pada PostgreSQL tersendiri: projek → set data → versi → kes ujian → rubrik → larian eval, dengan penegasan deterministik, pemarkahan LLM-judge, anotasi Golden dan pengesanan hanyut berasaskan embedding
 - **Pencilan berbilang pengguna** — workspace setiap pengguna, saluran IM setiap pengguna, sistem kebenaran RBAC, pendaftaran kod jemputan dan log audit
 - **Penghalaan lapan saluran disatukan** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp dan antara muka web — semuanya dihalakan secara seragam
 - **Berbilang enjin dan berbilang penyedia** — enjin ejen kod boleh palam (Claude Code / AtomCode / Codex / OpenCode) dan berbilang penyedia Claude API dengan tiga strategi imbangan beban (round-robin / weighted / failover), pengesanan kesihatan automatik
 - **Pelaksanaan kod bersandbox** — sandbox Docker + seccomp + cgroups yang dikeraskan untuk pelaksanaan kod Python / Node / shell dan automasi pelayar Chromium CDP
 - **Pengebilan dan statistik penggunaan** — sistem pengebilan penuh (langganan, dompet, kod penebusan), penjejakan token setiap model dengan visualisasi carta
 - **PWA mudah alih** — dioptimumkan untuk mudah alih, pemasangan ke skrin rumah dengan satu ketik, disesuaikan untuk iOS / Android
-- **Antarabangsa** — 29 bahasa UI dengan endonim natif dan sokongan RTL; Agent membalas dalam bahasa yang dipilih pengguna
+- **Antarabangsa** — 30 bahasa UI dengan endonim natif dan sokongan RTL; Agent membalas dalam bahasa yang dipilih pengguna
 
 ## Galakan Ciri
 
@@ -101,6 +106,8 @@ cd deepthink
 make start
 ```
 
+Untuk penggunaan berbilang replika, gunakan `make k8s-deploy` — lihat bahagian Environment Variables dalam README Bahasa Inggeris untuk `DATABASE_URL` / `REDIS_URL`.
+
 Buka http://localhost:9898 dan ikuti wizard pemasangan: cipta pentadbir (tiada akaun lalai), konfigurasi Claude API dan saluran IM jika perlu. Semuanya dikonfigurasi dari antara muka web, tiada fail konfigurasi. Kunci API disulitkan dengan AES-256-GCM.
 
 ### Pengaktifan mod container
@@ -123,9 +130,9 @@ Selepas pendaftaran pengguna baharu, workspace utama mod container (`home-{userI
 
 DeepThink terdiri daripada empat projek Node.js bebas:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): perkhidmatan utama dengan penghala mesej (polling 2s + nyahpendua), baris gilir serentak (maksimum 20 container + 5 proses host), penjadual tugas (cron / interval / once), pelayan WebSocket untuk penstriman masa nyata dan terminal, pengesahan bcrypt + HMAC Cookie, RBAC, dan pengurusan konfigurasi tersulit AES-256-GCM. Penerusan SQLite (mod WAL, schema v1→v51). Ia juga merangkumi lapisan Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox dan Claude Code Plugins.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): perkhidmatan utama dengan penghala mesej (polling 2s + nyahpendua), baris gilir serentak (maksimum 20 container + 5 proses host), penjadual tugas (cron / interval / once), pelayan WebSocket untuk penstriman masa nyata dan terminal, pengesahan bcrypt + HMAC Cookie, RBAC, dan pengurusan konfigurasi tersulit AES-256-GCM. Penerusan SQLite (mod WAL, schema v1→v70) pada satu nod, atau PostgreSQL + pgvector dengan Redis (bas peristiwa + pemilihan pemimpin) dan MinIO/S3 (storan objek) apabila diskalakan secara mendatar pada Kubernetes. Ia juga merangkumi lapisan Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox dan Claude Code Plugins.
 - **Frontend** (`web/`): React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA, dengan react-markdown, mermaid, recharts, xterm.js dan PWA mudah alih.
-- **Agent Runner** (`container/agent-runner/`): enjin pelaksanaan yang berjalan dalam container Docker atau sebagai proses host; ia memanggil `query()` Claude Agent SDK, memancarkan 30+ jenis StreamEvent melalui stdout dan menyediakan 27 alat MCP kepada proses induk melalui saluran IPC berasaskan fail dengan tulisan atomik.
+- **Agent Runner** (`container/agent-runner/`): enjin pelaksanaan yang berjalan dalam container Docker atau sebagai proses host; ia memanggil `query()` Claude Agent SDK, memancarkan 30+ jenis StreamEvent melalui stdout dan menyediakan 36 alat MCP kepada proses induk melalui saluran IPC berasaskan fail dengan tulisan atomik.
 - **Desktop** (`desktop/`): cangkang Electron yang mempakej aplikasi mandiri untuk macOS / Windows / Linux.
 
 Lapan saluran IM (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) memasuki penghala, dinyahpendua dan dihalakan ke baris gilir, yang memilih kunci API / enjin melalui kolam penyedia dan melancarkan container, proses host atau sandbox. Acara penstriman disiarkan melalui WebSocket ke klien web atau dibalas melalui API IM ke setiap saluran.

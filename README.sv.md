@@ -49,13 +49,18 @@ DeepThink, en företagsklassad plattform för själv-evolverande superintelligen
 - **Harness & Loop Engineering** — Versionerade harness-manifest (system-prompt / subagenter / verktyg / skills) med snapshot / diff / eval / promote / rollback, plus långkörande autonoma uppgiftsloopar med per-iteration-granskning och återinjektion av fel
 - **Autonomy Layer och Autonomous Mode** *(v1.1.0)* — En tvärgående Autonomy Layer förenar de 7 kapabiliteterna (perception / cognition / decision / execution / learning / adaptation / monitoring) med metrics collection och E2E acceptance; plus ett fullständigt Autonomous Mode som låter Agenten slutföra en uppgift end-to-end utan mänsklig handledning, täcker three defense layers (CLAUDE.md konstitutionell åsidosättning / Supervisor förbipassage av förtydligande / RLHF artighet vid slut av tur) och four hard brakes (destruktiva kommandon / tur-gräns / token-gräns / loop-detektering)
 - **Agent-as-a-Service (PaaS)** — Skapa, versionera, montera, dela och installera databasbaserade Agent-definitioner över tenants, med per-user-kvoter, admin-granskning och en publicerbar mallmarknadsplats
+- **Molnnative och horisontellt skalbar** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3 ersätter den ennodiga tillståndsstacken: en Redis-händelsebuss för fan-out mellan poddar, distribuerat ledarval (IM-kanaler / schemaläggare / periodiska jobb) och S3/MinIO-objektlagring för trace-I/O och workspace-filer. Om `DATABASE_URL` / `REDIS_URL` inte sätts degraderar det till enkelprocessläget med SQLite
+- **Agent-gruppchatt (Swarm)** *(v1.4.0)* — Platsbaserade gruppkonversationer med flera Agenter, där varje plats binder en Agent-definition med egen roll-prompt, talpolicy, mountar och token-/tidsbudget, plus en live-panel för pipeline-exekvering
+- **Arbetsbänk för samarbete mellan digitala medarbetare** *(v1.4.0)* — Beständiga team av digitala medarbetare med en uppgiftstillståndsmaskin (`pending → in_progress → review → done` plus omarbete), en delad svart tavla och en throughput-dashboard
+- **AgentNet Disk** *(v1.4.0)* — Företagsfilenhet med mappträd, uppladdning / nedladdning / flytt / borttagning / sökning, papperskorg med återställning och filversionshistorik
+- **Eval Center** *(v1.4.0)* — Fristående utvärdering på egen PostgreSQL: projekt → dataset → versioner → testfall → rubriker → eval-körningar, med deterministiska assertioner, LLM-judge-poängsättning, Golden-annoteringar och embedding-baserad drift-detektering
 - **Flervän isolering** — Workspace per användare, IM-kanaler per användare, RBAC-rättighetssystem, inbjudningskod-registrering, revisionslogg
 - **Åtta-kanals enhetlig routing** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp och webbgränssnittet — alla enhetligt dirigerade
 - **Multi-motor & multi-provider** — Pluggbara kod-agent-motorer (Claude Code / AtomCode / Codex / OpenCode) och flera Claude API-leverantörer med tre lastbalanseringsstrategier (round-robin / weighted / failover), automatisk hälsokontroll
 - **Sandbox-kodexekvering** — Docker + seccomp + cgroups härdad sandbox för Python / Node / shell-kod och Chromium CDP-browserautomatisering
 - **Fakturering och användningsstatistik** — Komplett faktureringssystem (prenumeration, plånbok, inlösenkoder), token-spårning per modell med diagramvisualiseringar
 - **Mobil PWA** — Djupt optimerad för mobil, installation på hemskärm med ett klick, både iOS och Android
-- **Internationaliserat** — 29 UI-språk med inhemska endonymer och RTL-stöd; Agent svarar på användarens valda språk
+- **Internationaliserat** — 30 UI-språk med inhemska endonymer och RTL-stöd; Agent svarar på användarens valda språk
 
 ## Funktionsöversikt
 
@@ -101,6 +106,8 @@ cd deepthink
 make start
 ```
 
+För distribution med flera repliker, använd `make k8s-deploy` — se avsnittet Environment Variables i den engelska README för `DATABASE_URL` / `REDIS_URL`.
+
 Öppna http://localhost:9898 och följ setup-guiden: skapa en administratör (inget standardkonto), konfigurera Claude API och vid behov IM-kanaler. Allt konfigureras från webbgränssnittet, inga konfigurationsfiler. API-nycklar krypteras med AES-256-GCM.
 
 ### Aktivera containerläge
@@ -123,9 +130,9 @@ Efter registrering av ny användare skapas main-workspace i containerläge (`hom
 
 DeepThink består av fyra oberoende Node.js-projekt:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): huvudtjänsten med en meddelanderouter (2s polling + deduplicering), samtidighetskö (max 20 containrar + 5 host-processer), task-scheduler (cron / interval / once), WebSocket-server för realtidsstreaming och terminal, bcrypt + HMAC Cookie-autentisering, RBAC och AES-256-GCM-krypterad konfigurationshantering. SQLite-persistens (WAL-läge, schema v1→v51). Innehåller även Harness / Loop Engineering-, Agent-as-a-Service (PaaS)-, Sandbox- och Claude Code Plugins-lager.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): huvudtjänsten med en meddelanderouter (2s polling + deduplicering), samtidighetskö (max 20 containrar + 5 host-processer), task-scheduler (cron / interval / once), WebSocket-server för realtidsstreaming och terminal, bcrypt + HMAC Cookie-autentisering, RBAC och AES-256-GCM-krypterad konfigurationshantering. Dataplanet är SQLite på en enda nod (WAL-läge, schema v1→v70), eller PostgreSQL + pgvector med Redis (händelsebuss + ledarval) och MinIO/S3 (objektlagring) vid horisontell skalning på Kubernetes. Innehåller även Harness / Loop Engineering-, Agent-as-a-Service (PaaS)-, Sandbox- och Claude Code Plugins-lager.
 - **Frontend** (`web/`): en React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA, med react-markdown, mermaid, recharts, xterm.js och en mobil PWA.
-- **Agent Runner** (`container/agent-runner/`): exekveringsmotorn som körs i en Docker-container eller som host-process; anropar Claude Agent SDK:s `query()`, emitterar 30+ typer av StreamEvent via stdout och exponerar 27 MCP-verktyg för huvudprocessen via filbaserade IPC-kanaler med atomiska skrivningar.
+- **Agent Runner** (`container/agent-runner/`): exekveringsmotorn som körs i en Docker-container eller som host-process; anropar Claude Agent SDK:s `query()`, emitterar 30+ typer av StreamEvent via stdout och exponerar 36 MCP-verktyg för huvudprocessen via filbaserade IPC-kanaler med atomiska skrivningar.
 - **Desktop** (`desktop/`): ett Electron-skal som paketerar en fristående app för macOS / Windows / Linux.
 
 De åtta IM-kanalerna (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) kommer in via routern, dedupliceras och dirigeras till kön, som väljer API-nyckel / motor via provider-poolen och startar en container, host-process eller sandbox. Streaming-händelser sänds via WebSocket till webbklienter eller besvaras via IM-API:er till respektive kanal.

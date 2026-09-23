@@ -49,13 +49,18 @@ DeepThink, એક એન્ટરપ્રાઇઝ-ગ્રેડ સ્વા
 - **Harness & Loop Engineering** — વર્ઝનવાળા harness manifest (system prompt / subagents / tools / skills) સાથે snapshot / diff / eval / promote / rollback, અને દરેક iteration પર review તથા નિષ્ફળતા ફરીથી ઇન્જેક્ટ કરતા લાંબા ગાળાના સ્વાયત્ત કાર્ય લૂપ
 - **Autonomy Layer અને Autonomous Mode** *(v1.1.0)* — એક ક્રોસ-કટિંગ Autonomy Layer ૭ ક્ષમતાઓને (perception / cognition / decision / execution / learning / adaptation / monitoring) metrics collection અને E2E acceptance સાથે એકત્રિત કરે છે; વધુમાં એક સંપૂર્ણ Autonomous Mode જે Agent ને માનવ હસ્તક્ષેપ વગર કાર્યને end-to-end પૂર્ણ કરવા દે છે, three defense layers (CLAUDE.md બંધારણીય ઓવરરાઇડ / Supervisor સ્પષ્ટતા બાયપાસ / RLHF ફાઈનલ-ટર્ન શિષ્ટાચાર) અને four hard brakes (વિનાશકારી આદેશો / ટર્ન લિમિટ / ટોકન લિમિટ / લૂપ શોધ) ને આવરે છે
 - **Agent-as-a-Service (PaaS)** — DB આધારિત Agent વ્યાખ્યાઓને ટેનન્ટ વચ્ચે બનાવો, વર્ઝન આપો, માઉન્ટ કરો, શેર કરો અને ઇન્સ્ટોલ કરો, per-user ક્વોટા, admin review અને પ્રકાશિત થઈ શકતા template marketplace સાથે
+- **ક્લાઉડ-નેટિવ અને આડી રીતે સ્કેલ થઈ શકે તેવું** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3 એ સિંગલ-નોડ સ્ટેટ સ્ટેકને બદલે છે: ક્રોસ-પોડ fan-out માટે Redis event bus, વિતરિત leader election (IM ચેનલ / શેડ્યૂલર / સામયિક જોબ્સ), અને trace I/O તથા workspace ફાઇલો માટે S3/MinIO object storage. `DATABASE_URL` / `REDIS_URL` સેટ ન કરો તો તે સિંગલ-પ્રોસેસ SQLite મોડમાં ડિગ્રેડ થાય છે
+- **Agent Group Chat (Swarm)** *(v1.4.0)* — સીટ-આધારિત મલ્ટિ-Agent જૂથ વાર્તાલાપ, જ્યાં દરેક સીટ એક Agent વ્યાખ્યાને તેના પોતાના role prompt, બોલવાની નીતિ, mount અને ટોકન/સમય બજેટ સાથે બાંધે છે, ઉપરાંત લાઇવ pipeline એક્ઝિક્યુશન પેનલ
+- **ડિજિટલ કર્મચારી સહયોગ વર્કબેન્ચ** *(v1.4.0)* — ડિજિટલ કર્મચારીઓની સ્થાયી ટીમો, કાર્ય state machine (`pending → in_progress → review → done` ઉપરાંત rework), શેર કરેલું blackboard, અને throughput ડૅશબોર્ડ સાથે
+- **AgentNet Disk** *(v1.4.0)* — ફોલ્ડર ટ્રી, અપલોડ / ડાઉનલોડ / ખસેડો / કાઢી નાખો / શોધો, પુનઃસ્થાપન સાથે recycle bin, અને ફાઇલ વર્ઝન ઇતિહાસ સાથેનું એન્ટરપ્રાઇઝ ફાઇલ ડ્રાઇવ
+- **Eval Center** *(v1.4.0)* — તેના પોતાના PostgreSQL પર સ્વતંત્ર મૂલ્યાંકન: પ્રોજેક્ટ્સ → datasets → વર્ઝન → ટેસ્ટ કેસ → rubrics → eval runs, deterministic assertions, LLM-judge સ્કોરિંગ, Golden એનોટેશન અને embedding-આધારિત drift ડિટેક્શન સાથે
 - **મલ્ટિ-યુઝર અલગતા** — દરેક યુઝરનું workspace, દરેક યુઝરનું IM ચેનલ, RBAC પરવાનગી સિસ્ટમ, આમંત્રણ-કોડ રજિસ્ટ્રેશન, ઓડિટ લોગ
 - **આઠ-ચેનલ એકીકૃત રાઉટિંગ** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp અને વેબ ઇન્ટરફેસ — બધા એકસરખે રાઉટ થાય
 - **મલ્ટિ-એન્જિન અને મલ્ટિ-પ્રોવાઇડર** — પ્લગેબલ કોડ-એન્જિન (Claude Code / AtomCode / Codex / OpenCode) અને ત્રણ લોડ-બેલેન્સિંગ વ્યૂહરચના (round-robin / weighted / failover) સાથે ઘણા Claude API પ્રોવાઇડર, સ્વયમ હેલ્થ ચેક
 - **સેન્ડબોક્સ્ડ કોડ એક્ઝિક્યુશન** — Python / Node / shell કોડ એક્ઝિક્યુશન અને Chromium CDP બ્રાઉઝર ઓટોમેશન માટે Docker + seccomp + cgroups હાર્ડન્ડ સેન્ડબોક્સ
 - **બિલિંગ અને વપરાશ આંકડા** — સંપૂર્ણ બિલિંગ સિસ્ટમ (સબ્સ્ક્રિપ્શન પ્લાન, વોલેટ બેલેન્સ, રિડીમ્પશન કોડ), મોડેલ-મુજબ ટોકન વપરાશ ટ્રેકિંગ અને ચાર્ટ વિઝ્યુઅલાઇઝેશન
 - **મોબાઇલ PWA** — મોબાઇલ માટે ઊંડે ઑપ્ટિમાઇઝ, એક ટેપમાં હોમ સ્ક્રીન પર ઇન્સ્ટોલ, iOS / Android અનુકૂળ
-- **આંતરરાષ્ટ્રીયકૃત** — 29 UI ભાષાઓ મૂળ endonym અને RTL સપોર્ટ સાથે; Agent યુઝરે પસંદ કરેલી ભાષામાં જવાબ આપે છે
+- **આંતરરાષ્ટ્રીયકૃત** — 30 UI ભાષાઓ મૂળ endonym અને RTL સપોર્ટ સાથે; Agent યુઝરે પસંદ કરેલી ભાષામાં જવાબ આપે છે
 
 ## ફીચર શોકેસ
 
@@ -101,6 +106,8 @@ cd deepthink
 make start
 ```
 
+મલ્ટિ-રેપ્લિકા ડિપ્લોયમેન્ટ માટે, `make k8s-deploy` વાપરો — `DATABASE_URL` / `REDIS_URL` માટે અંગ્રેજી README ના Environment Variables વિભાગ જુઓ.
+
 http://localhost:9898 ખોલો અને સેટઅપ વિઝાર્ડ અનુસરો: admin બનાવો (કોઈ ડિફૉલ્ટ એકાઉન્ટ નહિ), Claude API ગોઠવો અને જરૂર પ્રમાણે IM ચેનલ. બધું જ વેબ ઇન્ટરફેસથી ગોઠવાય છે, કોઈ રૂપરેખા ફાઇલ નહિ. API કી AES-256-GCM થી એન્ક્રિપ્ટ થાય છે.
 
 ### container મોડ સક્રિય કરો
@@ -123,9 +130,9 @@ admin યુઝર મૂળભૂતપણે host મોડ (Docker વિન�
 
 DeepThink ચાર સ્વતંત્ર Node.js પ્રોજેક્ટમાં ગઠિત છે:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): સંદેશ રાઉટર (2s polling + નકલ દૂર), સાથ-સાથે ચાલતી કતાર (મહત્તમ 20 container + 5 host પ્રક્રિયા), કાર્ય સુપરતાકાર (cron / interval / once), real-time streaming અને ટર્મિનલ માટે WebSocket સર્વર, bcrypt + HMAC Cookie ઓળખાણ, RBAC, અને AES-256-GCM એન્ક્રિપ્ટેડ રૂપરેખા સંચાલન. SQLite માહિતી (WAL મોડ, schema v1→v51). તેમાં Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox, અને Claude Code Plugins સ્તર પણ સમાવે છે.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): સંદેશ રાઉટર (2s polling + નકલ દૂર), સાથ-સાથે ચાલતી કતાર (મહત્તમ 20 container + 5 host પ્રક્રિયા), કાર્ય સુપરતાકાર (cron / interval / once), real-time streaming અને ટર્મિનલ માટે WebSocket સર્વર, bcrypt + HMAC Cookie ઓળખાણ, RBAC, અને AES-256-GCM એન્ક્રિપ્ટેડ રૂપરેખા સંચાલન. SQLite માહિતી (WAL મોડ, schema v1→v70) એક નોડ પર, અથવા Kubernetes પર આડી રીતે સ્કેલ કરતી વખતે PostgreSQL + pgvector સાથે Redis (event bus + leader election) અને MinIO/S3 (object storage). તેમાં Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox, અને Claude Code Plugins સ્તર પણ સમાવે છે.
 - **Frontend** (`web/`): React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA, react-markdown, mermaid, recharts, xterm.js અને મોબાઇલ PWA સાથે.
-- **Agent Runner** (`container/agent-runner/`): Docker container અથવા host પ્રક્રિયા તરીકે ચાલતું એક્ઝિક્યુશન એન્જિન; Claude Agent SDK ની `query()` ને બોલાવે છે, stdout મારફતે 30+ StreamEvent પ્રકારો ઉત્સર્જિત કરે છે, અને અણુ-લખાણવાળા ફાઇલ IPC મારફતે 27 MCP ટૂલ મૂળ પ્રક્રિયાને આપે છે.
+- **Agent Runner** (`container/agent-runner/`): Docker container અથવા host પ્રક્રિયા તરીકે ચાલતું એક્ઝિક્યુશન એન્જિન; Claude Agent SDK ની `query()` ને બોલાવે છે, stdout મારફતે 30+ StreamEvent પ્રકારો ઉત્સર્જિત કરે છે, અને અણુ-લખાણવાળા ફાઇલ IPC મારફતે 36 MCP ટૂલ મૂળ પ્રક્રિયાને આપે છે.
 - **Desktop** (`desktop/`): macOS / Windows / Linux માટે સ્ટેન્ડલોન એપ પેકેજ કરતું Electron શેલ.
 
 આઠ IM ચેનલ (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) રાઉટરમાં દાખલ થાય છે, નકલ-દૂરી પછી કતારમાં મૂકાય છે, જે provider pool મારફતે API key / engine પસંદ કરે છે અને container, host પ્રક્રિયા અથવા sandbox શરૂ કરે છે. streaming ઘટનાઓ WebSocket મારફતે વેબ ક્લાયન્ટને અથવા IM API મારફતે દરેક ચેનલને પાછી મોકલાય છે.

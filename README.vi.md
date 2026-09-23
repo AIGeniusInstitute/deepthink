@@ -49,13 +49,18 @@ DeepThink, nền tảng siêu trí tuệ tự tiến hóa Agent tự chủ cấp
 - **Harness & Loop Engineering** — Manifest harness có versioning (system prompt / subagents / tools / skills) với snapshot / diff / eval / promote / rollback, cùng vòng lặp tác vụ tự chủ dài hạn có review từng vòng và re-inject khi thất bại
 - **Autonomy Layer và Autonomous Mode** *(v1.1.0)* — Một Autonomy Layer xuyên suốt hợp nhất 7 năng lực (perception / cognition / decision / execution / learning / adaptation / monitoring) với metrics collection và E2E acceptance; plus một Autonomous Mode trọn vẹn cho phép Agent hoàn thành tác vụ end-to-end không cần con người kèm cặp, bao phủ three defense layers (CLAUDE.md ghi đè hiến chương / Supervisor bỏ qua làm rõ / RLHF lịch sự cuối lượt) và four hard brakes (lệnh phá hủy / giới hạn lượt / giới hạn token / phát hiện vòng lặp)
 - **Agent-as-a-Service (PaaS)** — Tạo, version, mount, chia sẻ và cài đặt các định nghĩa Agent lưu DB giữa các tenant, với quota per-user, review admin, và marketplace template có thể publish
+- **Cloud-Native & Khả năng mở rộng ngang** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3 thay thế ngăn xếp trạng thái đơn nút: một event bus Redis cho fan-out giữa các pod, bầu chọn leader phân tán (kênh IM / scheduler / tác vụ định kỳ), và lưu trữ đối tượng S3/MinIO cho I/O vết và tệp workspace. Bỏ đặt `DATABASE_URL` / `REDIS_URL` thì hệ thống tự hạ cấp về chế độ SQLite đơn tiến trình
+- **Agent Group Chat (Swarm)** *(v1.4.0)* — Trò chuyện nhóm đa-Agent theo ghế (seat), mỗi ghế gắn một định nghĩa agent với prompt vai trò, chính sách phát biểu, mount và ngân sách token/thời gian riêng, kèm bảng điều khiển thực thi pipeline trực tiếp
+- **Bàn làm việc Cộng tác Nhân viên số** *(v1.4.0)* — Các đội nhân viên số thường trực với máy trạng thái tác vụ (`pending → in_progress → review → done` cùng rework), bảng đen chia sẻ, và dashboard thông lượng
+- **AgentNet Disk** *(v1.4.0)* — Ổ đĩa tệp cấp doanh nghiệp với cây thư mục, tải lên / tải xuống / di chuyển / xóa / tìm kiếm, thùng rác có khôi phục, và lịch sử phiên bản tệp
+- **Eval Center** *(v1.4.0)* — Đánh giá độc lập trên PostgreSQL riêng: dự án → tập dữ liệu → phiên bản → ca kiểm thử → rubric → lượt chạy eval, với assertion tất định, chấm điểm bằng LLM-judge, chú thích Golden và phát hiện trôi dạt dựa trên embedding
 - **Cách ly đa người dùng** — Workspace per-user, kênh IM per-user, hệ thống quyền RBAC, đăng ký bằng mã mời, nhật ký kiểm toán
 - **Định tuyến tám kênh thống nhất** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, và giao diện web — đều được định tuyến đồng nhất
 - **Đa engine & đa provider** — Engine agent mã pluggable (Claude Code / AtomCode / Codex / OpenCode) và nhiều provider Claude API với ba chiến lược cân bằng tải (round-robin / weighted / failover), health check tự động
 - **Thực thi mã trong sandbox** — Sandbox Docker + seccomp + cgroups tăng cứng cho thực thi mã Python / Node / shell và tự động hóa trình duyệt Chromium CDP
 - **Billing và thống kê sử dụng** — Hệ thống billing đầy đủ (gói đăng ký, số dư ví, mã đổi thưởng), theo dõi token theo mô hình với biểu đồ trực quan
 - **PWA di động** — Tối ưu sâu cho di động, cài đặt màn hình chính một chạm, tương thích iOS / Android
-- **Quốc tế hóa** — 29 ngôn ngữ UI với endonym bản địa và hỗ trợ RTL; Agent trả lời theo ngôn ngữ người dùng chọn
+- **Quốc tế hóa** — 30 ngôn ngữ UI với endonym bản địa và hỗ trợ RTL; Agent trả lời theo ngôn ngữ người dùng chọn
 
 ## Trưng bày Tính năng
 
@@ -101,6 +106,8 @@ cd deepthink
 make start
 ```
 
+Để triển khai đa bản sao (multi-replica), dùng `make k8s-deploy` — xem phần Environment Variables của README tiếng Anh để biết `DATABASE_URL` / `REDIS_URL`.
+
 Mở http://localhost:9898 và làm theo hướng dẫn cài đặt: tạo admin (không có tài khoản mặc định), cấu hình Claude API và kênh IM nếu cần. Mọi thứ được cấu hình từ giao diện web, không cần tệp cấu hình. Khóa API được mã hóa bằng AES-256-GCM.
 
 ### Kích hoạt chế độ container
@@ -123,9 +130,9 @@ Sau khi đăng ký người dùng mới, workspace chính ở chế độ contai
 
 DeepThink gồm bốn dự án Node.js độc lập:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): service chính với bộ định tuyến tin nhắn (polling 2s + khử trùng), hàng đợi đồng thời (tối đa 20 container + 5 quy trình host), bộ lập lịch tác vụ (cron / interval / once), máy chủ WebSocket cho streaming thời gian thực và terminal, xác thực bcrypt + HMAC Cookie, RBAC, quản lý cấu hình mã hóa AES-256-GCM. Dữ liệu trong SQLite (chế độ WAL, schema v1→v51). Còn bao gồm các tầng Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox, và Claude Code Plugins.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): service chính với bộ định tuyến tin nhắn (polling 2s + khử trùng), hàng đợi đồng thời (tối đa 20 container + 5 quy trình host), bộ lập lịch tác vụ (cron / interval / once), máy chủ WebSocket cho streaming thời gian thực và terminal, xác thực bcrypt + HMAC Cookie, RBAC, quản lý cấu hình mã hóa AES-256-GCM. Dữ liệu trong SQLite (chế độ WAL, schema v1→v70) trên một nút đơn, hoặc PostgreSQL + pgvector với Redis (event bus + bầu chọn leader) và MinIO/S3 (lưu trữ đối tượng) khi mở rộng ngang trên Kubernetes. Còn bao gồm các tầng Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox, và Claude Code Plugins.
 - **Frontend** (`web/`): React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA, với react-markdown, mermaid, recharts, xterm.js, và PWA di động.
-- **Agent Runner** (`container/agent-runner/`): engine thực thi chạy trong Docker container hoặc dưới dạng quy trình host. Gọi `query()` của Claude Agent SDK, phát hơn 30 loại StreamEvent qua stdout, và cung cấp 27 công cụ MCP cho quy trình cha qua kênh IPC tệp với ghi nguyên tử.
+- **Agent Runner** (`container/agent-runner/`): engine thực thi chạy trong Docker container hoặc dưới dạng quy trình host. Gọi `query()` của Claude Agent SDK, phát hơn 30 loại StreamEvent qua stdout, và cung cấp 36 công cụ MCP cho quy trình cha qua kênh IPC tệp với ghi nguyên tử.
 - **Desktop** (`desktop/`): vỏ Electron đóng gói ứng dụng standalone cho macOS / Windows / Linux.
 
 Tám kênh IM (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) đi vào router, được khử trùng và đưa vào hàng đợi, nơi ProviderPool chọn khóa API / engine và khởi động container, quy trình host, hoặc sandbox. Sự kiện streaming được phát tới Web clients qua WebSocket hoặc trả lời qua IM API tới từng kênh.

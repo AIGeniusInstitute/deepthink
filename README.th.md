@@ -49,13 +49,18 @@ DeepThink, แพลตฟอร์มสุดยอดปัญญาประ
 - **Harness & Loop Engineering** — harness manifests แบบมีเวอร์ชัน (system prompt / subagents / tools / skills) พร้อม snapshot / diff / eval / promote / rollback และลูปงานอิสระระยะยาวที่มีการ review ต่อรอบและ re-inject ความล้มเหลว
 - **Autonomy Layer และ Autonomous Mode** *(v1.1.0)* — Autonomy Layer แบบตัดผ่านจะรวม 7 ความสามารถ (perception / cognition / decision / execution / learning / adaptation / monitoring) เข้ากับ metrics collection และ E2E acceptance; บวก Autonomous Mode แบบเต็มที่ช่วยให้ Agent ทำงานจนสมบูรณ์ end-to-end โดยไม่ต้องมีมนุษย์คอยกำกับ ครอบคลุม three defense layers (CLAUDE.md การแทนที่ตามรัฐธรรมนูญ / Supervisor การข้ามการขอความกระจ่าง / RLHF มารยาทตอนท้ายเทิร์น) และ four hard brakes (คำสั่งที่ทำลาย / ขีดจำกัดเทิร์น / ขีดจำกัดโทเค็น / การตรวจจับลูป)
 - **Agent-as-a-Service (PaaS)** — สร้าง, กำหนดเวอร์ชัน, mount, แชร์ และติดตั้งนิยาม Agent ที่เก็บใน DB ข้าม tenant พร้อมโควตาต่อผู้ใช้, การตรวจสอบของ admin และตลาดแม่แบบที่เผยแพร่ได้
+- **Cloud-Native และขยายแนวนอนได้** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3 เข้ามาแทนสแตกสถานะแบบ single-node: Redis event bus สำหรับ fan-out ข้ามพอด, การเลือกผู้นำแบบกระจาย (ช่อง IM / ตัวกำหนดเวลา / งานเป็นระยะ) และที่เก็บออบเจ็กต์ S3/MinIO สำหรับ trace I/O และไฟล์ workspace หากไม่ตั้งค่า `DATABASE_URL` / `REDIS_URL` ระบบจะลดระดับเป็นโหมด SQLite แบบโปรเซสเดียว
+- **Agent Group Chat (Swarm)** *(v1.4.0)* — การสนทนากลุ่มแบบหลาย-Agent ที่อิงที่นั่ง โดยแต่ละที่นั่งผูกกับนิยาม Agent ที่มี role prompt, นโยบายการพูด, mount และงบโทเค็น/เวลาเป็นของตัวเอง พร้อมแผงแสดงการทำงานของไปป์ไลน์แบบสด
+- **เวิร์กเบนช์การทำงานร่วมของพนักงานดิจิทัล** *(v1.4.0)* — ทีมพนักงานดิจิทัลแบบถาวรพร้อม state machine ของงาน (`pending → in_progress → review → done` บวก rework), กระดานดำที่ใช้ร่วมกัน และแดชบอร์ดอัตราการประมวลผล
+- **AgentNet Disk** *(v1.4.0)* — ไดรฟ์ไฟล์ระดับองค์กรพร้อมแผนผังโฟลเดอร์, อัปโหลด / ดาวน์โหลด / ย้าย / ลบ / ค้นหา, ถังรีไซเคิลพร้อมการกู้คืน และประวัติเวอร์ชันของไฟล์
+- **Eval Center** *(v1.4.0)* — การประเมินแบบสแตนด์อะโลนบน PostgreSQL ของตัวเอง: โปรเจกต์ → ชุดข้อมูล → เวอร์ชัน → เคสทดสอบ → rubric → การรัน eval พร้อมการยืนยันแบบ deterministic, การให้คะแนนด้วย LLM judge, คำอธิบาย Golden และการตรวจจับ drift ด้วย embedding
 - **การแยกผู้ใช้หลายคน** — workspace ต่อผู้ใช้, ช่อง IM ต่อผู้ใช้, ระบบสิทธิ์ RBAC, การลงทะเบียนด้วยรหัสเชิญ และ audit log
 - **routing แปดช่องแบบรวม** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp และอินเทอร์เฟซเว็บ — ทังหมด route แบบเหมือนกัน
 - **หลายเอนจินและหลาย provider** — เอนจิน code-agent แบบปลั๊กอิน (Claude Code / AtomCode / Codex / OpenCode) และผู้ใหบริการ Claude API หลายรายพร้อมสามกลยุทธ์ load balancing (round-robin / weighted / failover) และ health check อัตโนมัติ
 - **การรันโค้ดในแซนด์บอ็กซ์** — แซนด์บอ็กซ์ที่ hardening ด้วย Docker + seccomp + cgroups สำหรับรันโค้ด Python / Node / shell และอัตโนมัติเบราว์เซอร์ด้วย Chromium CDP
 - **billing และสถิติการใช้งาน** — ระบบ billing ครบ (สมัครรับสมาชิก, กระเป๋าเงิน, รหัสแลกรางวัล), ติดตาม token ต่อโมเดลพร้อมกราฟ
 - **PWA มือถือ** — ปรับให้เหมาะกับมือถืออย่างลึกซึ้ง, ติดตั้งหน้าจอหลักคลิกเดียว, รองรับ iOS / Android
-- **หลายภาษา** — 29 ภาษาสำหรับ UI พร้อม endonym ดั้งเดิมและรองรับ RTL; Agent ตอบกลับในภาษาที่ผู้ใช้เลือก
+- **หลายภาษา** — 30 ภาษาสำหรับ UI พร้อม endonym ดั้งเดิมและรองรับ RTL; Agent ตอบกลับในภาษาที่ผู้ใช้เลือก
 
 ## โชว์เคสฟีเจอร์
 
@@ -101,6 +106,8 @@ cd deepthink
 make start
 ```
 
+สำหรับการติดตั้งแบบหลาย replica ให้ใช้ `make k8s-deploy` — ดูส่วน Environment Variables ใน README ภาษาอังกฤษสำหรับ `DATABASE_URL` / `REDIS_URL`
+
 เปิด http://localhost:9898 และทำตามวิซาร์ดติดตั้ง: สร้าง admin (ไม่มีบัญชี default), ตั้งค่า Claude API และช่อง IM หากจำเป็น ทุกอย่างตั้งค่าจากอินเทอร์เฟซเว็บ ไม่ต้องมีไฟล์ config คีย์ API เข้ารหัสด้วย AES-256-GCM
 
 ### เปิดใช้งานโหมด container
@@ -123,9 +130,9 @@ make start
 
 DeepThink ประกอบด้วยสี่โปรเจก Node.js อิสระ:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): เซิร์ฟเวอร์หลักที่มี message router (polling 2s + ตัดซ้ำ), concurrent queue (สูงสุด 20 container + 5 โปรเซส host), task scheduler (cron / interval / once), เซิร์ฟเวอร์ WebSocket สำหรับ streaming เรียลไทม์และเทอร์มินัล, การยืนยันตัว bcrypt + HMAC Cookie, RBAC และการจัดการ config เข้ารหัส AES-256-GCM. ข้อมูลใน SQLite (โหมด WAL, schema v1→v51). ยังรวมชั้น Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox และ Claude Code Plugins
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): เซิร์ฟเวอร์หลักที่มี message router (polling 2s + ตัดซ้ำ), concurrent queue (สูงสุด 20 container + 5 โปรเซส host), task scheduler (cron / interval / once), เซิร์ฟเวอร์ WebSocket สำหรับ streaming เรียลไทม์และเทอร์มินัล, การยืนยันตัว bcrypt + HMAC Cookie, RBAC และการจัดการ config เข้ารหัส AES-256-GCM. ข้อมูลใน SQLite (โหมด WAL, schema v1→v70) บนโหนดเดียว หรือ PostgreSQL + pgvector พร้อม Redis (event bus + การเลือกผู้นำ) และ MinIO/S3 (object storage) เมื่อขยายแนวนอนบน Kubernetes. ยังรวมชั้น Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox และ Claude Code Plugins
 - **Frontend** (`web/`): React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA พร้อม react-markdown, mermaid, recharts, xterm.js และ PWA มือถือ
-- **Agent Runner** (`container/agent-runner/`): engine ปฏิบัติการที่รันใน Docker container หรือเป็นโปรเซส host; เรียก `query()` ของ Claude Agent SDK, emit กว่า 30 ประเภท StreamEvent ผ่าน stdout และมอบเครื่องมือ MCP 27 ตัวให้โปรเซสแม่ผ่าน file IPC แบบเขียน atomic
+- **Agent Runner** (`container/agent-runner/`): engine ปฏิบัติการที่รันใน Docker container หรือเป็นโปรเซส host; เรียก `query()` ของ Claude Agent SDK, emit กว่า 30 ประเภท StreamEvent ผ่าน stdout และมอบเครื่องมือ MCP 36 ตัวให้โปรเซสแม่ผ่าน file IPC แบบเขียน atomic
 - **Desktop** (`desktop/`): Electron shell ที่บรรจุแอปแบบสแตนด์อะโลนสำหรับ macOS / Windows / Linux
 
 ช่อง IM แปดช่อง (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) เข้าสู่ router, ถูกตัดซ้ำและ route เข้าคิว ซึ่งเลือกคีย์ API / engine ผ่าน provider pool แล้วเริ่ม container, โปรเซส host หรือแซนด์บอ็กซ์. สตรีมมิ่ง event ส่งไปยัง web clients ผ่าน WebSocket หรือกลับไปยังแต่ละช่องผ่าน IM API

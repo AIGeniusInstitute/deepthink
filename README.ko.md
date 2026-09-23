@@ -49,13 +49,18 @@ DeepThink, 엔터프라이즈급 자율형 Agent 자가진화 슈퍼인텔리전
 - **Harness & Loop Engineering** — 버전 관리되는 harness 매니페스트(시스템 프롬프트 / 서브에이전트 / 도구 / 스킬)로 스냅샷 / diff / eval / 승급 / 롤백 지원, 그리고 반복별 리뷰와 실패 재주입이 가능한 장기 실행 자율 작업 루프
 - **Autonomy Layer & Autonomous Mode** *(v1.1.0)* — 횡단적 Autonomy Layer 가 7가지 역량(perception / cognition / decision / execution / learning / adaptation / monitoring)을 metrics collection 과 E2E acceptance 로 통합. 추가로 완전한 Autonomous Mode 가 Agent 가 사람의 개입 없이 작업을 end-to-end 완수하도록 하며, 3개의 defense layers (CLAUDE.md 헌법적 오버라이드 / Supervisor 명확화 우회 / RLHF 턴 종료 정중함) 와 4개의 hard brakes (파괴적 명령 / 턴 한도 / 토큰 한도 / 루프 탐지)를 포함
 - **Agent-as-a-Service (PaaS)** — DB 기반 Agent 정의를 생성·버전·마운트·공유·설치, 테넌트 간 공유, 사용자별 할당량·관리자 리뷰·게시 가능한 템플릿 마켓플레이스
+- **클라우드 네이티브 & 수평 확장** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3가 단일 노드 상태 스택을 대체합니다: 파드 간 팬아웃을 위한 Redis 이벤트 버스, 분산 리더 선출(IM 채널 / 스케줄러 / 주기 작업), 그리고 트레이스 I/O와 워크스페이스 파일을 위한 S3/MinIO 객체 스토리지. `DATABASE_URL` / `REDIS_URL`을 설정하지 않으면 단일 프로세스 SQLite 모드로 저하됩니다
+- **Agent 그룹 채팅 (Swarm)** *(v1.4.0)* — 좌석 기반 멀티 Agent 그룹 대화로, 각 좌석은 자체 역할 프롬프트, 발언 정책, 마운트, 토큰/시간 예산을 가진 Agent 정의에 바인딩되며, 실시간 파이프라인 실행 패널을 제공합니다
+- **디지털 직원 협업 워크벤치** *(v1.4.0)* — 작업 상태 머신(`pending → in_progress → review → done` 및 재작업), 공유 블랙보드, 처리량 대시보드를 갖춘 디지털 직원의 영구 팀
+- **AgentNet Disk** *(v1.4.0)* — 폴더 트리, 업로드 / 다운로드 / 이동 / 삭제 / 검색, 복원 기능이 있는 휴지통, 파일 버전 이력을 갖춘 엔터프라이즈 파일 드라이브
+- **Eval Center** *(v1.4.0)* — 자체 PostgreSQL에서 독립 실행되는 평가 제품: 프로젝트 → 데이터셋 → 버전 → 테스트 케이스 → 루브릭 → eval 실행, 결정론적 검증, LLM 심사 점수, Golden 주석, 임베딩 기반 드리프트 탐지 포함
 - **다중 사용자 격리** — 사용자별 워크스페이스, 사용자별 IM 채널, RBAC 권한 체계, 초대 코드 가입, 감사 로그
 - **8채널 통합 라우팅** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, 웹 인터페이스를 동일하게 라우팅
 - **멀티 엔진 & 멀티 프로바이더** — 플러그형 코드 에이전트 엔진(Claude Code / AtomCode / Codex / OpenCode)과 다수의 Claude API 프로바이더, 3가지 로드밸런싱 전략(round-robin / weighted / failover), 자동 헬스 탐지
 - **샌드박스 코드 실행** — Docker + seccomp + cgroups 강화 샌드박스에서 Python / Node / 셸 코드 실행 및 Chromium CDP 브라우저 자동화
 - **결제 및 사용 통계** — 완전한 결제 시스템(구독 플랜, 지갑 잔액, 상환 코드), 모델별 토큰 사용량 추적, 차트 시각화
 - **모바일 PWA** — 모바일에 깊게 최적화, 원탭 홈 화면 설치, iOS/Android 대응
-- **국제화** — 29종 UI 언어와 네이티브 고유명칭 및 RTL 지원, Agent가 사용자가 선택한 언어로 응답
+- **국제화** — 30종 UI 언어와 네이티브 고유명칭 및 RTL 지원, Agent가 사용자가 선택한 언어로 응답
 
 ## 기능 쇼케이스
 
@@ -101,6 +106,8 @@ cd deepthink
 make start
 ```
 
+다중 레플리카 배포에는 `make k8s-deploy`를 사용하세요 — `DATABASE_URL` / `REDIS_URL`은 영어 README의 환경 변수 섹션을 참조하세요.
+
 http://localhost:9898 에 접속해 셋업 마법사를 따르세요: 관리자 생성(기본 계정 없음), Claude API 설정, 필요 시 IM 채널 설정. 모든 설정은 웹 인터페이스에서 처리하며 별도의 설정 파일은 필요 없습니다. API 키는 AES-256-GCM으로 암호화되어 저장됩니다.
 
 ### 컨테이너 모드 활성화
@@ -123,9 +130,9 @@ admin 사용자는 기본적으로 호스트 모드(Docker 불필요)를 사용�
 
 DeepThink는 네 개의 독립적인 Node.js 프로젝트로 구성됩니다:
 
-- **백엔드**(Node.js 22 + TypeScript 5.9 + Hono): 메시지 라우터(2초 폴링 + 중복 제거), 동시성 큐(최대 20 컨테이너 + 5 호스트 프로세스), 작업 스케줄러(cron / interval / once), 실시간 스트리밍과 터미널용 WebSocket 서버, bcrypt + HMAC Cookie 인증, RBAC, AES-256-GCM 암호화 설정 관리. SQLite 영속화(WAL 모드, 스키마 v1→v51). 또한 Harness / Loop Engineering, Agent-as-a-Service (PaaS), 샌드박스, Claude Code Plugins 계층을 포함합니다.
+- **백엔드**(Node.js 22 + TypeScript 5.9 + Hono): 메시지 라우터(2초 폴링 + 중복 제거), 동시성 큐(최대 20 컨테이너 + 5 호스트 프로세스), 작업 스케줄러(cron / interval / once), 실시간 스트리밍과 터미널용 WebSocket 서버, bcrypt + HMAC Cookie 인증, RBAC, AES-256-GCM 암호화 설정 관리. 데이터 플레인은 단일 노드에서 SQLite(WAL 모드, 스키마 v1→v70), Kubernetes에서 수평 확장 시 Redis(이벤트 버스 + 리더 선출)와 MinIO/S3(객체 스토리지)를 포함한 PostgreSQL + pgvector입니다. 또한 Harness / Loop Engineering, Agent-as-a-Service (PaaS), 샌드박스, Claude Code Plugins 계층을 포함합니다.
 - **프론트엔드**(`web/`): React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA, react-markdown, mermaid, recharts, xterm.js, 모바일 PWA 포함.
-- **Agent Runner**(`container/agent-runner/`): Docker 컨테이너 또는 호스트 프로세스로 동작하는 실행 엔진. Claude Agent SDK의 `query()`를 호출하고, 30종 이상의 StreamEvent를 stdout으로 내보내며, 원자적 쓰기 파일 IPC를 통해 27개의 MCP 도구를 부모 프로세스에 제공합니다.
+- **Agent Runner**(`container/agent-runner/`): Docker 컨테이너 또는 호스트 프로세스로 동작하는 실행 엔진. Claude Agent SDK의 `query()`를 호출하고, 30종 이상의 StreamEvent를 stdout으로 내보내며, 원자적 쓰기 파일 IPC를 통해 36개의 MCP 도구를 부모 프로세스에 제공합니다.
 - **데스크톱**(`desktop/`): macOS / Windows / Linux용 단독 앱으로 패키징하는 Electron 셸.
 
 여덟 IM 채널(Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, 웹)은 라우터로 진입해 중복 제거 후 큐로 분배되고, 프로바이더 풀이 API 키 / 엔진을 선택해 컨테이너, 호스트 프로세스 또는 샌드박스를 기동합니다. 스트리밍 이벤트는 WebSocket으로 웹 클라이언트에 브로드캐스트되거나 IM API로 각 채널에 회신됩니다.

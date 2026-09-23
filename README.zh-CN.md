@@ -55,13 +55,18 @@ DeepThink，开源企业级自主 Agent 超级智能体自进化平台，是从 
 - **Harness & Loop Engineering** —— 版本化 harness 清单（system prompt / subagents / tools / skills），支持 snapshot / diff / eval / promote / rollback，以及长时运行的自主任务循环，每次迭代可审查并重新注入失败原因
 - **Autonomy Layer 与 Autonomous Mode** *(v1.1.0)* —— 跨层的 Autonomy Layer 统一了 7 大能力（perception / cognition / decision / execution / learning / adaptation / monitoring），配套 metrics collection 与 E2E acceptance；外加完整的 Autonomous Mode，让 Agent 无需人类手把手即可 end-to-end 完成任务，覆盖 three defense layers（CLAUDE.md 宪法性覆盖 / Supervisor clarify 绕过 / RLHF 末端礼貌）与 four hard brakes（破坏性命令 / turn 限制 / token 限制 / 循环检测）
 - **Agent-as-a-Service（PaaS）** —— 跨租户创建、版本化、挂载、共享并安装数据库支撑的 Agent 定义，具备 per-user 配额、管理员审核和可发布的模板市场
+- **云原生 & 水平扩缩容** *(v1.4.0)* —— PostgreSQL + Redis + MinIO/S3 取代单机状态栈：Redis 事件总线做跨 Pod 扇出，分布式选主（IM 通道 / 调度器 / 周期任务）保证每个单例只有一个副本持有，PostgreSQL 作为共享数据面，S3/MinIO 承载 trace I/O 与工作区文件。不设 `DATABASE_URL` / `REDIS_URL` 时降级为原单进程 SQLite 模式，零额外开销
+- **Agent 群组协作（Swarm）** *(v1.4.0)* —— 席位制多 Agent 群组对话：一个 Agent 群组持有多个席位（每个席位绑定一个 agent 定义，拥有独立的角色提示词、发言策略、挂载与 token / 时间预算），消息按席位寻址，Pipeline 执行面板可视化每一轮的流转与产出
+- **数字员工协作工作台** *(v1.4.0)* —— 包裹 agent 定义的持久化「数字员工」团队，带任务状态机（`pending → in_progress → review → done` 及返工循环）、共享黑板，以及聚合员工 / 团队 / 任务吞吐的仪表盘
+- **AgentNet 网盘** *(v1.4.0)* —— 面向 Agent 与用户的企业级文件盘：目录树、上传 / 下载 / 移动 / 删除 / 搜索、带恢复的回收站，以及文件版本历史
+- **评测中心（Eval Center）** *(v1.4.0)* —— 独立 PostgreSQL 上的独立评测产品：项目 → 数据集 → 版本 → 测试用例 → 评分标准 → 评测运行，支持确定性断言与 LLM-as-Judge 评分、Golden 标注，以及针对基线版本的 embedding 漂移检测
 - **多用户隔离** —— Per-user 工作区、Per-user IM 通道、RBAC 权限体系、邀请码注册、审计日志，每个用户拥有独立的执行环境
 - **八端消息统一路由** —— 飞书（流式卡片 + Reaction）、Telegram Bot API、QQ Bot API v2、钉钉 Stream、微信 iLink、Discord Gateway、WhatsApp（Baileys）和 Web 界面——统一路由
 - **多引擎 & 多提供商** —— 可插拔的代码 Agent 引擎（Claude Code / AtomCode / Codex / OpenCode）和多个 Claude API 提供商，三种负载均衡策略（round-robin / weighted / failover），自动健康检测与恢复
 - **沙箱化代码执行** —— Docker + seccomp + cgroups 加固沙箱，用于 Python / Node / shell 代码执行和 Chromium CDP 浏览器自动化，作为 MCP 工具暴露给 Agent
 - **计费与用量统计** —— 完整的计费系统（订阅计划、钱包余额、兑换码），Per-model Token 用量追踪与图表可视化
 - **移动端 PWA** —— 针对移动端深度优化，支持一键安装到桌面，iOS / Android 均已适配
-- **国际化** —— 29 种 UI 语言，支持原生 endonym 和 RTL；Agent 以用户选择的语言回复
+- **国际化** —— 30 种 UI 语言，支持原生 endonym 和 RTL；Agent 以用户选择的语言回复
 
 > 项目借鉴了 [OpenClaw](https://github.com/nicepkg/OpenClaw) 的容器化架构，并融合了 Claude Code 官方 [Cowork](https://github.com/anthropics/claude-code/tree/main/packages/cowork) 的多会话协作思路：多个独立 Agent 会话并行工作，各自拥有隔离的工作空间和持久记忆，结果通过 IM 渠道送达。
 
@@ -221,10 +226,64 @@ Per-user 的知识库，让 Agent 基于你的自有文档工作：
 Agent 执行的 DAG 可视化 —— 每个节点（turn / tool / review / goal_check / skill / subagent）都渲染为可导航的图，支持用户标注和客户端侧 rerun / continue-from-here，为 Agent 如何得到答案提供全栈可观测性。
 
 
+### 云原生部署 *(v1.4.0)*
+
+DeepThink 既可作为单节点运行，也可作为水平扩缩的 Kubernetes 部署运行。两种模式共用同一套代码 —— 分布式路径仅在对应环境变量设置时才激活，否则降级为空操作。
+
+| 关注点 | 单节点 | 多副本（K8s） |
+|------|------|------|
+| 数据库 | SQLite（WAL，`better-sqlite3`） | PostgreSQL + `pgvector`（设置 `DATABASE_URL`） |
+| 跨 Pod 事件 | 进程内 | Redis pub/sub（设置 `REDIS_URL`） |
+| 对象存储 | 本地文件系统 | S3 / MinIO（设置 `OBJECT_STORE_PROVIDER=s3`） |
+| Agent 调度 | 本地 Docker / 宿主机进程 | Redis 任务队列 + 集群内 agent-runner |
+
+- **分布式选主** —— 三个单例由租约保护，保证每个单例在任意时刻只有一个副本持有：IM 通道（`deepthink:im-leader`，30s TTL）、调度器（`deepthink:scheduler:leader`，90s TTL）以及周期性维护任务。没有它，两个 Pod 会在 IM 上重复回复、重复执行定时任务、重复核算月度用量。
+- **Redis 驱动的 Agent IPC** —— Agent 任务推入 Redis 列表由 `BLPOP` 消费，配合 per-turn 认领键保证每条消息只有一个 runner 处理；另有持久化的 agent-runner 注册表做调度门控。`_close` 协议信号必须在 `finally` 中发送 —— 漏发会永久卡死队列。
+- **无状态安全的请求级状态** —— 任何跨越 Web handler → 消息处理器边界的东西（per-turn 的 skill/MCP/KB 挂载、per-user 并发计数器、supervisor 配置）都存放在 Redis 或 PostgreSQL 中，绝不放在进程内的 Map 里。
+- **对象存储** —— 超过 64 KB 的 trace I/O 与工作区文件在启用后走 S3/MinIO；本地 PVC 仍是 `groups/`、`sessions/`、`memory/` 的主文件系统，因此多 Pod 部署需要一个 `ReadWriteMany` 卷。
+- **K8s 清单** —— Kustomize base 及 `deploy/k8s/` 下的 overlay（namespace、deployment、service、HPA、PVC、ConfigMap/Secret、备份 CronJob，以及一个 `kind` overlay），配套一次性 `make k8s-deploy`。
+
+### Agent 群组协作（Swarm）*(v1.4.0)*
+
+多个 Agent 在共享群组中对话，而非每个会话一个 Agent：
+
+- **席位（Seat）** —— 每个群组持有若干席位，每个席位绑定一个 agent 定义，拥有独立的角色提示词、发言策略、工作区挂载与 token / 时间预算
+- **寻址消息** —— 消息携带 `mentions` 与 `parent_msg_id`，因此回复构成有线索的对话记录而非扁平日志
+- **Pipeline 执行面板** —— 每一轮的路由、token 进出与耗时都被记录，并渲染为实时执行流水线
+- **Per-turn Trace** —— 群组轮次持久化到与普通对话相同的 trace 表，因此 Trace DAG 与 PDF 导出无需改动即可工作
+
+### 数字员工协作工作台 *(v1.4.0)*
+
+- **数字员工** —— 包裹 agent 定义的元数据层，让每个 Agent 在组织架构中拥有身份
+- **持久化团队** —— 与一次性协作不同，团队及其成员与角色是持久存在的
+- **任务状态机** —— `pending → in_progress → review → done`，并带一条从 review 返回的返工路径
+- **共享黑板** —— 团队成员通过共享看板发布和读取中间结果
+- **仪表盘** —— 聚合的员工 / 团队 / 任务吞吐
+
+### 评测中心（Eval Center）*(v1.4.0)*
+
+一个独立的评测产品，刻意与 Harness eval 分离，并运行在自己的 PostgreSQL（`EVAL_PG_URL`）上：
+
+- **层级结构** —— 项目 → 数据集 → 数据集版本 → 测试用例 → 评分标准 → 评测运行
+- **评分** —— 确定性断言（复用 harness 断言词汇表）加上 LLM-as-Judge 评分与工具调用匹配
+- **Golden 标注与仲裁** —— 人工地面真值及仲裁记录
+- **漂移检测** —— 针对基线数据集版本的 embedding 余弦相似度，并输出漂移报告
+- **发布日志** —— 跨项目生命周期的数据集发布历史
+
+> 评测中心惰性初始化且非致命：若 `EVAL_PG_URL` 不可达，平台其余部分正常启动，评测中心路由返回 `503`。
+
+### AgentNet 网盘 *(v1.4.0)*
+
+面向 Agent 与人类的企业级文件盘：
+
+- **目录树**，支持上传、下载、移动、删除与全文检索
+- **回收站**带恢复功能，以及**文件版本历史**，让误写可回滚
+- **与沙箱和工作区共享** —— Agent 通过 MCP 网盘工具（`disk_list` / `disk_upload` / `disk_search` / `disk_move` / `disk_delete`）访问同一批文件
+
 ### Supervisor & i18n
 
 - **Supervisor SubAgent** —— 可按会话开启的意图解析器，在主 Agent 运行前对进入的消息进行预分流（`clarify` / `delegate` / `auto`），减少对模糊请求的无效工作
-- **国际化** —— 29 种 UI 语言，支持原生 endonym 和 RTL 标记；所选语言会注入到 Agent prompt 中，使回复匹配用户语言
+- **国际化** —— 30 种 UI 语言，支持原生 endonym 和 RTL 标记；所选语言会注入到 Agent prompt 中，使回复匹配用户语言
 ### 多会话 & Agent 定义
 
 同一工作区内支持多个独立会话，每个会话有独立的上下文和 session：
@@ -276,9 +335,9 @@ Agent 的思考与执行过程通过 **30+ 种流式事件类型**（文本、�
 - **多维度筛选** —— 按用户、模型、时间范围（7/14/30/90 天）灵活筛选
 - **图表可视化** —— 柱状图和饼图展示用量趋势与分布
 - **管理员视图** —— 管理员可查看所有用户的用量数据
-### 27 个 MCP 工具
+### 36 个 MCP 工具
 
-运行时 Agent 通过内置 MCP Server 与主进程通信（22 个无条件 + 5 个条件触发）：
+运行时 Agent 通过内置 MCP Server 与主进程通信（部分工具取决于会话权限与已挂载能力）：
 
 | 工具 | 说明 |
 |------|------|
@@ -292,6 +351,8 @@ Agent 的思考与执行过程通过 **30+ 种流式事件类型**（文本、�
 | `sandbox_run_code` / `sandbox_close` | 在加固沙箱中运行 Python / Node / shell 代码；关闭沙箱会话 |
 | `sandbox_browser_navigate` / `_click` / `_type` / `_screenshot` / `_evaluate` | 在沙箱内驱动 Chromium CDP 浏览器 |
 | `discord_get_server_info` / `discord_get_channel_info` / `discord_get_history` | 读取 Discord 服务器/频道元数据和消息历史 |
+| `web_search` / `web_fetch` | 网页搜索与页面抓取 |
+| `disk_list` / `disk_upload` / `disk_download` / `disk_move` / `disk_delete` / `disk_create_folder` / `disk_search` | AgentNet 网盘文件操作 |
 
 
 ### 定时任务
@@ -439,6 +500,33 @@ make start
 4. **开始对话** —— 直接从 Web 聊天页发消息
 
 > 所有配置均通过 Web 界面完成，无需任何配置文件。API 密钥以 AES-256-GCM 加密存储。
+
+
+### 横向扩缩（Kubernetes）
+
+多副本部署需要 PostgreSQL、Redis 和（可选的）MinIO/S3，外加一个 `ReadWriteMany` 卷：
+
+```bash
+# 一键 K8s 部署（生成 Secret、patch 域名/镜像、apply、等待就绪、创建 admin）
+make k8s-deploy ARGS='--domain claw.example.com --image deepthink:latest --apikey sk-ant-xxx'
+
+# 或改用单机 Docker Compose
+make docker-deploy ARGS='--port 9899 --apikey sk-ant-xxx'
+```
+
+本机测试集群可用 `kind` overlay —— 它把 PVC 降级为 `ReadWriteOnce`（kind 默认存储类）并使用 catch-all Ingress：
+
+```bash
+kubectl apply -k deploy/k8s-kind/
+```
+
+若只想在本地跑中间件、开发时对接真实的分布式栈：
+
+```bash
+docker compose -f deploy/local/docker-compose.yml up -d   # PostgreSQL + Redis + MinIO
+```
+
+> 任何多副本部署都必须显式设置 `WEB_SESSION_SECRET` —— 否则每个 Pod 用自己的生成密钥签名，会话无法跨副本携带。完整的分布式模式变量集见[环境变量](#环境变量)。
 
 
 ### 启用容器模式
@@ -622,13 +710,14 @@ flowchart TD
 
     subgraph Agent["Agent 运行时"]
         SDK["Claude Agent SDK<br/>(query 循环)"]
-        MCP["MCP Server<br/>(27 个工具)"]
+        MCP["MCP Server<br/>(36 个工具)"]
         Stream["流式事件<br/>(30+ 种类型)"]
     end
 
     KB[("知识库<br/>(FTS5 + 向量)")]
-    DB[("SQLite<br/>(WAL 模式)")]
-    IPC["IPC 文件通道<br/>(原子读写)"]
+    DB[("SQLite (WAL)<br/>或 PostgreSQL")]
+    IPC["IPC 通道<br/>(本地文件 / Redis)"]
+    Redis[("Redis<br/>(事件总线 + 选主)")]
     Memory["记忆系统<br/>(CLAUDE.md + memory/)"]
 
     Feishu --> Router
@@ -664,25 +753,29 @@ flowchart TD
     WS --> Web
 
     Router --> DB
+    Router --> Redis
+    Redis --> Queue
     Auth --> DB
     Billing --> DB
     SDK --> Memory
 
     class Feishu,Telegram,QQ,DingTalk,WeChat,Discord,WhatsApp,Web fe
     class Router,Queue,Scheduler,WS,Auth,Config,ProviderPool,Billing,Harness,PaaS svc
-    class DB,KB db
+    class DB,KB,Redis db
     class Host,Container,Sandbox faas
     class SDK,MCP,Stream faas
     class IPC cfg
     class Memory cfg
 ```
 
-**数据流**：消息从接入层（8 个通道）进入主进程，去重并路由后派发到并发队列。队列通过提供商池选择 API key / 引擎，并启动宿主机进程、Docker 容器或沙箱。容器内的 agent-runner 调用 Claude Agent SDK 的 `query()` 函数。流式事件（30+ 种类型：思考、文本、工具调用、hooks、任务、记忆回放、循环、用量等）通过 stdout marker 协议传回主进程，再通过 WebSocket 广播到 Web 客户端，或通过 IM API 回复到各通道。MCP Server 通过基于文件的 IPC 通道提供 27 个工具，实现 Agent 与主进程的双向通信。计费引擎在每次请求前检查配额和余额。Harness/Loop 层对 Agent 配置做快照并演进，同时驱动自主任务循环。
+**数据流**：消息从接入层（8 个通道）进入主进程，去重并路由后派发到并发队列。队列通过提供商池选择 API key / 引擎，并启动宿主机进程、Docker 容器或沙箱。容器内的 agent-runner 调用 Claude Agent SDK 的 `query()` 函数。流式事件（30+ 种类型：思考、文本、工具调用、hooks、任务、记忆回放、循环、用量等）通过 stdout marker 协议传回主进程，再通过 WebSocket 广播到 Web 客户端，或通过 IM API 回复到各通道。MCP Server 通过 IPC 通道提供 36 个工具 —— 单节点下是本地文件，启用分布式模式后是 Redis pub/sub 与任务队列 —— 实现 Agent 与主进程的双向通信。计费引擎在每次请求前检查配额和余额。Harness/Loop 层对 Agent 配置做快照并演进，同时驱动自主任务循环。
 ### 技术栈
 
 | 层 | 技术 |
 |------|------|
 | **后端** | Node.js 22 · TypeScript 5.9 · Hono · better-sqlite3 (WAL) · ws · node-pty · Pino · Zod 4 |
+| **数据面** | SQLite（单节点）或 PostgreSQL + `pgvector` + `pg_trgm`（多副本）· Redis（pub/sub、选主、任务队列、共享计数器）· MinIO / S3（trace I/O + 工作区对象） |
+| **部署** | 本地（宿主机进程 / Docker）· Docker Compose（`deploy/docker/`）· Kubernetes via Kustomize（`deploy/k8s/`、`deploy/k8s-kind/`）配 HPA · 本机中间件栈（`deploy/local/`） |
 | **前端** | React 19 · Vite 6 · Zustand 5 · Tailwind CSS 4 · shadcn/ui · Radix UI · Lucide Icons · react-markdown · mermaid · recharts · @dnd-kit · xterm.js · @tanstack/react-virtual · PWA |
 | **Agent** | Claude Agent SDK · Claude Code CLI · MCP SDK · IPC 文件通道 |
 | **引擎** | Claude Code · AtomCode · Codex · OpenCode（可插拔，守护进程管理） |
@@ -696,22 +789,26 @@ flowchart TD
 
 ### 目录结构
 
-所有运行时数据统一在 `data/` 目录下，启动时自动创建 —— 无需手动初始化。
+所有运行时数据统一在 `$DEEPTHINK_DATA_DIR`（默认 `~/.deepthink/data`）目录下，启动时自动创建 —— 无需手动初始化。
 
 ```
 deepthink/
 ├── src/                          # 后端源码
-│   ├── index.ts                  #   入口：消息轮询、IPC 监听、容器生命周期
-│   ├── web.ts                    #   Hono app、WebSocket、静态文件
-│   ├── routes/                   #   28 个路由模块（auth / groups / files / config / monitor /
+│   ├── index.ts                  #   入口：消息轮询、IPC 监听、容器生命周期、
+│   │                             #   Redis 初始化、选主、分布式调度
+│   ├── web.ts                    #   Hono app、WebSocket、静态文件、路由挂载
+│   ├── routes/                   #   45 个路由模块（auth / groups / files / config / monitor /
 │   │                             #   memory / tasks / skills / admin / browse / agents /
 │   │                             #   mcp-servers / plugins / usage / billing / bug-report /
-│   │                             #   chat-trace / harness / loops / sandbox /
+│   │                             #   chat-trace / harness / loops / sandbox / supervisor /
 │   │                             #   agent-definitions / workspace-config / paas-admin /
 │   │                             #   paas-agents / paas-embedding / paas-knowledge-bases /
-│   │                             #   paas-marketplace / paas-share)
+│   │                             #   paas-marketplace / paas-share / open-platform* /
+│   │                             #   agent-groups / autonomy / collaborations / eval-center /
+│   │                             #   graph / mcp-registry / opc / staff-* / team / workflows）
 │   ├── feishu.ts                 #   飞书连接工厂（WebSocket 长连接）
 │   ├── feishu-streaming-card.ts  #   飞书流式卡片（打字机 + 三层 fallback）
+│   ├── feishu-cards/             #   飞书 Card V2 元素库（纯展示）
 │   ├── telegram.ts               #   Telegram 连接工厂（Bot API）
 │   ├── qq.ts                     #   QQ 连接工厂（Bot API v2 WebSocket）
 │   ├── qq-streaming-card.ts      #   QQ 流式卡片（stream_messages 打字机）
@@ -729,25 +826,40 @@ deepthink/
 │   ├── atomcode-daemon-manager.ts#   可插拔引擎守护进程生命周期
 │   ├── harness-*.ts              #   Harness Engineering（registry / eval / meta-loop）
 │   ├── loop-orchestrator.ts      #   Loop Engineering 编排器
-│   ├── supervisor.ts             #   Supervisor SubAgent（意图分流）
+│   ├── graph-engineering/        #   图执行引擎（scheduler / runner / planner /
+│   │                             #   registry / recovery）—— 支撑团队、工作流、OPC
+│   ├── agent-team/               #   Super Agent Team 构建器（拆解 → 图）
+│   ├── agent-orchestration/      #   Orchestrator–Workers 规划适配器
+│   ├── autonomy/                 #   Autonomy Layer（event bus、metrics、learning、heal）
+│   ├── eval-center/              #   评测中心（独立 PostgreSQL，见 EVAL_PG_URL）
+│   ├── open-platform/            #   MaaS（OpenAI 兼容）+ Agent-as-a-Service
+│   ├── mcp-registry/             #   REST/OpenAPI → MCP 工具注册表 + streamable HTTP 端点
+│   ├── sandbox/                  #   Docker 沙箱（代码执行 + Playwright 浏览器自动化）
+│   ├── supervisor.ts             #   Supervisor SubAgent（派发前意图分流）
+│   ├── supervisor-agent.ts       #   长时运行、可崩溃恢复的 supervisor（独立表）
 │   ├── plugin-*.ts               #   Claude Code Plugins（catalog / importer / materializer）
+│   ├── object-store.ts           #   trace I/O + 工作区对象存储（fs | s3/MinIO）
+│   ├── redis-bus.ts              #   Redis pub/sub、选主租约、任务队列、共享计数器
+│   ├── pg-sync-driver.ts         #   同步桥：worker-thread pg.Pool + Atomics.wait
+│   ├── sqlite-compat.ts          #   后端选择 + better-sqlite3 兼容的 PG shim
+│   ├── sql-translator.ts         #   SQLite → PostgreSQL 方言翻译
 │   ├── embedding.ts              #   知识库向量嵌入
 │   ├── cross-group-acl.ts        #   跨组 IPC 授权
 │   ├── office-converter.ts       #   Office → PDF 预览 + 文本抽取
-│   ├── i18n-languages.ts        #   29 种语言 i18n
+│   ├── i18n-languages.ts         #   30 种语言 i18n
 │   ├── billing.ts                #   计费引擎（plans、wallet、quota）
-│   ├── runtime-config.ts         #   AES-256-GCM 加密配置
-│   ├── task-scheduler.ts         #   定时任务调度器
+│   ├── runtime-config.ts         #   AES-256-GCM 加密配置（K8s 下 DB 优先）
+│   ├── task-scheduler.ts         #   定时任务调度器（选主门控）
 │   ├── script-runner.ts          #   脚本任务执行器
 │   ├── file-manager.ts           #   文件安全（路径遍历防护）
 │   ├── mount-security.ts         #   挂载白名单 / 黑名单
-│   └── db.ts                     #   SQLite 数据层（Schema v1→v51）
+│   └── db.ts                     #   数据层（SQLite Schema v1→v70，或 PostgreSQL）
 │
 ├── web/                          # 前端（React + Vite）
 │   └── src/
-│       ├── pages/                #   26 个页面
+│       ├── pages/                #   41 个页面
 │       ├── components/           #   UI 组件（chat / settings / billing / monitor / ...）
-│       ├── stores/               #   21 个 Zustand store
+│       ├── stores/               #   32 个 Zustand store
 │       └── api/client.ts         #   统一 API 客户端
 │
 ├── container/                    # Agent 容器
@@ -757,7 +869,8 @@ deepthink/
 │   ├── agent-runner/             #   容器内执行引擎
 │   │   └── src/
 │   │       ├── index.ts          #     Agent 主循环 + 流式事件
-│   │       └── mcp-tools.ts       #     27 个 MCP 工具
+│   │       ├── redis-ipc.ts      #     分布式 IPC（Redis）传输层
+│   │       └── mcp-tools.ts      #     36 个 MCP 工具
 │   └── skills/                   #   项目级 Skills
 │
 ├── shared/                       # 跨项目共享类型定义
@@ -765,9 +878,16 @@ deepthink/
 │   ├── channel-prefixes.ts       #   IM 渠道前缀映射（7 个 IM 渠道）
 │   └── image-detector.ts         #   图片 MIME 检测
 │
+├── deploy/                       # 部署资产
+│   ├── docker/                   #   单机 Docker Compose
+│   ├── k8s/                      #   Kustomize base（Postgres / Redis / MinIO / HPA / 备份）
+│   ├── k8s-kind/                 #   kind overlay（PVC RWO + catch-all Ingress）
+│   └── local/                    #   本机中间件栈（PG + Redis + MinIO）
+│
 ├── scripts/                      # 构建辅助脚本
 │   ├── sync-stream-event.sh      #   将 shared/ 类型同步到各子项目
-│   └── check-stream-event-sync.sh#   校验类型副本一致性
+│   ├── check-stream-event-sync.sh#   校验类型副本一致性
+│   └── migrate-sqlite-to-postgres.mjs # 一次性 SQLite → PostgreSQL 迁移
 │
 ├── config/                       # 项目配置
 │   ├── default-groups.json       #   预注册群组
@@ -776,8 +896,8 @@ deepthink/
 │
 ├── desktop/                      # 桌面版 Electron 壳（macOS / Windows / Linux）
 │
-├── data/                         # 运行时数据（启动时自动创建）
-│   ├── db/messages.db            #   SQLite 数据库（WAL 模式）
+├── data/                         # 运行时数据（默认 ~/.deepthink/data，自动创建）
+│   ├── db/messages.db            #   SQLite 数据库（WAL 模式；PG 模式下不使用）
 │   ├── groups/{folder}/          #   会话工作目录（Agent 可读写）
 │   │   ├── downloads/{channel}/  #     IM 文件下载（按日期子目录）
 │   │   └── CLAUDE.md             #     会话私有记忆
@@ -904,7 +1024,7 @@ make release-delete VERSION=v1.0.0
 
 **方式二：GitHub Actions 全自动（`.github/workflows/release.yml`）**
 
-推送 `v*` tag 时自动触发；三平台并行构建并自动创建 Release。也可以在 GitHub 仓库的 Actions 页通过 `workflow_dispatch` 手动触发。如需自定义 release notes，请在推送 tag 前将内容写入 `docs/release-notes/v1.0.0.md`。
+推送 `v*` tag 时自动触发；三平台并行构建并自动创建 Release。也可以在 GitHub 仓库的 Actions 页通过 `workflow_dispatch` 手动触发。如需自定义 release notes，请在推送 tag 前将内容写入 `docs/release_notes/v1.4.0.md`。
 
 #### 帮助与端口
 
@@ -949,6 +1069,25 @@ WEB_PORT=8080 make start
 | `TRUST_PROXY` | `false` | 信任反向代理的 `X-Forwarded-For` 头 |
 | `CORS_ALLOWED_ORIGINS` | 空（仅 localhost） | 公网域名访问的放行来源；WebSocket upgrade 防御（CSWSH）所需。逗号分隔域名或 `*` |
 | `TZ` | 系统时区 | 定时任务时区 |
+| `DEEPTHINK_DATA_DIR` | `~/.deepthink/data` | 运行时数据根目录（数据库 / 配置 / 工作区 / 记忆 / skills / MCP） |
+| `WEB_SESSION_SECRET` | 自动生成 | Cookie / 会话签名密钥（64 位 hex）。**多副本部署必须显式设置**，否则每个 Pod 用自己的密钥签名，会话无法跨副本携带 |
+
+**多副本模式（K8s / 多 Pod）。** 设置 `DATABASE_URL` 与 `REDIS_URL` 会把平台从单节点 SQLite 切换到分布式后端。两者都是可选的、独立降级的 —— 都不设时，所有分布式代码路径都是空操作，单进程行为保持不变。
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `DATABASE_URL` | 未设置（SQLite） | 设置 `postgresql://` URL 即启用 PostgreSQL 后端。超过一个副本时必需 |
+| `REDIS_URL` | 未设置（禁用） | 启用跨 Pod 事件总线、分布式选主，以及 Redis 驱动的 Agent IPC |
+| `OBJECT_STORE_PROVIDER` | `fs` | `fs` = 本地文件系统；`s3` = MinIO / AWS S3，承载 trace I/O 与工作区对象 |
+| `S3_ENDPOINT` | `http://minio:9000` | S3 兼容端点（provider 为 `s3` 时必需） |
+| `S3_BUCKET` | `deepthink` | trace I/O bucket |
+| `S3_WS_BUCKET` | `deepthink-workspaces` | 工作区文件 bucket |
+| `S3_REGION` | — | S3 区域 |
+| `S3_FORCE_PATH_STYLE` | `true` | path-style 寻址 —— MinIO 必需 |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | — | S3 凭据 |
+| `EVAL_PG_URL` | `postgresql://eval:eval123@localhost:5436/eval_center` | 评测中心自己的 PostgreSQL。不可达 ⇒ 评测中心被禁用（路由返回 `503`），平台其余部分正常启动 |
+
+> 多副本还要求为 `groups/` / `sessions/` / `memory/` 提供一个 `ReadWriteMany` 卷。SQLite + Litestream 只是单副本灾备拓扑 —— 它把 `replicas` 钉在 1、`strategy` 钉在 `Recreate`，不可扩缩。
 
 > 更多运行参数（容器超时、并发限制、登录保护、计费设置等）可在 Web 界面"Settings → System Settings"下配置 —— 无需环境变量。`CORS_ALLOWED_ORIGINS` 可写入项目根 `.env`（启动时由 `src/load-env.ts` 自动加载）。
 
@@ -994,8 +1133,8 @@ Commit message 使用简体中文，格式：`类型: 描述`
 
 | 项目 | 目录 | 用途 |
 |------|------|------|
-| 主服务 | `/`（根目录） | 后端服务（28 个路由模块） |
-| Web 前端 | `web/` | React SPA（26 个页面，21 个 store） |
+| 主服务 | `/`（根目录） | 后端服务（45 个路由模块） |
+| Web 前端 | `web/` | React SPA（41 个页面，32 个 store） |
 | Agent Runner | `container/agent-runner/` | 容器内 / 宿主机上的执行引擎 |
 | 桌面版外壳 | `desktop/` | Electron 打包，覆盖 macOS / Windows / Linux |
 

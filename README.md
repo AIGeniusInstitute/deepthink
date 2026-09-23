@@ -53,13 +53,18 @@ DeepThink, an Open Source Enterprise-grade Autonomous Agent self-evolving superi
 - **Harness & Loop Engineering** — Versioned harness manifests (system prompt / subagents / tools / skills) with snapshot / diff / eval / promote / rollback, plus long-running autonomous task loops with per-iteration review and failure re-injection
 - **Autonomy Layer & Autonomous Mode** *(v1.1.0)* — A cross-cutting Autonomy Layer unifies the 7 capabilities (perception / cognition / decision / execution / learning / adaptation / monitoring) with metrics collection + E2E acceptance; plus a full Autonomous Mode that lets the Agent complete a task end-to-end without human hand-holding, covering three defense layers (CLAUDE.md constitutional override / Supervisor clarify bypass / RLHF end-turn politeness) and four hard brakes (destructive commands / turn limit / token limit / loop detection)
 - **Agent-as-a-Service (PaaS)** — Create, version, mount, share, and install DB-backed Agent definitions across tenants, with per-user quotas, admin review, and a publishable template marketplace
+- **Cloud-Native & Horizontally Scalable** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3 backend replaces the single-node state stack: Redis event bus for cross-pod fan-out, distributed leader election (IM channels / scheduler / periodic jobs) so exactly one replica owns each singleton, PostgreSQL as the shared data plane, and S3/MinIO object storage for trace I/O and workspace files. Unset `DATABASE_URL` / `REDIS_URL` and it degrades to the original single-process SQLite mode with zero overhead
+- **Agent Group Chat (Swarm)** *(v1.4.0)* — Seat-based multi-agent group conversations: an agent group holds multiple seats (each bound to an agent definition with its own role prompt, speak policy, mounts and token/time budget), messages are addressed to seats, and a pipeline execution panel visualizes each turn's routing and output
+- **Digital Employee Collaboration Workbench** *(v1.4.0)* — Persistent teams of "digital employees" wrapping agent definitions, with a task state machine (`pending → in_progress → review → done` plus rework), a shared blackboard, and a dashboard aggregating employee/team/task throughput
+- **AgentNet Disk** *(v1.4.0)* — Enterprise-grade file drive for agents and users: folder tree, upload / download / move / delete / search, recycle bin with restore, and file version history
+- **Eval Center** *(v1.4.0)* — A standalone evaluation product on its own PostgreSQL: projects → datasets → versions → test cases → rubrics → eval runs, with deterministic assertions plus LLM-judge scoring, Golden annotations, and embedding-based drift detection against a baseline version
 - **Multi-User Isolation** — Per-user workspaces, per-user IM channels, an RBAC permission system, invite-code registration, and audit logs; every user has an independent execution environment
 - **Eight-Channel Unified Routing** — Feishu (streaming cards + Reactions), Telegram Bot API, QQ Bot API v2, DingTalk Stream, WeChat iLink, Discord Gateway, WhatsApp (Baileys), and the Web interface — all routed uniformly
 - **Multi-Engine & Multi-Provider** — Pluggable code-agent engines (Claude Code / AtomCode / Codex / OpenCode) and multiple Claude API providers with three load-balancing strategies (round-robin / weighted / failover), automatic health detection and recovery
 - **Sandboxed Code Execution** — Docker + seccomp + cgroups hardened sandbox for Python / Node / shell code execution and Chromium CDP browser automation, exposed to the Agent as MCP tools
 - **Billing & Usage Statistics** — A complete billing system (subscription plans, wallet balance, redemption codes), per-model token usage tracking, and chart visualizations
 - **Mobile PWA** — Deeply optimized for mobile, supports one-tap install to the home screen, fully adapted for iOS / Android
-- **Internationalized** — 29 UI languages with native endonyms and RTL support; the Agent replies in the user's chosen language
+- **Internationalized** — 30 UI languages with native endonyms and RTL support; the Agent replies in the user's chosen language
 
 > The project draws on the containerized architecture of [OpenClaw](https://github.com/nicepkg/OpenClaw) and incorporates the multi-session collaboration ideas from Claude Code's official [Cowork](https://github.com/anthropics/claude-code/tree/main/packages/cowork): multiple independent Agent sessions work in parallel, each with its own isolated workspace and persistent memory, and results are delivered via IM channels.
 
@@ -220,10 +225,64 @@ A dual layer for defining custom Agents:
 A DAG visualization of Agent execution — every node (turn / tool / review / goal_check / skill / subagent) is rendered as a navigable graph with user annotations and client-side rerun / continue-from-here, giving full-stack observability into how an Agent reached its answer.
 
 
+### Cloud-Native Deployment *(v1.4.0)*
+
+DeepThink runs as either a single node or a horizontally scaled Kubernetes deployment. The two modes share one codebase — the distributed paths activate only when the corresponding environment variables are set, and degrade to no-ops otherwise.
+
+| Concern | Single node | Multi-replica (K8s) |
+|------|------|------|
+| Database | SQLite (WAL, `better-sqlite3`) | PostgreSQL + `pgvector` (set `DATABASE_URL`) |
+| Cross-pod events | in-process | Redis pub/sub (set `REDIS_URL`) |
+| Object storage | local filesystem | S3 / MinIO (set `OBJECT_STORE_PROVIDER=s3`) |
+| Agent dispatch | local Docker / host process | Redis task list + in-cluster agent-runner |
+
+- **Distributed leader election** — Three singletons are lease-guarded so exactly one replica owns each: IM channels (`deepthink:im-leader`, 30s TTL), the scheduler (`deepthink:scheduler:leader`, 90s TTL), and periodic maintenance jobs. Without this, two pods would double-reply on IM, run scheduled tasks twice, and double-count monthly usage reconciliation.
+- **Redis-backed agent IPC** — Agent tasks are pushed to a Redis list consumed by `BLPOP`, with a per-turn claim key so exactly one runner processes each message; a durable agent-runner registry gates dispatch. The `_close` protocol signal is required in `finally` — omitting it wedges the queue permanently.
+- **Stateless-safe request state** — Anything crossing the web-handler → message-processor boundary (per-turn skill/MCP/KB mounts, per-user concurrency counters, supervisor config) lives in Redis or PostgreSQL, never in a process-local Map.
+- **Object storage** — Trace I/O above 64 KB and workspace files route through S3/MinIO when enabled; the local PVC remains the primary filesystem for `groups/`, `sessions/` and `memory/`, so a multi-pod deployment needs a `ReadWriteMany` volume.
+- **K8s manifests** — Kustomize base plus overlays under `deploy/k8s/` (namespace, deployments, services, HPA, PVC, ConfigMap/Secret, backup CronJob, and a `kind` overlay), with a one-shot `make k8s-deploy`.
+
+### Agent Group Chat (Swarm) *(v1.4.0)*
+
+Multiple agents converse in a shared group rather than one agent per session:
+
+- **Seats** — Each group holds seats, each bound to an agent definition with its own role prompt, speak policy, workspace mounts, and token / time budget
+- **Addressed messages** — Messages carry `mentions` and `parent_msg_id`, so replies form a threaded transcript rather than a flat log
+- **Pipeline execution panel** — Every turn's routing, token in/out and duration are recorded and rendered as a live execution pipeline
+- **Per-turn traces** — Group turns persist to the same trace tables as regular chats, so the Trace DAG and PDF export work unchanged
+
+### Digital Employee Collaboration Workbench *(v1.4.0)*
+
+- **Digital employees** — A metadata layer wrapping agent definitions, giving each one an identity in an org chart
+- **Persistent teams** — Unlike one-shot collaborations, teams persist with members and roles
+- **Task state machine** — `pending → in_progress → review → done`, with a rework path back from review
+- **Shared blackboard** — Team members publish and read intermediate results through a shared board
+- **Dashboard** — Aggregated employee / team / task throughput
+
+### Eval Center *(v1.4.0)*
+
+A standalone evaluation product, deliberately separate from Harness eval and backed by its own PostgreSQL (`EVAL_PG_URL`):
+
+- **Hierarchy** — Projects → datasets → dataset versions → test cases → rubrics → eval runs
+- **Scoring** — Deterministic assertions (reusing the harness assertion vocabulary) plus LLM-judge scoring and tool-call matching
+- **Golden annotations & arbitration** — Human ground truth with an arbitration record
+- **Drift detection** — Embedding cosine similarity against a baseline dataset version, with drift reports
+- **Publish log** — Dataset publication history across the project lifecycle
+
+> The Eval Center initializes lazily and non-fatally: if `EVAL_PG_URL` is unreachable the rest of the platform starts normally and Eval Center routes return `503`.
+
+### AgentNet Disk *(v1.4.0)*
+
+Enterprise file drive for agents and humans:
+
+- **Folder tree** with upload, download, move, delete and full-text search
+- **Recycle bin** with restore, and **file version history** so a bad write is recoverable
+- **Shared with the sandbox and workspace** — agents reach the same files through MCP disk tools (`disk_list` / `disk_upload` / `disk_search` / `disk_move` / `disk_delete`)
+
 ### Supervisor & i18n
 
 - **Supervisor SubAgent** — An opt-in per-chat intent parser that pre-triages incoming messages (`clarify` / `delegate` / `auto`) before the main Agent runs, reducing wasted work on ambiguous requests
-- **Internationalization** — 29 UI languages with native endonyms and RTL flags; the chosen language is injected into Agent prompts so replies match the user's language
+- **Internationalization** — 30 UI languages with native endonyms and RTL flags; the chosen language is injected into Agent prompts so replies match the user's language
 ### Multi-Conversation & Agent Definitions
 
 Multiple independent conversations are supported within the same workspace, each with its own context and session:
@@ -277,9 +336,9 @@ A billing system designed for multi-user deployment, supporting flexible billing
 - **Admin view** — Admins can view usage data for all users
 
 
-### 27 MCP Tools
+### 36 MCP Tools
 
-At runtime the Agent can communicate with the main process via the built-in MCP Server (22 unconditional + 5 conditional):
+At runtime the Agent can communicate with the main process via the built-in MCP Server (some tools are conditional on session privileges and mounted capabilities):
 
 | Tool | Description |
 |------|------|
@@ -293,6 +352,8 @@ At runtime the Agent can communicate with the main process via the built-in MCP 
 | `sandbox_run_code` / `sandbox_close` | Run Python / Node / shell code in the hardened sandbox; close a sandbox session |
 | `sandbox_browser_navigate` / `_click` / `_type` / `_screenshot` / `_evaluate` | Drive a Chromium CDP browser inside the sandbox |
 | `discord_get_server_info` / `discord_get_channel_info` / `discord_get_history` | Read Discord server / channel metadata and message history |
+| `web_search` / `web_fetch` | Web search and page fetching |
+| `disk_list` / `disk_upload` / `disk_download` / `disk_move` / `disk_delete` / `disk_create_folder` / `disk_search` | AgentNet Disk file operations |
 
 
 ### Scheduled Tasks
@@ -439,6 +500,33 @@ Follow the setup wizard to complete initialization:
 4. **Start chatting** — Send a message directly from the Web chat page
 
 > All configuration is done via the Web interface, with no config files required. API keys are stored AES-256-GCM encrypted.
+
+
+### Scaling Out (Kubernetes)
+
+For a multi-replica deployment, DeepThink needs PostgreSQL, Redis and (optionally) MinIO/S3, plus a `ReadWriteMany` volume:
+
+```bash
+# One-shot K8s deploy (generates the Secret, patches domain/image, applies, waits, creates admin)
+make k8s-deploy ARGS='--domain claw.example.com --image deepthink:latest --apikey sk-ant-xxx'
+
+# Single-host Docker Compose instead
+make docker-deploy ARGS='--port 9899 --apikey sk-ant-xxx'
+```
+
+For a local test cluster, the `kind` overlay downgrades the PVC to `ReadWriteOnce` (kind's default storage class) and uses a catch-all Ingress:
+
+```bash
+kubectl apply -k deploy/k8s-kind/
+```
+
+To run just the middleware locally while developing against a real distributed stack:
+
+```bash
+docker compose -f deploy/local/docker-compose.yml up -d   # PostgreSQL + Redis + MinIO
+```
+
+> Set `WEB_SESSION_SECRET` explicitly in any multi-replica deployment — otherwise each pod signs cookies with its own generated key and sessions do not carry across replicas. See [Environment Variables](#environment-variables) for the full distributed-mode set.
 
 
 ### Enabling Container Mode
@@ -623,13 +711,14 @@ flowchart TD
 
     subgraph Agent["Agent 运行时"]
         SDK["Claude Agent SDK<br/>(query 循环)"]
-        MCP["MCP Server<br/>(27 个工具)"]
+        MCP["MCP Server<br/>(36 个工具)"]
         Stream["流式事件<br/>(30+ 种类型)"]
     end
 
     KB[("知识库<br/>(FTS5 + 向量)")]
-    DB[("SQLite<br/>(WAL 模式)")]
-    IPC["IPC 文件通道<br/>(原子读写)"]
+    DB[("SQLite (WAL)<br/>或 PostgreSQL")]
+    IPC["IPC 通道<br/>(本地文件 / Redis)"]
+    Redis[("Redis<br/>(事件总线 + 选主)")]
     Memory["记忆系统<br/>(CLAUDE.md + memory/)"]
 
     Feishu --> Router
@@ -665,25 +754,29 @@ flowchart TD
     WS --> Web
 
     Router --> DB
+    Router --> Redis
+    Redis --> Queue
     Auth --> DB
     Billing --> DB
     SDK --> Memory
 
     class Feishu,Telegram,QQ,DingTalk,WeChat,Discord,WhatsApp,Web fe
     class Router,Queue,Scheduler,WS,Auth,Config,ProviderPool,Billing,Harness,PaaS svc
-    class DB,KB db
+    class DB,KB,Redis db
     class Host,Container,Sandbox faas
     class SDK,MCP,Stream faas
     class IPC cfg
     class Memory cfg
 ```
 
-**Data flow**: Messages enter the main process from the access layer (8 channels), are deduplicated and routed, then dispatched to the concurrency queue. The queue selects an API key / engine via the provider pool and starts a host process, Docker container, or sandbox. The agent-runner inside the container calls the Claude Agent SDK's `query()` function. Streaming events (30+ types: thinking, text, tool calls, hooks, tasks, memory recall, loops, usage, etc.) are passed back to the main process via the stdout marker protocol, then broadcast to Web clients via WebSocket or replied to each channel via IM APIs. The MCP Server provides 27 tools over a file-based IPC channel, enabling bidirectional communication between the Agent and the main process. The billing engine checks quota and balance before each request. The Harness/Loop layer snapshots and evolves the Agent's configuration and drives autonomous task loops.
+**Data flow**: Messages enter the main process from the access layer (8 channels), are deduplicated and routed, then dispatched to the concurrency queue. The queue selects an API key / engine via the provider pool and starts a host process, Docker container, or sandbox. The agent-runner inside the container calls the Claude Agent SDK's `query()` function. Streaming events (30+ types: thinking, text, tool calls, hooks, tasks, memory recall, loops, usage, etc.) are passed back to the main process via the stdout marker protocol, then broadcast to Web clients via WebSocket or replied to each channel via IM APIs. The MCP Server provides 36 tools over an IPC channel — local files on a single node, Redis pub/sub and a task list once distributed mode is enabled — enabling bidirectional communication between the Agent and the main process. The billing engine checks quota and balance before each request. The Harness/Loop layer snapshots and evolves the Agent's configuration and drives autonomous task loops.
 ### Tech Stack
 
 | Layer | Technologies |
 |------|------|
 | **Backend** | Node.js 22 · TypeScript 5.9 · Hono · better-sqlite3 (WAL) · ws · node-pty · Pino · Zod 4 |
+| **Data plane** | SQLite (single node) or PostgreSQL + `pgvector` + `pg_trgm` (multi-replica) · Redis (pub/sub, leader election, task queue, shared counters) · MinIO / S3 (trace I/O + workspace objects) |
+| **Deployment** | Local (host process / Docker) · Docker Compose (`deploy/docker/`) · Kubernetes via Kustomize (`deploy/k8s/`, `deploy/k8s-kind/`) with HPA · local middleware stack (`deploy/local/`) |
 | **Frontend** | React 19 · Vite 6 · Zustand 5 · Tailwind CSS 4 · shadcn/ui · Radix UI · Lucide Icons · react-markdown · mermaid · recharts · @dnd-kit · xterm.js · @tanstack/react-virtual · PWA |
 | **Agent** | Claude Agent SDK · Claude Code CLI · MCP SDK · IPC file channels |
 | **Engines** | Claude Code · AtomCode · Codex · OpenCode (pluggable, daemon-managed) |
@@ -697,22 +790,26 @@ flowchart TD
 
 ### Directory Structure
 
-All runtime data lives under `data/`, auto-created at startup — no manual initialization required.
+Runtime data lives under `$DEEPTHINK_DATA_DIR` (default `~/.deepthink/data`), auto-created at startup — no manual initialization required.
 
 ```
 deepthink/
 ├── src/                          # Backend source
-│   ├── index.ts                  #   Entry: message polling, IPC listening, container lifecycle
-│   ├── web.ts                    #   Hono app, WebSocket, static files
-│   ├── routes/                   #   28 route modules (auth / groups / files / config / monitor /
+│   ├── index.ts                  #   Entry: message polling, IPC listening, container lifecycle,
+│   │                             #   Redis init, leader election, distributed dispatch
+│   ├── web.ts                    #   Hono app, WebSocket, static files, router mounts
+│   ├── routes/                   #   45 route modules (auth / groups / files / config / monitor /
 │   │                             #   memory / tasks / skills / admin / browse / agents /
 │   │                             #   mcp-servers / plugins / usage / billing / bug-report /
-│   │                             #   chat-trace / harness / loops / sandbox /
+│   │                             #   chat-trace / harness / loops / sandbox / supervisor /
 │   │                             #   agent-definitions / workspace-config / paas-admin /
 │   │                             #   paas-agents / paas-embedding / paas-knowledge-bases /
-│   │                             #   paas-marketplace / paas-share)
+│   │                             #   paas-marketplace / paas-share / open-platform* /
+│   │                             #   agent-groups / autonomy / collaborations / eval-center /
+│   │                             #   graph / mcp-registry / opc / staff-* / team / workflows)
 │   ├── feishu.ts                 #   Feishu connection factory (WebSocket long connection)
 │   ├── feishu-streaming-card.ts  #   Feishu streaming card (typewriter + three-tier fallback)
+│   ├── feishu-cards/             #   Feishu Card V2 element library (pure presentation)
 │   ├── telegram.ts               #   Telegram connection factory (Bot API)
 │   ├── qq.ts                     #   QQ connection factory (Bot API v2 WebSocket)
 │   ├── qq-streaming-card.ts      #   QQ streaming card (stream_messages typewriter)
@@ -730,25 +827,40 @@ deepthink/
 │   ├── atomcode-daemon-manager.ts#   Pluggable engine daemon lifecycle
 │   ├── harness-*.ts              #   Harness Engineering (registry / eval / meta-loop)
 │   ├── loop-orchestrator.ts      #   Loop Engineering orchestrator
-│   ├── supervisor.ts             #   Supervisor SubAgent (intent triage)
+│   ├── graph-engineering/        #   Graph execution engine (scheduler / runner / planner /
+│   │                             #   registry / recovery) — backs teams, workflows, OPC
+│   ├── agent-team/               #   Super Agent Team builder (decompose → graph)
+│   ├── agent-orchestration/      #   Orchestrator–Workers planning adapter
+│   ├── autonomy/                 #   Autonomy Layer (event bus, metrics, learning, heal)
+│   ├── eval-center/              #   Eval Center (own PostgreSQL, see EVAL_PG_URL)
+│   ├── open-platform/            #   MaaS (OpenAI-compatible) + Agent-as-a-Service
+│   ├── mcp-registry/             #   REST/OpenAPI → MCP tool registry + streamable HTTP endpoint
+│   ├── sandbox/                  #   Docker sandbox (code exec + Playwright browser automation)
+│   ├── supervisor.ts             #   Supervisor SubAgent (pre-dispatch intent triage)
+│   ├── supervisor-agent.ts       #   Long-running crash-recoverable supervisor (own tables)
 │   ├── plugin-*.ts               #   Claude Code Plugins (catalog / importer / materializer)
+│   ├── object-store.ts           #   Trace I/O + workspace object storage (fs | s3/MinIO)
+│   ├── redis-bus.ts              #   Redis pub/sub, leader leases, task list, shared counters
+│   ├── pg-sync-driver.ts         #   Sync bridge: worker-thread pg.Pool + Atomics.wait
+│   ├── sqlite-compat.ts          #   Backend selection + better-sqlite3-compatible PG shim
+│   ├── sql-translator.ts         #   SQLite → PostgreSQL dialect translation
 │   ├── embedding.ts              #   KB vector embeddings
 │   ├── cross-group-acl.ts        #   Cross-group IPC authorization
 │   ├── office-converter.ts       #   Office → PDF preview + text extraction
-│   ├── i18n-languages.ts        #   29-language i18n
+│   ├── i18n-languages.ts         #   30-language i18n
 │   ├── billing.ts                #   Billing engine (plans, wallet, quota)
-│   ├── runtime-config.ts         #   AES-256-GCM encrypted config
-│   ├── task-scheduler.ts         #   Scheduled-task scheduler
+│   ├── runtime-config.ts         #   AES-256-GCM encrypted config (DB-primary under K8s)
+│   ├── task-scheduler.ts         #   Scheduled-task scheduler (leader-gated)
 │   ├── script-runner.ts          #   Script-task executor
 │   ├── file-manager.ts           #   File security (path-traversal protection)
 │   ├── mount-security.ts         #   Mount whitelist / blacklist
-│   └── db.ts                     #   SQLite data layer (Schema v1→v51)
+│   └── db.ts                     #   Data layer (SQLite Schema v1→v70, or PostgreSQL)
 │
 ├── web/                          # Frontend (React + Vite)
 │   └── src/
-│       ├── pages/                #   26 pages
+│       ├── pages/                #   41 pages
 │       ├── components/           #   UI components (chat / settings / billing / monitor / ...)
-│       ├── stores/               #   21 Zustand stores
+│       ├── stores/               #   32 Zustand stores
 │       └── api/client.ts         #   Unified API client
 │
 ├── container/                    # Agent container
@@ -758,7 +870,8 @@ deepthink/
 │   ├── agent-runner/             #   In-container execution engine
 │   │   └── src/
 │   │       ├── index.ts          #     Agent main loop + streaming events
-│   │       └── mcp-tools.ts       #     27 MCP tools
+│   │       ├── redis-ipc.ts      #     Distributed IPC (Redis) transport
+│   │       └── mcp-tools.ts      #     36 MCP tools
 │   └── skills/                   #   Project-level Skills
 │
 ├── shared/                       # Cross-project shared type definitions
@@ -766,9 +879,16 @@ deepthink/
 │   ├── channel-prefixes.ts       #   IM channel prefix mapping (7 IM channels)
 │   └── image-detector.ts         #   Image MIME detection
 │
+├── deploy/                       # Deployment assets
+│   ├── docker/                   #   Single-host Docker Compose
+│   ├── k8s/                      #   Kustomize base (Postgres / Redis / MinIO / HPA / backup)
+│   ├── k8s-kind/                 #   kind overlay (PVC RWO + catch-all Ingress)
+│   └── local/                    #   Local middleware stack (PG + Redis + MinIO)
+│
 ├── scripts/                      # Build helper scripts
 │   ├── sync-stream-event.sh      #   Sync shared/ types to each subproject
-│   └── check-stream-event-sync.sh#   Validate type-copy consistency
+│   ├── check-stream-event-sync.sh#   Validate type-copy consistency
+│   └── migrate-sqlite-to-postgres.mjs # One-time SQLite → PostgreSQL migration
 │
 ├── config/                       # Project config
 │   ├── default-groups.json       #   Pre-registered groups
@@ -777,8 +897,8 @@ deepthink/
 │
 ├── desktop/                      # Desktop Electron shell (macOS / Windows / Linux)
 │
-├── data/                         # Runtime data (auto-created at startup)
-│   ├── db/messages.db            #   SQLite database (WAL mode)
+├── data/                         # Runtime data (default ~/.deepthink/data, auto-created)
+│   ├── db/messages.db            #   SQLite database (WAL mode; unused in PG mode)
 │   ├── groups/{folder}/          #   Session working directory (Agent read/write)
 │   │   ├── downloads/{channel}/  #     IM file downloads (by date subdirectory)
 │   │   └── CLAUDE.md             #     Session-private memory
@@ -905,7 +1025,7 @@ make release-delete VERSION=v1.0.0
 
 **Option 2: GitHub Actions fully automated (`.github/workflows/release.yml`)**
 
-Triggered automatically when a `v*` tag is pushed; three platforms build in parallel and a Release is auto-created. You can also trigger it manually via `workflow_dispatch` on the GitHub repo's Actions page. To customize release notes, write the content to `docs/release-notes/v1.0.0.md` before pushing the tag.
+Triggered automatically when a `v*` tag is pushed; three platforms build in parallel and a Release is auto-created. You can also trigger it manually via `workflow_dispatch` on the GitHub repo's Actions page. To customize release notes, write the content to `docs/release_notes/v1.4.0.md` before pushing the tag.
 
 #### Help & Ports
 
@@ -950,6 +1070,26 @@ The following are optional overrides. We recommend using the Web setup wizard to
 | `TRUST_PROXY` | `false` | Trust the `X-Forwarded-For` header from reverse proxies |
 | `CORS_ALLOWED_ORIGINS` | empty (localhost only) | Allowed origins for public-domain access; required for WebSocket upgrade defense (CSWSH). Comma-separated domains or `*` |
 | `TZ` | System timezone | Timezone for scheduled tasks |
+| `DEEPTHINK_DATA_DIR` | `~/.deepthink/data` | Runtime data root (database / config / workspaces / memory / skills / MCP) |
+| `WEB_SESSION_SECRET` | auto-generated | Cookie/session signing key (64-hex). **Must be set explicitly in multi-replica deployments**, otherwise each pod signs with a different key and sessions don't carry across |
+
+**Multi-replica mode (K8s / multi-pod).** Setting `DATABASE_URL` and `REDIS_URL` switches the platform from single-node SQLite to the distributed backend. Both are optional and degrade independently — with neither set, every distributed code path is a no-op and the single-process behavior is unchanged.
+
+| Variable | Default | Description |
+|------|--------|------|
+| `DATABASE_URL` | unset (SQLite) | Setting a `postgresql://` URL enables the PostgreSQL backend. Required for more than one replica |
+| `REDIS_URL` | unset (disabled) | Enables the cross-pod event bus, distributed leader election, and Redis-driven agent IPC |
+| `OBJECT_STORE_PROVIDER` | `fs` | `fs` = local filesystem; `s3` = MinIO / AWS S3 for trace I/O and workspace objects |
+| `S3_ENDPOINT` | `http://minio:9000` | S3-compatible endpoint (required when the provider is `s3`) |
+| `S3_BUCKET` | `deepthink` | Trace I/O bucket |
+| `S3_WS_BUCKET` | `deepthink-workspaces` | Workspace-file bucket |
+| `S3_REGION` | — | S3 region |
+| `S3_FORCE_PATH_STYLE` | `true` | Path-style addressing — MinIO requires it |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | — | S3 credentials |
+| `EVAL_PG_URL` | `postgresql://eval:eval123@localhost:5436/eval_center` | Eval Center's own PostgreSQL. Unreachable ⇒ Eval Center is disabled (routes return `503`), the rest of the platform starts normally |
+
+> Multi-replica additionally requires a `ReadWriteMany` volume for `groups/` / `sessions/` / `memory/`. SQLite + Litestream is a single-replica disaster-recovery topology only — it pins `replicas: 1` and `strategy: Recreate` and must not be scaled.
+
 
 > More runtime parameters (container timeout, concurrency limits, login protection, billing settings, etc.) can be configured under "Settings → System Settings" in the Web interface — no environment variables needed. `CORS_ALLOWED_ORIGINS` can be written to the project-root `.env` (auto-loaded by `src/load-env.ts` on startup).
 
@@ -995,8 +1135,8 @@ The project contains four independent Node.js projects, each with its own `packa
 
 | Project | Directory | Purpose |
 |------|------|------|
-| Main service | `/` (root) | Backend service (28 route modules) |
-| Web frontend | `web/` | React SPA (26 pages, 21 stores) |
+| Main service | `/` (root) | Backend service (45 route modules) |
+| Web frontend | `web/` | React SPA (41 pages, 32 stores) |
 | Agent Runner | `container/agent-runner/` | In-container / on-host execution engine |
 | Desktop shell | `desktop/` | Electron packaging for macOS / Windows / Linux |
 

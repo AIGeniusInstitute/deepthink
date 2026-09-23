@@ -49,13 +49,18 @@ DeepThink, kurumsal düzeyde özerk Agent kendi-evrilen süper-zeka platformu; H
 - **Harness & Loop Engineering** — Sürümlü harness manifestleri (sistem promptu / sub-agent'lar / araçlar / yetenekler) ile snapshot / diff / eval / promote / geri alma; ayrıca her yinelemede inceleme ve hata enjeksiyonu içeren uzun süreli özerk görev döngüleri
 - **Autonomy Layer ve Autonomous Mode** *(v1.1.0)* — Enine kesen bir Autonomy Layer, 7 yetenekleri (perception / cognition / decision / execution / learning / adaptation / monitoring) metrics collection ve E2E acceptance ile birleştirir; artı Agent'in bir görevi insan elçiliği olmadan end-to-end tamamlamasını sağlayan tam bir Autonomous Mode, three defense layers (CLAUDE.md anayasal geçersiz kılma / Supervisor açıklama baypası / RLHF tur-sonu nezaketi) ve four hard brakes (yıkıcı komutlar / tur sınırı / token sınırı / döngü algılama) kapsar
 - **Agent-as-a-Service (PaaS)** — Veritabanı destekli Agent tanımlarını kiracılar arasında oluşturma, sürümlendirme, mount etme, paylaşma ve kurma; kullanıcı başına kota, admin incelemesi ve yayınlanabilir şablon pazarı
+- **Bulut-Yerel ve Yatay Ölçeklenebilir** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3 tek düğümlü durum yığınını değiştirir: pod'lar arası fan-out için Redis olay veri yolu, dağıtık lider seçimi (IM kanalları / zamanlayıcı / periyodik işler) ve trace G/Ç ile çalışma alanı dosyaları için S3/MinIO nesne depolama. `DATABASE_URL` / `REDIS_URL` ayarlanmazsa tek süreçli SQLite moduna geriler
+- **Agent Grup Sohbeti (Swarm)** *(v1.4.0)* — Koltuk tabanlı çok-agent'lı grup konuşmaları; her koltuk kendi rol promptu, konuşma politikası, mount'ları ve token/zaman bütçesiyle bir agent tanımına bağlanır, ayrıca canlı bir pipeline yürütme paneli
+- **Dijital Çalışan İşbirliği Tezgahı** *(v1.4.0)* — Görev durum makinesi (`pending → in_progress → review → done` ve yeniden işleme), paylaşılan karatahta ve verim panosu ile kalıcı dijital çalışan ekipleri
+- **AgentNet Disk** *(v1.4.0)* — Klasör ağacı, yükleme / indirme / taşıma / silme / arama, geri yükleme özellikli geri dönüşüm kutusu ve dosya sürüm geçmişi içeren kurumsal dosya sürücüsü
+- **Eval Merkezi** *(v1.4.0)* — Kendi PostgreSQL'i üzerinde bağımsız değerlendirme: projeler → veri kümeleri → sürümler → test vakaları → rubrikler → eval çalıştırmaları; deterministik doğrulamalar, LLM-yargıç puanlaması, Golden anotasyonlar ve gömme tabanlı sapma tespiti ile
 - **Çok kullanıcılı izolasyon** — Kullanıcı başına workspace, kullanıcı başına IM kanalları, RBAC yetki sistemi, davet kodu kaydı ve denetim günlükleri
 - **Sekiz kanal birleşik yönlendirme** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp ve web arayüzü — hepsi tek tip yönlendirilir
 - **Çok motorlu ve çok sağlayıcılı** — Takılabilir kod-agent motorları (Claude Code / AtomCode / Codex / OpenCode) ve üç yük dengeleme stratejili (round-robin / weighted / failover) birden fazla Claude API sağlayıcısı, otomatik sağlık algılama
 - **Korumalı alanda kod yürütme** — Python / Node / shell kod yürütme ve Chromium CDP tarayıcı otomasyonu için Docker + seccomp + cgroups ile sertleştirilmiş sandbox
 - **Faturalama ve kullanım istatistikleri** — Tam faturalama sistemi (abonelik planları, cüzdan bakiyesi, kullanım kodları), model başına token kullanım takibi ve grafik görselleştirmeleri
 - **Mobil PWA** — Mobil için derinlemesine optimize, ana ekrana tek dokunuşla kurulum, iOS / Android uyumlu
-- **Uluslararası** — 29 UI dili, doğağınızla yazım ve RTL desteği; Agent kullanıcının seçtiği dilde yanıt verir
+- **Uluslararası** — 30 UI dili, doğağınızla yazım ve RTL desteği; Agent kullanıcının seçtiği dilde yanıt verir
 
 ## Özellik Vitrini
 
@@ -101,6 +106,8 @@ cd deepthink
 make start
 ```
 
+Çok replikalı bir dağıtım için `make k8s-deploy` kullanın — `DATABASE_URL` / `REDIS_URL` için İngilizce README'nin Ortam Değişkenleri bölümüne bakın.
+
 http://localhost:9898 adresini açın ve kurulum sihirbazını izleyin: yönetici oluşturun (varsayılan hesap yok), Claude API'yi yapılandırın ve gerekirse IM kanallarını ayarlayın. Her şey web arayüzünden yapılandırılır, yapılandırma dosyası gerekmez. API anahtarları AES-256-GCM ile şifrelenir.
 
 ### Container modunu etkinleştirme
@@ -123,9 +130,9 @@ Yeni kullanıcı kaydından sonra, container modunun ana workspace'i (`home-{use
 
 DeepThink dört bağımsız Node.js projesinden oluşur:
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): mesaj yönlendirici (2s polling + yinelenenleri kaldırma), eşzamanlı kuyruk (en fazla 20 container + 5 host süreci), görev zamanlayıcı (cron / interval / once), gerçek zamanlı akış ve terminal için WebSocket sunucusu, bcrypt + HMAC Cookie kimlik doğrulama, RBAC ve AES-256-GCM şifreli yapılandırma yönetimi. SQLite kalıcılığı (WAL modu, şema v1→v51). Ayrıca Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox ve Claude Code Plugins katmanlarını içerir.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono): mesaj yönlendirici (2s polling + yinelenenleri kaldırma), eşzamanlı kuyruk (en fazla 20 container + 5 host süreci), görev zamanlayıcı (cron / interval / once), gerçek zamanlı akış ve terminal için WebSocket sunucusu, bcrypt + HMAC Cookie kimlik doğrulama, RBAC ve AES-256-GCM şifreli yapılandırma yönetimi. Veri düzlemi tek düğümde SQLite (WAL modu, şema v1→v70), ya da Kubernetes üzerinde yatay ölçeklendiğinde Redis (olay veri yolu + lider seçimi) ve MinIO/S3 (nesne depolama) ile birlikte PostgreSQL + pgvector. Ayrıca Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox ve Claude Code Plugins katmanlarını içerir.
 - **Frontend** (`web/`): React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4 SPA, react-markdown, mermaid, recharts, xterm.js ve mobil PWA.
-- **Agent Runner** (`container/agent-runner/`): Docker container'ında veya host süreci olarak çalışan yürütme motoru; Claude Agent SDK'nın `query()` fonksiyonunu çağırır, stdout üzerinden 30+ StreamEvent türü yayar ve atomik yazımlı dosya tabanlı IPC kanalları üzerinden üst sürece 27 MCP aracını sunar.
+- **Agent Runner** (`container/agent-runner/`): Docker container'ında veya host süreci olarak çalışan yürütme motoru; Claude Agent SDK'nın `query()` fonksiyonunu çağırır, stdout üzerinden 30+ StreamEvent türü yayar ve atomik yazımlı dosya tabanlı IPC kanalları üzerinden üst sürece 36 MCP aracını sunar.
 - **Desktop** (`desktop/`): macOS / Windows / Linux için tek başına çalışabilen uygulamayı paketleyen Electron kabuğu.
 
 Sekiz IM kanalı (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) yönlendiriciye girer, yinelenenlerden arındırılır ve kuyruğa alınır; kuyruk ProviderPool üzerinden bir API anahtarı / motor seçer ve bir container, host süreci veya sandbox başlatır. Akış olayları WebSocket ile web istemcilerine veya IM API'leri ile her kanala geri yanıtlanır.

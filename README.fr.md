@@ -49,13 +49,18 @@ DeepThink, une plateforme d'auto-évolution de superintelligence Agent autonome 
 - **Harness & Loop Engineering** — Manifests d'harness versionnés (prompt système / subagents / outils / skills) avec snapshot / diff / eval / promote / rollback, plus des boucles de tâches autonomes longues avec revue par itération et réinjection des échecs
 - **Autonomy Layer et Autonomous Mode** *(v1.1.0)* — Une Autonomy Layer transversale unifie les 7 capacités (perception / cognition / decision / execution / learning / adaptation / monitoring) avec metrics collection et E2E acceptance ; plus un Autonomous Mode complet qui permet à l'Agent de terminer une tâche end-to-end sans assistance humaine, couvrant three defense layers (CLAUDE.md override constitutionnel / Supervisor contournement de clarification / RLHF politesse de fin de tour) et four hard brakes (commandes destructives / limite de tours / limite de tokens / détection de boucle)
 - **Agent-as-a-Service (PaaS)** — Création, versionnement, montage, partage et installation de définitions d'Agent stockées en base à travers les tenants, avec quotas par utilisateur, revue admin et un marketplace de templates publiable
+- **Cloud-Native et horizontalement scalable** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3 remplacent la pile d'état mono-nœud : un bus d'événements Redis pour la diffusion entre pods, une élection de leader distribuée (canaux IM / planificateur / tâches périodiques), et un stockage objet S3/MinIO pour les E/S de trace et les fichiers de workspace. Sans `DATABASE_URL` / `REDIS_URL`, le système se réduit au mode SQLite mono-processus
+- **Agent Group Chat (Swarm)** *(v1.4.0)* — Conversations de groupe multi-Agent par sièges, où chaque siège lie une définition d'Agent avec son propre prompt de rôle, sa politique de prise de parole, ses montages et son budget de tokens/temps, plus un panneau d'exécution de pipeline en direct
+- **Atelier de collaboration des employés numériques** *(v1.4.0)* — Équipes persistantes d'employés numériques avec une machine à états de tâches (`pending → in_progress → review → done` plus reprise), un tableau noir partagé et un tableau de bord de débit
+- **AgentNet Disk** *(v1.4.0)* — Lecteur de fichiers d'entreprise avec arborescence de dossiers, envoi / téléchargement / déplacement / suppression / recherche, corbeille avec restauration et historique des versions de fichiers
+- **Eval Center** *(v1.4.0)* — Évaluation autonome sur son propre PostgreSQL : projets → jeux de données → versions → cas de test → grilles d'évaluation → exécutions d'évaluation, avec assertions déterministes, notation LLM-judge, annotations Golden et détection de dérive par embeddings
 - **Isolation multi-utilisateur** — Workspace par utilisateur, canaux IM par utilisateur, système de permissions RBAC, inscription par code d'invitation et journaux d'audit
 - **Routage unifié sur huit canaux** — Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp et l'interface Web — tous routés uniformément
 - **Multi-moteur et multi-fournisseurs** — Moteurs de code-agent pluguables (Claude Code / AtomCode / Codex / OpenCode) et plusieurs fournisseurs d'API Claude avec trois stratégies d'équilibrage (round-robin / weighted / failover) et détection de santé automatique
 - **Exécution de code sandboxée** — Sandbox Docker + seccomp + cgroups durci pour l'exécution de code Python / Node / shell et l'automatisation de navigateur Chromium CDP
 - **Facturation et statistiques d'usage** — système complet de facturation (plans d'abonnement, portefeuille, codes de remboursement), suivi des tokens par modèle et graphiques de visualisation
 - **PWA mobile** — profondément optimisé pour le mobile, installation en un clic sur le bureau, iOS / Android adaptés
-- **Internationalisé** — 29 langues d'interface avec endonymes natifs et support RTL ; l'Agent répond dans la langue choisie par l'utilisateur
+- **Internationalisé** — 30 langues d'interface avec endonymes natifs et support RTL ; l'Agent répond dans la langue choisie par l'utilisateur
 
 ## Vitrine des fonctionnalités
 
@@ -101,6 +106,8 @@ cd deepthink
 make start
 ```
 
+Pour un déploiement multi-réplicas, utilisez `make k8s-deploy` — voir la section Variables d'environnement du README anglais pour `DATABASE_URL` / `REDIS_URL`.
+
 Visitez http://localhost:9898 et suivez l'assistant de configuration : créez l'administrateur (aucun compte par défaut), configurez l'API Claude et, optionnellement, les canaux IM. Toute la configuration se fait depuis l'interface Web, sans fichiers de configuration. Les clés API sont stockées chiffrées en AES-256-GCM.
 
 ### Activer le mode conteneur
@@ -123,9 +130,9 @@ Après inscription, chaque nouvel utilisateur obtient automatiquement un workspa
 
 DeepThink se compose de quatre projets Node.js indépendants :
 
-- **Backend** (Node.js 22 + TypeScript 5.9 + Hono) : service principal avec routeur de messages (polling 2s + déduplication), file de concurrence (jusqu'à 20 conteneurs + 5 processus hôte), planificateur de tâches (cron / interval / once), serveur WebSocket pour streaming temps réel et terminal, authentification bcrypt + HMAC Cookie, RBAC et gestion de configuration chiffrée AES-256-GCM. Persistance SQLite (mode WAL, schéma v1→v51). Il intègre également les couches Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox et Claude Code Plugins.
+- **Backend** (Node.js 22 + TypeScript 5.9 + Hono) : service principal avec routeur de messages (polling 2s + déduplication), file de concurrence (jusqu'à 20 conteneurs + 5 processus hôte), planificateur de tâches (cron / interval / once), serveur WebSocket pour streaming temps réel et terminal, authentification bcrypt + HMAC Cookie, RBAC et gestion de configuration chiffrée AES-256-GCM. Plan de données SQLite (mode WAL, schéma v1→v70) sur un seul nœud, ou PostgreSQL + pgvector avec Redis (bus d'événements + élection de leader) et MinIO/S3 (stockage objet) en mise à l'échelle horizontale sur Kubernetes. Il intègre également les couches Harness / Loop Engineering, Agent-as-a-Service (PaaS), Sandbox et Claude Code Plugins.
 - **Frontend** (`web/`) : SPA React 19 + Vite 6 + Zustand 5 + Tailwind CSS 4, avec react-markdown, mermaid, recharts, xterm.js et PWA mobile.
-- **Agent Runner** (`container/agent-runner/`) : moteur d'exécution qui tourne dans un conteneur Docker ou en processus hôte ; il invoque `query()` du Claude Agent SDK, émet plus de 30 types de StreamEvent via stdout et fournit 27 outils MCP au processus principal via des canaux IPC basés sur fichiers à écriture atomique.
+- **Agent Runner** (`container/agent-runner/`) : moteur d'exécution qui tourne dans un conteneur Docker ou en processus hôte ; il invoque `query()` du Claude Agent SDK, émet plus de 30 types de StreamEvent via stdout et fournit 36 outils MCP au processus principal via des canaux IPC basés sur fichiers à écriture atomique.
 - **Desktop** (`desktop/`) : un shell Electron qui package une application autonome pour macOS / Windows / Linux.
 
 Les huit canaux IM (Feishu, Telegram, QQ, DingTalk, WeChat, Discord, WhatsApp, Web) entrent par le routeur, sont dédupliqués et routés vers la file, qui via le ProviderPool sélectionne la clé API / le moteur et démarre un conteneur, un processus hôte ou un sandbox. Les événements de streaming sont diffusés via WebSocket au client Web ou renvoyés via les APIs IM à chaque canal.
