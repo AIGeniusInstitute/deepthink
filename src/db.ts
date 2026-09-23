@@ -2716,7 +2716,6 @@ export function initDatabase(): void {
         updated_at TEXT,
         UNIQUE(group_id, agent_definition_id)
       );
-      ALTER TABLE group_seats ADD COLUMN IF NOT EXISTS updated_at TEXT;
       CREATE INDEX IF NOT EXISTS idx_group_seats_gid ON group_seats(group_id);
       CREATE INDEX IF NOT EXISTS idx_group_seats_agent ON group_seats(agent_definition_id);
 
@@ -2740,6 +2739,12 @@ export function initDatabase(): void {
       CREATE INDEX IF NOT EXISTS idx_group_msgs_gid ON group_messages(group_id);
       CREATE INDEX IF NOT EXISTS idx_group_msgs_time ON group_messages(group_id, created_at);
     `);
+    // 老库补齐 updated_at（group_seats 首建于本迁移块，正常库已含该列）。
+    // 注意：必须用 ensureColumn（PRAGMA table_info 探测），不能写成
+    // `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` —— 后者是 PG 专有语法，
+    // SQLite 会报 `near "EXISTS": syntax error` 并中断整个 db.exec() 批处理，
+    // 导致同批次靠后的 CREATE TABLE group_messages 被静默跳过。
+    ensureColumn('group_seats', 'updated_at', 'TEXT');
   } catch (err) {
     logger.warn({ err }, 'group_seats / group_messages migration v67 failed (non-blocking)');
   }
