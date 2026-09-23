@@ -201,6 +201,7 @@ import type { GraphDeps } from './graph-engineering/graph-runner.js';
 import { buildTeam } from './agent-team/team-builder.js';
 import { buildCollaboration } from './agent-team/collaboration-builder.js';
 import { handleTeamStartCommand } from './agent-team/team-commands.js';
+import { groupMessageCreatedEvent, recordSwarmSeatMessage } from './agent-group/swarm-runner.js';
 import { runOrchestrator } from './agent-orchestration/orchestrator-runner.js';
 import { setSupervisorDeps } from './routes/supervisor.js';
 import { seedMarketplaceIfEmpty } from './marketplace-seed.js';
@@ -929,6 +930,7 @@ const EMPTY_CURSOR: MessageCursor = { timestamp: '', id: '' };
 // than this are skipped to prevent replaying the entire history. 5 minutes is
 // long enough to catch genuine unprocessed messages that arrived during a brief
 // restart while short enough to avoid re-broadcasting days-old test messages.
+const COLD_START_FRESH_MS = 5 * 60 * 1000;
 const terminalWarmupInFlight = new Set<string>();
 const STUCK_RUNNER_CHECK_INTERVAL_POLLS = 15;
 const STUCK_RUNNER_IDLE_MS = 3 * 60 * 1000;
@@ -3370,17 +3372,32 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // messages; without this guard, every recovery triggers a re-broadcast
   // of every unprocessed message ever stored, causing duplicate user
   // messages in WebSocket.
+  //
+  // The guard must not swallow a genuinely new message. A cursor is only ever
+  // seeded by the cursor-advance helpers, so a brand-new group (nothing has
+  // been processed for it yet) also lands here with an empty cursor — and
+  // fast-forwarding dropped its first message outright. Replay needs a backlog
+  // (>1 pending) or a stale one, so only fast-forward then.
   if (sinceCursor.timestamp === '' && sinceCursor.id === '') {
     const lastMsg = missedMessages[missedMessages.length - 1];
-    setCursors(chatJid, {
-      timestamp: lastMsg.timestamp,
-      id: lastMsg.id,
-    });
+    const ageMs = Date.now() - Date.parse(lastMsg.timestamp);
+    const looksLikeHistory =
+      missedMessages.length > 1 || !Number.isFinite(ageMs) || ageMs > COLD_START_FRESH_MS;
+    if (looksLikeHistory) {
+      setCursors(chatJid, {
+        timestamp: lastMsg.timestamp,
+        id: lastMsg.id,
+      });
+      logger.info(
+        { chatJid, count: missedMessages.length, lastTimestamp: lastMsg.timestamp },
+        'Cold start: fast-forwarded cursor to latest message, skipping historical replay',
+      );
+      return true;
+    }
     logger.info(
-      { chatJid, count: missedMessages.length, lastTimestamp: lastMsg.timestamp },
-      'Cold start: fast-forwarded cursor to latest message, skipping historical replay',
+      { chatJid, count: 1, lastTimestamp: lastMsg.timestamp },
+      'Cold start: no cursor but a single fresh message — processing it',
     );
-    return true;
   }
 
   if (missedMessages.length === 0) return true;
@@ -12306,6 +12323,16 @@ async function main(): Promise<void> {
           undefined,
           'graph_approval',
         );
+      },
+      // Agent Group Chat: mirror each settled seat node's reply back into the
+      // group's conversation log and push it to the open swarm page. Gated
+      // inside recordSwarmSeatMessage (seat-<n> node id + seat.group_id ===
+      // chatJid), so non-swarm graph runs are untouched.
+      onNodeSettled: async (ctx, node, outcome) => {
+        const row = recordSwarmSeatMessage(ctx, node, outcome);
+        if (row) {
+          broadcastStreamEvent(ctx.chatJid, groupMessageCreatedEvent(ctx.graphRunId, node.id, row));
+        }
       },
     };
     webDeps.startGraphRun = (opts) => {

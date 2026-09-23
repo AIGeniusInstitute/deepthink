@@ -255,6 +255,20 @@ export interface StreamEvent {
     options: { label: string; value: string }[];
     stateKey?: string;
   };
+  /** Agent Group Chat (swarm): a `group_messages` row was created. Lets the
+   *  swarm page append the message live instead of polling. */
+  groupMessage?: {
+    id: number;
+    groupId: string;
+    runId?: string | null;
+    nodeRunId?: string | null;
+    senderType: 'user' | 'agent' | 'system';
+    senderSeatId?: number | null;
+    msgType?: string;
+    content?: string;
+    status?: string;
+    createdAt?: string;
+  };
   /** Super Agent Team P1: the user submitted an approval decision. Lets all
    *  clients mark the corresponding ApprovalCard as resolved. */
   approvalResult?: {
