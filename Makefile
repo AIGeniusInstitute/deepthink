@@ -750,8 +750,8 @@ desktop-pack-linux: desktop-build desktop-rebuild-natives ## 打包 Linux AppIma
 
 # ─── Release ───────────────────────────────────────────────
 
-RELEASE_REPO ?= AIGeniusInstitute/deep-think
-RELEASE_NOTES_DIR ?= docs/release-notes
+RELEASE_REPO ?= AIGeniusInstitute/deepthink
+RELEASE_NOTES_DIR ?= docs/release_notes
 
 release: ## 发布 release 到 GitHub（用法: make release VERSION=v1.0.0；需先 make desktop-pack-* 并打 tag）
 	@if [ -z "$(VERSION)" ]; then echo "❌ 用法: make release VERSION=v1.0.0"; exit 1; fi
