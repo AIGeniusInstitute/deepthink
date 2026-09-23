@@ -732,21 +732,27 @@ desktop-clean-stale-mount: ## 打包前清理 macOS 上残留的 DeepThink DMG �
 		hdiutil detach "$$v" 2>/dev/null || hdiutil detach -force "$$v" 2>/dev/null || true; \
 	done
 
+# 打包步骤一律加 `--publish never`：desktop/build/*.json 里的 publish 配置只用于生成
+# 自动更新元数据（app-update.yml / latest*.yml），但 electron-builder 只要看到该配置，
+# 在 CI + tag 推送场景下就会自动推导出 publish=onTag 并构造 GitHub publisher，进而要求
+# GH_TOKEN；构建 job 没有该 token，会在打包收尾抛 InvalidConfigurationError 让整步失败
+# （4 个平台同时挂）。发布统一由 release.yml 的 release job（softprops/action-gh-release）
+# 负责，打包步骤不自行发布。详见 docs/issues/2026-09-23-release-build-publish-token.md
 desktop-pack-mac: desktop-build desktop-rebuild-natives desktop-clean-stale-mount ## 打包 macOS .dmg（仅 arm64，日常本地用）
-	cd $(DESKTOP_DIR) && npx $(NPM_FLAGS) electron-builder --config build/mac-arm64.json
+	cd $(DESKTOP_DIR) && npx $(NPM_FLAGS) electron-builder --config build/mac-arm64.json --publish never
 
 desktop-pack-mac-x64: desktop-build desktop-rebuild-natives desktop-clean-stale-mount ## 打包 macOS .dmg（仅 x64，需在 x64/intel Mac 上执行）
-	cd $(DESKTOP_DIR) && npx $(NPM_FLAGS) electron-builder --config build/mac-x64.json
+	cd $(DESKTOP_DIR) && npx $(NPM_FLAGS) electron-builder --config build/mac-x64.json --publish never
 
 desktop-pack-mac-all: desktop-pack-mac desktop-pack-mac-x64 ## 打包 macOS .dmg（arm64 + x64 双架构，发布用）
 
 desktop-pack-win: desktop-build desktop-rebuild-natives ## 打包 Windows .exe（在 Windows runner 上执行）
 	TARGET_PLATFORM=win ARCH=x64 NODE_VERSION=$(DESKTOP_NODE_VERSION) node scripts/fetch-node-binary.js
-	cd $(DESKTOP_DIR) && npx $(NPM_FLAGS) electron-builder --config build/win.json
+	cd $(DESKTOP_DIR) && npx $(NPM_FLAGS) electron-builder --config build/win.json --publish never
 
 desktop-pack-linux: desktop-build desktop-rebuild-natives ## 打包 Linux AppImage/.deb（在 Linux runner 上执行）
 	TARGET_PLATFORM=linux ARCH=x64 NODE_VERSION=$(DESKTOP_NODE_VERSION) node scripts/fetch-node-binary.js
-	cd $(DESKTOP_DIR) && npx $(NPM_FLAGS) electron-builder --config build/linux.json
+	cd $(DESKTOP_DIR) && npx $(NPM_FLAGS) electron-builder --config build/linux.json --publish never
 
 # ─── Release ───────────────────────────────────────────────
 
