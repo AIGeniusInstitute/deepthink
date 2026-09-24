@@ -30,8 +30,13 @@ jobs:
         with:
           node-version: '22'
 
+      # --legacy-peer-deps 是必需的：仓库不跟踪 lockfile，每次都是全量解析依赖树，
+      # 而 Node 22 自带的 npm 10 在 arborist 的 #loadPeerSet 里解析 vitest 的 peer
+      # 依赖时会崩 `Cannot read properties of null (reading 'edgesOut')`（约 90s 后
+      # 以 exit 1 结束）。跳过 peer 解析即可绕过。详见
+      # docs/issues/2026-09-24-ci-smoke-gate-never-ran.md
       - name: Install deps (no-save, no audit)
-        run: npm install --no-save --no-audit --no-fund
+        run: npm install --no-save --no-audit --no-fund --legacy-peer-deps
 
       # 测试清单的唯一真相源是 Makefile 的 test-smoke target。此前这里内联了
       # 一份只含 6 个文件的副本，与 Makefile 的 10 个文件长期不一致。
