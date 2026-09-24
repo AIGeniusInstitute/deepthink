@@ -54,7 +54,7 @@ DeepThink, an Open Source Enterprise-grade Autonomous Agent self-evolving superi
 - **Autonomy Layer & Autonomous Mode** *(v1.1.0)* — A cross-cutting Autonomy Layer unifies the 7 capabilities (perception / cognition / decision / execution / learning / adaptation / monitoring) with metrics collection + E2E acceptance; plus a full Autonomous Mode that lets the Agent complete a task end-to-end without human hand-holding, covering three defense layers (CLAUDE.md constitutional override / Supervisor clarify bypass / RLHF end-turn politeness) and four hard brakes (destructive commands / turn limit / token limit / loop detection)
 - **Agent-as-a-Service (PaaS)** — Create, version, mount, share, and install DB-backed Agent definitions across tenants, with per-user quotas, admin review, and a publishable template marketplace
 - **Cloud-Native & Horizontally Scalable** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3 backend replaces the single-node state stack: Redis event bus for cross-pod fan-out, distributed leader election (IM channels / scheduler / periodic jobs) so exactly one replica owns each singleton, PostgreSQL as the shared data plane, and S3/MinIO object storage for trace I/O and workspace files. Unset `DATABASE_URL` / `REDIS_URL` and it degrades to the original single-process SQLite mode with zero overhead
-- **Agent Group Chat (Swarm)** *(v1.4.0)* — Seat-based multi-agent group conversations: an agent group holds multiple seats (each bound to an agent definition with its own role prompt, speak policy, mounts and token/time budget), messages are addressed to seats, and a pipeline execution panel visualizes each turn's routing and output
+- **Agent Group Chat (Swarm)** *(v1.4.0 / v1.5.0)* — Seat-based multi-agent group conversations: an agent group holds multiple seats (each bound to an agent definition with its own role prompt, speak policy, mounts and token/time budget), messages are addressed to seats, and a pipeline execution panel visualizes each turn's routing and output. **v1.5.0** wires the execution path end to end: a group message starts a graph run over the seats, each seat's reply streams back token by token attributed to its seat, and seats inherit the turn's Skills / MCP servers / knowledge bases
 - **Digital Employee Collaboration Workbench** *(v1.4.0)* — Persistent teams of "digital employees" wrapping agent definitions, with a task state machine (`pending → in_progress → review → done` plus rework), a shared blackboard, and a dashboard aggregating employee/team/task throughput
 - **AgentNet Disk** *(v1.4.0)* — Enterprise-grade file drive for agents and users: folder tree, upload / download / move / delete / search, recycle bin with restore, and file version history
 - **Eval Center** *(v1.4.0)* — A standalone evaluation product on its own PostgreSQL: projects → datasets → versions → test cases → rubrics → eval runs, with deterministic assertions plus LLM-judge scoring, Golden annotations, and embedding-based drift detection against a baseline version
@@ -242,7 +242,7 @@ DeepThink runs as either a single node or a horizontally scaled Kubernetes deplo
 - **Object storage** — Trace I/O above 64 KB and workspace files route through S3/MinIO when enabled; the local PVC remains the primary filesystem for `groups/`, `sessions/` and `memory/`, so a multi-pod deployment needs a `ReadWriteMany` volume.
 - **K8s manifests** — Kustomize base plus overlays under `deploy/k8s/` (namespace, deployments, services, HPA, PVC, ConfigMap/Secret, backup CronJob, and a `kind` overlay), with a one-shot `make k8s-deploy`.
 
-### Agent Group Chat (Swarm) *(v1.4.0)*
+### Agent Group Chat (Swarm) *(v1.4.0 / v1.5.0)*
 
 Multiple agents converse in a shared group rather than one agent per session:
 
@@ -250,6 +250,9 @@ Multiple agents converse in a shared group rather than one agent per session:
 - **Addressed messages** — Messages carry `mentions` and `parent_msg_id`, so replies form a threaded transcript rather than a flat log
 - **Pipeline execution panel** — Every turn's routing, token in/out and duration are recorded and rendered as a live execution pipeline
 - **Per-turn traces** — Group turns persist to the same trace tables as regular chats, so the Trace DAG and PDF export work unchanged
+- **Seat execution** *(v1.5.0)* — A swarm group is not a separate execution engine: it *is* a graph definition whose nodes are the seats and whose edges are the speaking order. A group message triggers a graph run over those seats through the platform's standard graph engine
+- **Seat-attributed streaming** *(v1.5.0)* — Each seat's reply streams back token by token, attributed to the seat that produced it, so bubbles fill in live rather than appearing blank until a refresh
+- **Mount parity with regular chat** *(v1.5.0)* — Seats inherit the turn's Skills / MCP servers / knowledge bases through the same toolbar, store and `selectedMounts` field that regular conversations use
 
 ### Digital Employee Collaboration Workbench *(v1.4.0)*
 

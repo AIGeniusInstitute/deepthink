@@ -50,7 +50,7 @@ DeepThink、エンタープライズグレードの自律型 Agent 自己進化�
 - **Autonomy Layer & Autonomous Mode** *(v1.1.0)* — 横断的な Autonomy Layer が 7 つの能力（perception / cognition / decision / execution / learning / adaptation / monitoring）を metrics collection と E2E acceptance で統合。さらに完全な Autonomous Mode により、Agent は人間の介入なしにタスクを end-to-end で完遂できる。3 つの defense layers（CLAUDE.md 憲法的オーバーライド / Supervisor 明確化バイパス / RLHF ターン終了礼儀）と 4 つの hard brakes（破壊的コマンド / ターン制限 / トークン制限 / ループ検出）を網羅
 - **Agent-as-a-Service (PaaS)** — DB 支えの Agent 定義をテナントをまたぎ作成・バージョン管理・マウント・共有・インストール、ユーザー別クォータ、管理者レビュー、公開可能なテンプレートマーケットプレース
 - **クラウドネイティブ & 水平スケーリング** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3 がシングルノードのステートスタックを置き換えます：ポッド間ファンアウト用の Redis イベントバス、分散リーダー選出（IM チャンネル / スケジューラ / 定期ジョブ）、trace I/O とワークスペースファイル用の S3/MinIO オブジェクトストレージ。`DATABASE_URL` / `REDIS_URL` を未設定にすればシングルプロセス SQLite モードに縮退します
-- **Agent Group Chat (Swarm)** *(v1.4.0)* — シート方式のマルチ Agent グループ会話。各シートは独自のロールプロンプト、発言ポリシー、マウント、トークン/時間予算を持つ Agent 定義を紐付け、ライブのパイプライン実行パネルも備えます
+- **Agent Group Chat (Swarm)** *(v1.4.0 / v1.5.0)* — シート方式のマルチ Agent グループ会話。各シートは独自のロールプロンプト、発言ポリシー、マウント、トークン/時間予算を持つ Agent 定義を紐付け、ライブのパイプライン実行パネルも備えます。**v1.5.0** は実行経路をエンドツーエンドで接続します：グループのメッセージがシートに対して graph run を開始し、各シートの返答はそのシートに帰属したまま token 単位でストリーミングされ、シートはそのターンの Skills / MCP サーバー / ナレッジベースを継承します
 - **デジタル従業員コラボレーションワークベンチ** *(v1.4.0)* — デジタル従業員の永続チーム。タスク状態機械（`pending → in_progress → review → done` と手戻り）、共有ブラックボード、スループットダッシュボードを備えます
 - **AgentNet Disk** *(v1.4.0)* — フォルダツリー、アップロード / ダウンロード / 移動 / 削除 / 検索、復元可能なゴミ箱、ファイル版履歴を備えたエンタープライズ向けファイルドライブ
 - **Eval Center** *(v1.4.0)* — 専用 PostgreSQL 上に独立した評価プロダクト：プロジェクト → データセット → バージョン → テストケース → ルーブリック → 評価実行。決定論的アサーション、LLM ジャッジ採点、Golden アノテーション、埋め込みベースのドリフト検出を備えます

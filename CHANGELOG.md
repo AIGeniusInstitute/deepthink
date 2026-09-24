@@ -1,8 +1,34 @@
 # Changelog
 
-All notable changes to DeepThink are documented here. For the full release notes of each version, follow the linked file under `docs/release-notes/`.
+All notable changes to DeepThink are documented here. For the full release notes of each version, follow the linked file under `docs/release_notes/`.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [v1.5.0] — 2026-09-24
+
+A **focused fix** release whose single axis is making the Agent Group Chat (Swarm) delivered in v1.4.0 actually usable. v1.4.0 shipped the group/seat UI, the tables and the Pipeline panel, but the execution path that turns "a message" into "a seat speaking" was never wired — so messages produced no replies, blank bubbles, and seats with no mounted capabilities.
+
+- **Agent group messages now actually execute** — `POST /:jid/messages` previously only wrote to `group_messages` and triggered nothing (`graph_runs` stayed at 0 rows), while the "Start Pipeline" button wrote a hard-coded `definition_id='swarm-pipeline'` that violated a foreign key, and the only dispatch channel was Redis, which reported success without doing anything when disconnected. The whole ad-hoc Redis path was deleted: a swarm group is now **a real `graph_definition`** whose nodes are its seats and whose edges are the speaking order.
+- **Seat-attributed streaming** — Each seat's reply streams token by token, attributed to the seat that produced it. Previously the front end understood only `group_message_created`, and rendered blank bubbles because the WS payload carried `content` while the renderer read `contentRef`.
+- **Mount parity with regular chat** — Seats inherit the turn's Skills / MCP servers / knowledge bases through the same toolbar, store and `selectedMounts` field that regular conversations use; the seat's synthetic group now carries the owner identity the mount pipeline resolves against.
+- **Execution mode & cold start** — Swarm groups inherit the creator's home execution mode instead of silently falling back to `container`; the cold-start guard no longer silently discards a new workspace's first message.
+- **Architecture convergence** — The graph engine gained two optional, add-only hooks (`onNodeSettled` / `onNodeStream`) that are no-ops when unwired. No new engine, no new middleware, no new dependencies, **no schema change** (v70 → v70).
+
+📖 Full notes: [docs/release_notes/v1.5.0.md](docs/release_notes/v1.5.0.md)
+
+## [v1.4.0] — 2026-09-23
+
+A **distributed capability landing + enterprise collaboration workload** release. v1.3.0 moved DeepThink's state stack onto K8s, but a batch of capabilities still worked only single-node: config read from local files, workspace files on local disk, agent dispatch via in-process calls.
+
+- **Configuration fully migrated to PostgreSQL + workspace files into MinIO** — 21 configuration domains moved from local files to the `provider_configs` / `mcp_server_configs` tables (DB-first read, so any Pod sees a change immediately); workspace files synchronize to the `deepthink-workspaces` MinIO bucket, with the full delete / move / rename / search / download / preview chain S3-synced.
+- **Distributed agent dispatch closed loop** — fixes for four classes of distributed agent-runner dispatch defects (close signal, subscription race, duplicate delivery, BLPOP latency), plus turnMounts (Skills / MCP / KB) taking effect before distributed dispatch, cross-Pod Skill visibility, IM leader-election races, and `must_change_password` BIGINT semantics.
+- **Four enterprise business surfaces** — Digital Employee Collaboration Workbench, AgentNet Disk, Eval Center, and Agent Group Chat (Swarm) with a traceable Pipeline execution panel.
+- **Platform capability close-out** — Skills into PostgreSQL, conversation mount controls, office quick bar, 6 Agent conversation-mount context fixes, run-trace persistence + execution summary + PDF export.
+- **Fixes** — SQLite migration abort caused by PG-only `ADD COLUMN IF NOT EXISTS` syntax, Disk trash route-priority 404, Eval Center drift `toFixed` crash, and several other K8s-exposed defects.
+
+Schema v59 → **v70**; 46 commits.
+
+📖 Full notes: [docs/release_notes/v1.4.0.md](docs/release_notes/v1.4.0.md)
 
 ## [v1.3.0] — 2026-09-06
 

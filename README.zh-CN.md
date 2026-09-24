@@ -56,7 +56,7 @@ DeepThink，开源企业级自主 Agent 超级智能体自进化平台，是从 
 - **Autonomy Layer 与 Autonomous Mode** *(v1.1.0)* —— 跨层的 Autonomy Layer 统一了 7 大能力（perception / cognition / decision / execution / learning / adaptation / monitoring），配套 metrics collection 与 E2E acceptance；外加完整的 Autonomous Mode，让 Agent 无需人类手把手即可 end-to-end 完成任务，覆盖 three defense layers（CLAUDE.md 宪法性覆盖 / Supervisor clarify 绕过 / RLHF 末端礼貌）与 four hard brakes（破坏性命令 / turn 限制 / token 限制 / 循环检测）
 - **Agent-as-a-Service（PaaS）** —— 跨租户创建、版本化、挂载、共享并安装数据库支撑的 Agent 定义，具备 per-user 配额、管理员审核和可发布的模板市场
 - **云原生 & 水平扩缩容** *(v1.4.0)* —— PostgreSQL + Redis + MinIO/S3 取代单机状态栈：Redis 事件总线做跨 Pod 扇出，分布式选主（IM 通道 / 调度器 / 周期任务）保证每个单例只有一个副本持有，PostgreSQL 作为共享数据面，S3/MinIO 承载 trace I/O 与工作区文件。不设 `DATABASE_URL` / `REDIS_URL` 时降级为原单进程 SQLite 模式，零额外开销
-- **Agent 群组协作（Swarm）** *(v1.4.0)* —— 席位制多 Agent 群组对话：一个 Agent 群组持有多个席位（每个席位绑定一个 agent 定义，拥有独立的角色提示词、发言策略、挂载与 token / 时间预算），消息按席位寻址，Pipeline 执行面板可视化每一轮的流转与产出
+- **Agent 群组协作（Swarm）** *(v1.4.0 / v1.5.0)* —— 席位制多 Agent 群组对话：一个 Agent 群组持有多个席位（每个席位绑定一个 agent 定义，拥有独立的角色提示词、发言策略、挂载与 token / 时间预算），消息按席位寻址，Pipeline 执行面板可视化每一轮的流转与产出。**v1.5.0** 把执行链路端到端接通：一条群组消息会对这些席位启动一次图谱运行，每个席位的回复逐字流式回传并归属到该席位，席位同时继承本轮的技能 / MCP 工具 / 知识库
 - **数字员工协作工作台** *(v1.4.0)* —— 包裹 agent 定义的持久化「数字员工」团队，带任务状态机（`pending → in_progress → review → done` 及返工循环）、共享黑板，以及聚合员工 / 团队 / 任务吞吐的仪表盘
 - **AgentNet 网盘** *(v1.4.0)* —— 面向 Agent 与用户的企业级文件盘：目录树、上传 / 下载 / 移动 / 删除 / 搜索、带恢复的回收站，以及文件版本历史
 - **评测中心（Eval Center）** *(v1.4.0)* —— 独立 PostgreSQL 上的独立评测产品：项目 → 数据集 → 版本 → 测试用例 → 评分标准 → 评测运行，支持确定性断言与 LLM-as-Judge 评分、Golden 标注，以及针对基线版本的 embedding 漂移检测
@@ -243,7 +243,7 @@ DeepThink 既可作为单节点运行，也可作为水平扩缩的 Kubernetes �
 - **对象存储** —— 超过 64 KB 的 trace I/O 与工作区文件在启用后走 S3/MinIO；本地 PVC 仍是 `groups/`、`sessions/`、`memory/` 的主文件系统，因此多 Pod 部署需要一个 `ReadWriteMany` 卷。
 - **K8s 清单** —— Kustomize base 及 `deploy/k8s/` 下的 overlay（namespace、deployment、service、HPA、PVC、ConfigMap/Secret、备份 CronJob，以及一个 `kind` overlay），配套一次性 `make k8s-deploy`。
 
-### Agent 群组协作（Swarm）*(v1.4.0)*
+### Agent 群组协作（Swarm）*(v1.4.0 / v1.5.0)*
 
 多个 Agent 在共享群组中对话，而非每个会话一个 Agent：
 
@@ -251,6 +251,9 @@ DeepThink 既可作为单节点运行，也可作为水平扩缩的 Kubernetes �
 - **寻址消息** —— 消息携带 `mentions` 与 `parent_msg_id`，因此回复构成有线索的对话记录而非扁平日志
 - **Pipeline 执行面板** —— 每一轮的路由、token 进出与耗时都被记录，并渲染为实时执行流水线
 - **Per-turn Trace** —— 群组轮次持久化到与普通对话相同的 trace 表，因此 Trace DAG 与 PDF 导出无需改动即可工作
+- **席位执行** *(v1.5.0)* —— swarm 群组不是一套独立的执行引擎，它**本身就是**一个图谱定义：节点是席位，边是发言顺序。一条群组消息经由平台标准图谱引擎对席位启动一次图谱运行
+- **席位级流式输出** *(v1.5.0)* —— 每个席位的回复逐字流式回传，并归属到产出它的那个席位，气泡实时增长，而不是先空白、刷新后才出现
+- **与普通对话对等的能力** *(v1.5.0)* —— 席位经由与普通对话完全相同的工具栏、store 与 `selectedMounts` 字段，继承本轮的技能 / MCP 工具 / 知识库
 
 ### 数字员工协作工作台 *(v1.4.0)*
 
