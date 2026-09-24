@@ -5,9 +5,13 @@
  * `group_message_delta` while the seat is still writing, and as
  * `group_message_created` once the seat has settled and the row is persisted.
  * Both ride the same `stream_event` WebSocket channel the normal chat uses.
+ *
+ * Full agent capabilities are now rendered per seat: streaming thoughts,
+ * tool call cards, tool results, token usage summaries, and execution
+ * state indicators — mirroring the main agent experience.
  */
-import { useEffect, useRef, useState } from 'react';
-import { Loader2, Send } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Loader2, Send, Brain, Wrench, CheckCircle2, XCircle, ChevronDown, ChevronRight, Clock } from 'lucide-react';
 import { useAgentGroupStore } from '@/stores/agent-group';
 import { useChatMountsStore } from '@/stores/chat-mounts';
 import { wsManager } from '@/api/ws';
@@ -15,10 +19,26 @@ import { ChatToolbar } from '@/components/chat/ChatToolbar';
 import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
 import type { GroupMessage, SelectedMounts } from '@/api/agent-groups';
 
-/** A seat that is currently running: its label plus the reply so far. */
+/** Per-seat streaming activity state — full capabilities mirroring main agent. */
 interface SeatActivity {
   name: string;
   text: string;
+  thinking: string;
+  thinkingOpen: boolean;
+  toolCalls: SeatToolCall[];
+  status: 'idle' | 'thinking' | 'tool_exec' | 'done' | 'failed';
+  tokenIn: number;
+  tokenOut: number;
+  startedAt: number;
+}
+
+interface SeatToolCall {
+  id: string;
+  name: string;
+  input: string;
+  output: string;
+  status: 'running' | 'done' | 'error';
+  open: boolean;
 }
 
 /** Recover the seat id from a swarm node id (`seat-<id>`), or null. */
@@ -29,16 +49,97 @@ function seatIdFromNodeId(nodeId: unknown): number | null {
 
 function AgentAvatar({ label }: { label: string }) {
   return (
-    <div className="size-6 rounded-full bg-accent flex items-center justify-center text-[10px] font-medium shrink-0 mt-0.5">
+    <div className="size-7 rounded-full bg-accent flex items-center justify-center text-[10px] font-medium shrink-0 mt-0.5 text-white">
       {label[0] ?? 'A'}
     </div>
+  );
+}
+
+function TokenBadge({ tokenIn, tokenOut }: { tokenIn: number; tokenOut: number }) {
+  if (!tokenIn && !tokenOut) return null;
+  return (
+    <span className="text-[10px] text-muted-foreground ml-2 flex items-center gap-1">
+      <span className="inline-flex items-center gap-0.5">
+        <span className="text-[9px] opacity-60">↑</span>{tokenIn.toLocaleString()}
+      </span>
+      <span className="inline-flex items-center gap-0.5">
+        <span className="text-[9px] opacity-60">↓</span>{tokenOut.toLocaleString()}
+      </span>
+    </span>
+  );
+}
+
+function ThinkingBlock({ thinking, open, onToggle }: { thinking: string; open: boolean; onToggle: () => void }) {
+  if (!thinking) return null;
+  return (
+    <div className="mt-1.5 border border-amber-500/20 rounded-md bg-amber-500/5 overflow-hidden">
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-1.5 w-full px-2.5 py-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-medium hover:bg-amber-500/10 transition-colors"
+      >
+        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        <Brain className="size-3" />思考过程 {open ? '' : `(${thinking.length} 字)`}
+      </button>
+      {open && (
+        <div className="px-3 py-2 text-[11px] text-amber-700/80 dark:text-amber-300/70 whitespace-pre-wrap max-h-48 overflow-y-auto border-t border-amber-500/10">
+          {thinking}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ToolCallCard({ tc, onToggle }: { tc: SeatToolCall; onToggle: () => void }) {
+  return (
+    <div className="mt-1.5 border border-blue-500/20 rounded-md bg-blue-500/5 overflow-hidden">
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-1.5 w-full px-2.5 py-1.5 text-[11px] text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-500/10 transition-colors"
+      >
+        {tc.open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        <Wrench className="size-3" />
+        {tc.name}
+        {tc.status === 'running' && <Loader2 className="size-3 animate-spin ml-1" />}
+        {tc.status === 'done' && <CheckCircle2 className="size-3 text-green-500 ml-1" />}
+        {tc.status === 'error' && <XCircle className="size-3 text-red-500 ml-1" />}
+      </button>
+      {tc.open && (
+        <div className="px-3 py-2 text-[11px] space-y-1.5 border-t border-blue-500/10">
+          {tc.input && (
+            <div>
+              <span className="text-blue-500/70 font-medium">入参:</span>
+              <pre className="mt-0.5 text-[10px] whitespace-pre-wrap break-all bg-black/10 dark:bg-white/5 rounded p-1 max-h-24 overflow-y-auto">
+                {tc.input}
+              </pre>
+            </div>
+          )}
+          {tc.output && (
+            <div>
+              <span className="text-blue-500/70 font-medium">结果:</span>
+              <pre className="mt-0.5 text-[10px] whitespace-pre-wrap break-all bg-black/10 dark:bg-white/5 rounded p-1 max-h-32 overflow-y-auto">
+                {tc.output}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DurationBadge({ ms }: { ms: number }) {
+  if (!ms) return null;
+  const sec = (ms / 1000).toFixed(1);
+  return (
+    <span className="text-[10px] text-muted-foreground ml-2 flex items-center gap-1">
+      <Clock className="size-2.5" />{sec}s
+    </span>
   );
 }
 
 function MessageBubble({ msg, groupJid }: { msg: GroupMessage; groupJid?: string }) {
   const isUser = msg.senderType === 'user';
   const isSystem = msg.senderType === 'system';
-  const mentionList: string[] = Array.isArray(msg.mentions) ? msg.mentions : [];
 
   if (isSystem) {
     return (
@@ -53,31 +154,27 @@ function MessageBubble({ msg, groupJid }: { msg: GroupMessage; groupJid?: string
   const displayName = isUser ? 'Me' : (msg.senderSeatId ? `Agent #${msg.senderSeatId}` : 'Agent');
 
   return (
-    <div className={`flex gap-2 px-4 py-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex gap-2 px-4 py-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
       {!isUser && <AgentAvatar label={displayName} />}
-      <div className={`max-w-[70%] rounded-lg px-3 py-1.5 text-sm ${isUser ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'}`}>
+      <div className={`max-w-[75%] rounded-lg px-3.5 py-2 text-sm ${isUser ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'}`}>
         {!isUser && (
-          <div className="text-[10px] font-medium text-muted-foreground mb-0.5">{displayName}</div>
+          <div className="flex items-center gap-1 mb-1">
+            <span className="text-[11px] font-semibold text-foreground/80">{displayName}</span>
+            {msg.status === 'failed' && <XCircle className="size-3 text-red-500" />}
+            <TokenBadge tokenIn={msg.tokenIn ?? 0} tokenOut={msg.tokenOut ?? 0} />
+            <DurationBadge ms={msg.durationMs ?? 0} />
+          </div>
         )}
         {isUser ? (
           <div className="whitespace-pre-wrap break-words">{msg.contentRef ?? ''}</div>
         ) : (
-          // Seats answer in Markdown (lists, bold, code) — render it the same way
-          // the main chat renders an agent reply.
           <div className="min-w-0 overflow-hidden [&>div>*:first-child]:!mt-0">
             <MarkdownRenderer content={msg.contentRef ?? ''} groupJid={groupJid} variant="chat" />
           </div>
         )}
-        {mentionList.length > 0 && (
-          <div className="flex gap-1 mt-1 flex-wrap">
-            {mentionList.map((m, i) => (
-              <span key={i} className="text-[10px] bg-accent rounded px-1">@{typeof m === 'string' ? m : '?'}</span>
-            ))}
-          </div>
-        )}
       </div>
       {isUser && (
-        <div className="size-6 rounded-full bg-primary flex items-center justify-center text-[10px] font-medium text-primary-foreground shrink-0 mt-0.5">
+        <div className="size-7 rounded-full bg-primary flex items-center justify-center text-[10px] font-medium text-primary-foreground shrink-0 mt-0.5">
           Me
         </div>
       )}
@@ -85,25 +182,69 @@ function MessageBubble({ msg, groupJid }: { msg: GroupMessage; groupJid?: string
   );
 }
 
-/** A seat that is still working: streamed text so far, or a thinking placeholder. */
-function StreamingBubble({ seatId, activity, groupJid }: { seatId: number; activity: SeatActivity; groupJid: string }) {
+/** Full-capability streaming bubble for a seat that is currently executing. */
+function StreamingBubble({
+  seatId,
+  activity,
+  groupJid,
+  onToggleThinking,
+  onToggleTool,
+}: {
+  seatId: number;
+  activity: SeatActivity;
+  groupJid: string;
+  onToggleThinking: (seatId: number) => void;
+  onToggleTool: (seatId: number, toolIdx: number) => void;
+}) {
+  const statusIcon = () => {
+    switch (activity.status) {
+      case 'thinking': return <Brain className="size-3 text-amber-500 animate-pulse" />;
+      case 'tool_exec': return <Wrench className="size-3 text-blue-500 animate-pulse" />;
+      case 'failed': return <XCircle className="size-3 text-red-500" />;
+      default: return activity.text ? null : <Loader2 className="size-3 animate-spin text-muted-foreground" />;
+    }
+  };
+
   return (
-    <div className="flex gap-2 px-4 py-1.5 justify-start">
-      <AgentAvatar label={`Agent #${seatId}`} />
-      <div className="max-w-[70%] rounded-lg px-3 py-1.5 text-sm bg-muted text-foreground">
-        <div className="text-[10px] font-medium text-muted-foreground mb-0.5">
-          Agent #{seatId}
-          {activity.name ? ` · ${activity.name}` : ''}
+    <div className="flex gap-2 px-4 py-2 justify-start">
+      <AgentAvatar label={activity.name || `Agent #${seatId}`} />
+      <div className="max-w-[75%] rounded-lg px-3.5 py-2 text-sm bg-muted text-foreground">
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-[11px] font-semibold text-foreground/80">
+            {activity.name || `Agent #${seatId}`}
+          </span>
+          {statusIcon()}
+          <TokenBadge tokenIn={activity.tokenIn} tokenOut={activity.tokenOut} />
         </div>
+
+        {/* Thinking block */}
+        {activity.thinking && (
+          <ThinkingBlock
+            thinking={activity.thinking}
+            open={activity.thinkingOpen}
+            onToggle={() => onToggleThinking(seatId)}
+          />
+        )}
+
+        {/* Tool call cards */}
+        {activity.toolCalls.map((tc, idx) => (
+          <ToolCallCard
+            key={tc.id || idx}
+            tc={tc}
+            onToggle={() => onToggleTool(seatId, idx)}
+          />
+        ))}
+
+        {/* Streaming / completed text */}
         {activity.text ? (
-          <div className="min-w-0 overflow-hidden [&>div>*:first-child]:!mt-0">
+          <div className="mt-1.5 min-w-0 overflow-hidden [&>div>*:first-child]:!mt-0">
             <MarkdownRenderer content={activity.text} groupJid={groupJid} variant="chat" streaming />
           </div>
-        ) : (
+        ) : !activity.thinking && activity.toolCalls.length === 0 ? (
           <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" />正在思考…
+            <Loader2 className="size-3 animate-spin" />正在准备…
           </span>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -122,62 +263,194 @@ export function GroupChatArea({ groupJid }: { groupJid: string }) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [seats, setSeats] = useState<Record<number, SeatActivity>>({});
 
+  const ensureSeat = useCallback((seatId: number, name?: string): SeatActivity => {
+    const defaults: SeatActivity = {
+      name: name ?? `Agent #${seatId}`,
+      text: '',
+      thinking: '',
+      thinkingOpen: false,
+      toolCalls: [],
+      status: 'idle' as const,
+      tokenIn: 0,
+      tokenOut: 0,
+      startedAt: Date.now(),
+    };
+    setSeats(prev => {
+      if (prev[seatId]) return prev;
+      return { ...prev, [seatId]: defaults };
+    });
+    return defaults;
+  }, []);
+
+  const updateSeat = useCallback((seatId: number, patch: Partial<SeatActivity>) => {
+    setSeats(prev => {
+      const cur = prev[seatId];
+      if (!cur) return prev;
+      return { ...prev, [seatId]: { ...cur, ...patch } };
+    });
+  }, []);
+
   useEffect(() => {
     void fetchMessages(groupJid);
-    // Seat replies stream in over the shared stream_event channel: deltas while
-    // a seat writes, then the persisted row (with a real id) when it settles.
+
     const unsub = wsManager.on('stream_event', (data: any) => {
       if (data?.chatJid !== groupJid) return;
       const event = data.event;
       if (!event) return;
 
+      // ── group_message_delta: streaming reply text ────────────
       if (event.eventType === 'group_message_delta') {
         const seatId = event.groupMessage?.senderSeatId;
         const chunk = event.groupMessage?.content;
         if (!seatId || !chunk) return;
-        setSeats(prev => ({
-          ...prev,
-          [seatId]: { name: prev[seatId]?.name ?? '', text: (prev[seatId]?.text ?? '') + chunk },
-        }));
+        const seatName: string | undefined = (event.groupMessage as any)?.seatName;
+        ensureSeat(seatId, seatName);
+        setSeats(prev => {
+          const cur = prev[seatId];
+          if (!cur) return prev;
+          return { ...prev, [seatId]: { ...cur, text: cur.text + chunk, status: 'done' } };
+        });
         return;
       }
 
+      // ── group_thinking_delta: streaming reasoning ────────────
+      if (event.eventType === 'group_thinking_delta') {
+        const seatId = event.groupMessage?.senderSeatId;
+        const chunk = event.groupMessage?.content;
+        if (!seatId || !chunk) return;
+        ensureSeat(seatId, (event.groupMessage as any)?.seatName);
+        setSeats(prev => {
+          const cur = prev[seatId];
+          if (!cur) return prev;
+          return {
+            ...prev,
+            [seatId]: {
+              ...cur,
+              thinking: cur.thinking + chunk,
+              status: 'thinking',
+              thinkingOpen: cur.thinkingOpen || cur.thinking.length < 200,
+            },
+          };
+        });
+        return;
+      }
+
+      // ── group_tool_call: a tool was invoked ──────────────────
+      if (event.eventType === 'group_tool_call') {
+        const seatId = event.groupMessage?.senderSeatId;
+        if (!seatId) return;
+        const tc = event.groupMessage?.toolCall;
+        ensureSeat(seatId, (event.groupMessage as any)?.seatName);
+        setSeats(prev => {
+          const cur = prev[seatId];
+          if (!cur) return prev;
+          return {
+            ...prev,
+            [seatId]: {
+              ...cur,
+              status: 'tool_exec',
+              toolCalls: [...cur.toolCalls, {
+                id: tc?.id ?? crypto.randomUUID(),
+                name: tc?.name ?? (event.groupMessage?.content ?? 'tool'),
+                input: tc?.input ? JSON.stringify(tc.input, null, 2) : '',
+                output: '',
+                status: 'running' as const,
+                open: true,
+              }],
+            },
+          };
+        });
+        return;
+      }
+
+      // ── group_tool_result: a tool returned ───────────────────
+      if (event.eventType === 'group_tool_result') {
+        const seatId = event.groupMessage?.senderSeatId;
+        if (!seatId) return;
+        const tc = event.groupMessage?.toolCall;
+        setSeats(prev => {
+          const cur = prev[seatId];
+          if (!cur) return prev;
+          const updated = [...cur.toolCalls];
+          const lastIdx = updated.length - 1;
+          if (lastIdx >= 0 && tc?.id && updated[lastIdx].id === tc.id) {
+            updated[lastIdx] = {
+              ...updated[lastIdx],
+              output: typeof tc.output === 'string' ? tc.output : JSON.stringify(tc.output ?? '', null, 2),
+              status: 'done',
+            };
+          } else if (lastIdx >= 0) {
+            updated[lastIdx] = {
+              ...updated[lastIdx],
+              output: event.groupMessage?.content ?? '',
+              status: 'done',
+            };
+          }
+          return { ...prev, [seatId]: { ...cur, toolCalls: updated } };
+        });
+        return;
+      }
+
+      // ── group_seat_status: execution state change ────────────
+      if (event.eventType === 'group_seat_status') {
+        const seatId = event.groupMessage?.senderSeatId;
+        if (!seatId) return;
+        ensureSeat(seatId, (event.groupMessage as any)?.seatName);
+        const newStatus = event.groupMessage?.status;
+        if (newStatus === 'completed' || newStatus === 'failed' || newStatus === 'interrupted') {
+          updateSeat(seatId, {
+            status: newStatus === 'failed' ? 'failed' : 'done',
+            tokenIn: event.groupMessage?.tokenIn ?? 0,
+            tokenOut: event.groupMessage?.tokenOut ?? 0,
+          });
+        }
+        return;
+      }
+
+      // ── group_token_usage: token counters ────────────────────
+      if (event.eventType === 'group_token_usage') {
+        const seatId = event.groupMessage?.senderSeatId;
+        if (!seatId) return;
+        updateSeat(seatId, {
+          tokenIn: event.groupMessage?.tokenIn ?? 0,
+          tokenOut: event.groupMessage?.tokenOut ?? 0,
+        });
+        return;
+      }
+
+      // ── group_message_created: persisted row ─────────────────
       if (event.eventType === 'group_message_created') {
         const gm = event.groupMessage;
         if (!gm) return;
-        // The row's text field is `contentRef` (see GET /messages); the event
-        // carries the same text as `content`.
         appendMessage({
           ...gm,
           contentRef: gm.content,
           mentions: [],
           parentMsgId: null,
+          tokenIn: gm.tokenIn ?? 0,
+          tokenOut: gm.tokenOut ?? 0,
+          durationMs: gm.durationMs ?? 0,
         } as GroupMessage);
         setSeats(prev => {
           if (!gm.senderSeatId || !prev[gm.senderSeatId]) return prev;
           const next = { ...prev };
-          delete next[gm.senderSeatId];
+          delete next[gm.senderSeatId!];
           return next;
         });
         return;
       }
 
-      // Node lifecycle: show which seat holds the floor, and drop the activity
-      // of a seat that settled without producing a reply (e.g. empty output).
+      // ── graph_node_start: a seat takes the floor ─────────────
       const seatId = seatIdFromNodeId(event.graphEvent?.nodeId);
       if (seatId === null) return;
       if (event.eventType === 'graph_node_start') {
-        setSeats(prev => ({
-          ...prev,
-          [seatId]: { name: event.graphEvent?.title ?? prev[seatId]?.name ?? '', text: '' },
-        }));
+        const title: string | undefined = (event.graphEvent as any)?.title;
+        ensureSeat(seatId, title);
+        updateSeat(seatId, { status: 'thinking', text: '', thinking: '', toolCalls: [] });
       } else if (event.eventType === 'graph_node_end' || event.eventType === 'graph_node_status') {
-        if (event.graphEvent?.status !== 'running') {
-          setSeats(prev => {
-            if (!prev[seatId]) return prev;
-            const next = { ...prev };
-            delete next[seatId];
-            return next;
+        if (event.graphEvent?.status === 'completed' || event.graphEvent?.status === 'failed') {
+          updateSeat(seatId, {
+            status: event.graphEvent.status === 'failed' ? 'failed' : 'done',
           });
         }
       }
@@ -195,8 +468,6 @@ export function GroupChatArea({ groupJid }: { groupJid: string }) {
     setSending(true);
     setSendError(null);
     setInput('');
-    // Skills / MCP servers / KBs selected in the toolbar ride along with the
-    // message and are mounted on every seat of the run it starts.
     const mounts = useChatMountsStore.getState().getMounts(groupJid);
     const selectedMounts: SelectedMounts | undefined =
       mounts.skillIds.length || mounts.mcpIds.length || mounts.kbIds.length
@@ -235,9 +506,32 @@ export function GroupChatArea({ groupJid }: { groupJid: string }) {
             加载更多
           </button>
         )}
-        {messages.map(m => <MessageBubble key={m.id} msg={m} groupJid={groupJid} />)}
-        {activeSeats.map(([seatId, activity]) => (
-          <StreamingBubble key={`seat-${seatId}`} seatId={Number(seatId)} activity={activity} groupJid={groupJid} />
+        {messages.map(m => (
+          <MessageBubble key={m.id} msg={m} groupJid={groupJid} />
+        ))}
+        {activeSeats.map(([seatIdStr, activity]) => (
+          <StreamingBubble
+            key={`seat-${seatIdStr}`}
+            seatId={Number(seatIdStr)}
+            activity={activity}
+            groupJid={groupJid}
+            onToggleThinking={(sid) => {
+              setSeats(prev => {
+                const cur = prev[sid];
+                if (!cur) return prev;
+                return { ...prev, [sid]: { ...cur, thinkingOpen: !cur.thinkingOpen } };
+              });
+            }}
+            onToggleTool={(sid, idx) => {
+              setSeats(prev => {
+                const cur = prev[sid];
+                if (!cur) return prev;
+                const updated = [...cur.toolCalls];
+                if (updated[idx]) updated[idx] = { ...updated[idx], open: !updated[idx].open };
+                return { ...prev, [sid]: { ...cur, toolCalls: updated } };
+              });
+            }}
+          />
         ))}
         {!messagesLoading && messages.length === 0 && activeSeats.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
@@ -252,8 +546,6 @@ export function GroupChatArea({ groupJid }: { groupJid: string }) {
         <ChatToolbar
           groupJid={groupJid}
           onPickQuickSkill={(skillId, prompt) => {
-            // Same behavior as the main chat: selecting a quick skill mounts it
-            // for this conversation and prefills the input with its prompt.
             useChatMountsStore.getState().setSkills(groupJid, [skillId]);
             setInput(prompt);
           }}

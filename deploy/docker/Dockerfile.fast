@@ -1,0 +1,44 @@
+# Fast rebuild Dockerfile for dev iteration — uses pre-built host artifacts
+FROM node:22-slim AS production
+WORKDIR /app
+
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Only production deps
+COPY package*.json ./
+RUN npm ci --omit=dev --registry=${NPM_REGISTRY}
+
+# Copy pre-built host artifacts (built via `npm run build` and `npm run build:web`)
+COPY dist/ ./dist/
+COPY web/dist/ ./web/dist/
+
+# Copy agent-runner from existing build
+COPY container/agent-runner/dist/ ./container/agent-runner/dist/
+COPY container/agent-runner/prompts/ ./container/agent-runner/prompts/
+COPY container/agent-runner/package*.json ./container/agent-runner/
+RUN cd /app/container/agent-runner && npm install --omit=dev --registry=${NPM_REGISTRY}
+
+# Config and skills
+COPY config/ ./config/
+COPY container/skills/ ./container/skills/
+COPY container/entrypoint.sh ./container/entrypoint.sh
+
+RUN useradd -o -r -u 1000 -g root deepthink \
+    && mkdir -p /data \
+    && chown -R deepthink:root /app /data
+USER deepthink
+
+ENV DEEPTHINK_DATA_DIR=/data
+ENV WEB_PORT=9898
+ENV TZ=Asia/Shanghai
+ENV NODE_ENV=production
+EXPOSE 9898
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:9898/health || exit 1
+
+CMD ["node", "dist/index.js"]

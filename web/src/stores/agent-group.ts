@@ -17,6 +17,7 @@ import {
   startGroupRun,
   getRunNodes,
   getNodeTrace,
+  cancelGroupRun,
   type AgentGroup,
   type AgentGroupDetail,
   type GroupSeat,
@@ -67,6 +68,7 @@ export interface AgentGroupState {
   fetchMessages: (jid: string, before?: string) => Promise<void>;
   appendMessage: (msg: GroupMessage) => void;
   startRun: (jid: string) => Promise<PipelineRun | null>;
+  cancelRun: (runId: string) => Promise<boolean>;
   fetchRunNodes: (runId: string) => Promise<void>;
   fetchNodeTrace: (nodeRunId: string) => Promise<void>;
   selectNode: (nodeId: string | null) => void;
@@ -238,6 +240,22 @@ export const useAgentGroupStore = create<AgentGroupState>((set, get) => ({
       set({ currentRun: run, nodes: [] });
       return run;
     } catch { return null; }
+  },
+
+  cancelRun: async (runId) => {
+    try {
+      const result = await cancelGroupRun(runId);
+      const current = get().currentRun;
+      if (current && (current.id === runId || current.runId === runId)) {
+        set({
+          currentRun: { ...current, status: 'cancelled' as const },
+          nodes: get().nodes.map(n =>
+            n.status === 'running' ? { ...n, status: 'cancelled' as const } : n,
+          ),
+        });
+      }
+      return result.status === 'cancelled';
+    } catch { return false; }
   },
 
   fetchRunNodes: async (runId) => {

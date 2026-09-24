@@ -284,3 +284,10 @@ export function getNodeRunDetail(nodeRunId: string): Promise<{ nodeRun: Pipeline
 export function getNodeTrace(nodeRunId: string): Promise<TraceDetail> {
   return apiFetch<TraceDetail>(`${BASE}/node-runs/${nodeRunId}/trace`);
 }
+
+/** Cancel a running pipeline run. Backend returns { runId, status, cancelledNodes }. */
+export function cancelGroupRun(runId: string): Promise<{ runId: string; status: string; cancelledNodes: number }> {
+  return apiFetch<{ runId: string; status: string; cancelledNodes: number }>(`${BASE}/runs/${runId}/cancel`, {
+    method: 'POST',
+  });
+}

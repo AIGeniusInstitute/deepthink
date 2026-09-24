@@ -1,5 +1,11 @@
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
+
+const PageLoader = () => (
+  <div className="flex items-center justify-center py-12 h-full">
+    <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+  </div>
+);
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { SetupPage } from './pages/SetupPage';
@@ -81,26 +87,26 @@ export function App() {
             </AuthGuard>
           }
         >
-          <Route path="/chat/:groupFolder?" element={<Suspense fallback={null}><ChatPage /></Suspense>} />
-          <Route path="/disk" element={<Suspense fallback={null}><DiskPage /></Suspense>} />
-          <Route path="/agent-groups" element={<Suspense fallback={null}><AgentGroupsListPage /></Suspense>} />
-          <Route path="/agent-groups/:jid" element={<Suspense fallback={null}><AgentGroupChatPage /></Suspense>} />
-          <Route path="/eval-center" element={<Suspense fallback={null}><EvalCenterPage /></Suspense>} />
+          <Route path="/chat/:groupFolder?" element={<Suspense fallback={<PageLoader />}><ChatPage /></Suspense>} />
+          <Route path="/disk" element={<Suspense fallback={<PageLoader />}><DiskPage /></Suspense>} />
+          <Route path="/agent-groups" element={<Suspense fallback={<PageLoader />}><AgentGroupsListPage /></Suspense>} />
+          <Route path="/agent-groups/:jid" element={<Suspense fallback={<PageLoader />}><AgentGroupChatPage /></Suspense>} />
+          <Route path="/eval-center" element={<Suspense fallback={<PageLoader />}><EvalCenterPage /></Suspense>} />
           <Route path="/groups" element={<Navigate to="/settings?tab=groups" replace />} />
-          <Route path="/tasks" element={<Suspense fallback={null}><TasksPage /></Suspense>} />
-          <Route path="/loops" element={<Suspense fallback={null}><LoopsPage /></Suspense>} />
-          <Route path="/graphs" element={<Suspense fallback={null}><GraphPage /></Suspense>} />
-          <Route path="/team" element={<Suspense fallback={null}><TeamPage /></Suspense>} />
-          <Route path="/collaborations" element={<Suspense fallback={null}><CollaborationPage /></Suspense>} />
-          <Route path="/workflows" element={<Suspense fallback={null}><WorkflowEditorPage /></Suspense>} />
-          <Route path="/workflows/:id" element={<Suspense fallback={null}><WorkflowEditorPage /></Suspense>} />
-          <Route path="/opc" element={<Suspense fallback={null}><OpcPage /></Suspense>} />
+          <Route path="/tasks" element={<Suspense fallback={<PageLoader />}><TasksPage /></Suspense>} />
+          <Route path="/loops" element={<Suspense fallback={<PageLoader />}><LoopsPage /></Suspense>} />
+          <Route path="/graphs" element={<Suspense fallback={<PageLoader />}><GraphPage /></Suspense>} />
+          <Route path="/team" element={<Suspense fallback={<PageLoader />}><TeamPage /></Suspense>} />
+          <Route path="/collaborations" element={<Suspense fallback={<PageLoader />}><CollaborationPage /></Suspense>} />
+          <Route path="/workflows" element={<Suspense fallback={<PageLoader />}><WorkflowEditorPage /></Suspense>} />
+          <Route path="/workflows/:id" element={<Suspense fallback={<PageLoader />}><WorkflowEditorPage /></Suspense>} />
+          <Route path="/opc" element={<Suspense fallback={<PageLoader />}><OpcPage /></Suspense>} />
           <Route path="/open-platform" element={<OpenPlatformPage />} />
-          <Route path="/supervisor" element={<Suspense fallback={null}><SupervisorPage /></Suspense>} />
-          <Route path="/harness" element={<Suspense fallback={null}><HarnessPage /></Suspense>} />
+          <Route path="/supervisor" element={<Suspense fallback={<PageLoader />}><SupervisorPage /></Suspense>} />
+          <Route path="/harness" element={<Suspense fallback={<PageLoader />}><HarnessPage /></Suspense>} />
           <Route path="/monitor" element={<Navigate to="/settings?tab=monitor" replace />} />
           <Route path="/usage" element={<Navigate to="/settings?tab=usage" replace />} />
-          <Route path="/billing" element={<Suspense fallback={null}><BillingPage /></Suspense>} />
+          <Route path="/billing" element={<Suspense fallback={<PageLoader />}><BillingPage /></Suspense>} />
           <Route path="/memory" element={<MemoryPage />} />
           <Route path="/skills" element={<SkillsPage />} />
           <Route path="/mcp-servers" element={<McpServersPage />} />
@@ -110,13 +116,13 @@ export function App() {
           <Route path="/agents" element={<AgentStudioPage />} />
           <Route path="/knowledge-bases" element={<KnowledgeBasesPage />} />
           <Route path="/marketplace" element={<MarketplacePage />} />
-          <Route path="/sandbox" element={<Suspense fallback={null}><SandboxPage /></Suspense>} />
-          <Route path="/engines" element={<Suspense fallback={null}><EnginesPage /></Suspense>} />
-          <Route path="/tools" element={<Suspense fallback={null}><ToolsOverviewPage /></Suspense>} />
-          <Route path="/staff-employees" element={<Suspense fallback={null}><StaffEmployeesPage /></Suspense>} />
-          <Route path="/staff-teams" element={<Suspense fallback={null}><StaffTeamsPage /></Suspense>} />
-          <Route path="/staff-teams/:id" element={<Suspense fallback={null}><StaffTeamDetailPage /></Suspense>} />
-          <Route path="/settings" element={<Suspense fallback={null}><SettingsPage /></Suspense>} />
+          <Route path="/sandbox" element={<Suspense fallback={<PageLoader />}><SandboxPage /></Suspense>} />
+          <Route path="/engines" element={<Suspense fallback={<PageLoader />}><EnginesPage /></Suspense>} />
+          <Route path="/tools" element={<Suspense fallback={<PageLoader />}><ToolsOverviewPage /></Suspense>} />
+          <Route path="/staff-employees" element={<Suspense fallback={<PageLoader />}><StaffEmployeesPage /></Suspense>} />
+          <Route path="/staff-teams" element={<Suspense fallback={<PageLoader />}><StaffTeamsPage /></Suspense>} />
+          <Route path="/staff-teams/:id" element={<Suspense fallback={<PageLoader />}><StaffTeamDetailPage /></Suspense>} />
+          <Route path="/settings" element={<Suspense fallback={<PageLoader />}><SettingsPage /></Suspense>} />
           <Route
             path="/users"
             element={

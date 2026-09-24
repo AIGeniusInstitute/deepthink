@@ -609,7 +609,7 @@ export function initDatabase(): void {
       node_type TEXT NOT NULL
         CHECK(node_type IN ('agent','gate','branch','join','human','llm','tool','start','end','parallel','aggregate')),
       status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(status IN ('pending','running','completed','failed','skipped','paused')),
+        CHECK(status IN ('pending','running','completed','failed','skipped','paused','cancelled')),
       attempt INTEGER NOT NULL DEFAULT 0,
       input_summary TEXT,
       output_summary TEXT,
@@ -2318,7 +2318,7 @@ export function initDatabase(): void {
           node_type TEXT NOT NULL
             CHECK(node_type IN ('agent','gate','branch','join','human','llm','tool','start','end','parallel','aggregate')),
           status TEXT NOT NULL DEFAULT 'pending'
-            CHECK(status IN ('pending','running','completed','failed','skipped','paused')),
+            CHECK(status IN ('pending','running','completed','failed','skipped','paused','cancelled')),
           attempt INTEGER NOT NULL DEFAULT 0,
           input_summary TEXT,
           output_summary TEXT,
@@ -2407,7 +2407,7 @@ export function initDatabase(): void {
           node_type TEXT NOT NULL
             CHECK(node_type IN ('agent','gate','branch','join','human','llm','tool','start','end','parallel','aggregate','validate')),
           status TEXT NOT NULL DEFAULT 'pending'
-            CHECK(status IN ('pending','running','completed','failed','skipped','paused')),
+            CHECK(status IN ('pending','running','completed','failed','skipped','paused','cancelled')),
           attempt INTEGER NOT NULL DEFAULT 0,
           input_summary TEXT,
           output_summary TEXT,
@@ -4649,8 +4649,10 @@ export function getLatestGraphDefinition(id: string): GraphDefinitionRow | undef
 export function listGraphDefinitions(): GraphDefinitionRow[] {
   return db
     .prepare(
-      `SELECT * FROM graph_definitions WHERE status = 'active'
-       GROUP BY id HAVING version = MAX(version)
+      `SELECT * FROM (
+         SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY version DESC) AS _rn
+         FROM graph_definitions WHERE status = 'active'
+       ) sub WHERE _rn = 1
        ORDER BY created_at DESC`,
     )
     .all() as GraphDefinitionRow[];
@@ -4664,9 +4666,11 @@ export function listGraphDefinitions(): GraphDefinitionRow[] {
 export function listWorkflowDefinitions(userId: string): GraphDefinitionRow[] {
   return db
     .prepare(
-      `SELECT * FROM graph_definitions
-       WHERE status = 'active' AND (owner_user_id = ? OR owner_user_id IS NULL)
-       GROUP BY id HAVING version = MAX(version)
+      `SELECT * FROM (
+         SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY version DESC) AS _rn
+         FROM graph_definitions
+         WHERE status = 'active' AND (owner_user_id = ? OR owner_user_id IS NULL)
+       ) sub WHERE _rn = 1
        ORDER BY created_at DESC`,
     )
     .all(userId) as GraphDefinitionRow[];
@@ -5155,14 +5159,13 @@ export function updateGraphRunStatus(
   if (extra) {
     db.prepare(
       `UPDATE graph_runs SET status = ?,
-        current_node_id = CASE WHEN ? IS NULL THEN current_node_id ELSE ? END,
+        current_node_id = COALESCE(?, current_node_id),
         state_json = COALESCE(?, state_json),
         ended_at = COALESCE(?, ended_at),
         cancel_reason = COALESCE(?, cancel_reason)
        WHERE id = ?`,
     ).run(
       status,
-      extra.currentNodeId === undefined ? null : 1,
       extra.currentNodeId ?? null,
       extra.stateJson ?? null,
       extra.endedAt ?? null,

@@ -1,0 +1,41 @@
+# Fast Dockerfile — copies pre-built host artifacts, avoids npm ci
+FROM node:22-slim AS production
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ curl git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy host node_modules (pre-built) — fast, avoids npm ci timeout
+COPY node_modules/ ./node_modules/
+
+# Copy pre-built dist artifacts
+COPY dist/ ./dist/
+COPY web/dist/ ./web/dist/
+
+# Copy agent-runner with its own node_modules
+COPY container/agent-runner/dist/ ./container/agent-runner/dist/
+COPY container/agent-runner/node_modules/ ./container/agent-runner/node_modules/
+COPY container/agent-runner/prompts/ ./container/agent-runner/prompts/
+COPY container/agent-runner/package.json ./container/agent-runner/package.json
+
+# Config and skills
+COPY config/ ./config/
+COPY container/skills/ ./container/skills/
+COPY container/entrypoint.sh ./container/entrypoint.sh
+
+RUN useradd -o -r -u 1000 -g root deepthink \
+    && mkdir -p /data \
+    && chown -R deepthink:root /app /data
+USER deepthink
+
+ENV DEEPTHINK_DATA_DIR=/data
+ENV WEB_PORT=9898
+ENV TZ=Asia/Shanghai
+ENV NODE_ENV=production
+EXPOSE 9898
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:9898/health || exit 1
+
+CMD ["node", "dist/index.js"]

@@ -1,19 +1,18 @@
 /**
- * Agent Group Chat (swarm) — run triggering and seat-output mirroring.
+ * Agent Group Chat (swarm) — run triggering, seat-output mirroring, and
+ * full-capability event forwarding.
  *
  * `triggerSwarmRun` is the single entry point that turns a user message into
  * a graph run; both POST /messages and POST /runs funnel through it.
  *
  * `recordSwarmSeatMessage` mirrors a finished seat node's output back into
  * `group_messages` so it shows up in the group chat. It is driven by the
- * GraphDeps.onNodeSettled hook — the broadcast `graph_node_end` event cannot be
- * used for this because graph-events.ts slices its output to 500 chars, and the
- * persisted `output_summary` is capped at 5000; only the in-memory outcome
- * carries the reply verbatim.
+ * GraphDeps.onNodeSettled hook.
  *
- * `swarmSeatDeltaEvent` is the same mirroring for text that is still being
- * written: it turns a seat node's raw `text_delta` into a seat-attributed
- * `group_message_delta`, driven by GraphDeps.onNodeStream.
+ * `swarmSeatDeltaEvent` translates seat node stream events into group-level
+ * events so the frontend can render the full agent experience: streaming
+ * thoughts, tool calls, skill invocations, token usage, and execution
+ * state changes — not just the final text output.
  */
 
 import { createGroupMessage, getGroupSeat, type GroupMessageRow } from '../db.js';
@@ -99,39 +98,153 @@ export function recordSwarmSeatMessage(
   });
 }
 
-/**
- * Translate a seat node's raw stream event into a seat-attributed
- * `group_message_delta`, so the swarm page can render the reply while it is
- * still being written. Returns null for everything that is not top-level
- * assistant text from one of this group's seats (non-seat nodes, tool traffic,
- * subagent output).
- */
-export function swarmSeatDeltaEvent(
+/** Helper: build a seat-attributed group event envelope. */
+function groupEvent(
   ctx: GraphRunContext,
   node: GraphNode,
-  event: StreamEvent,
-): StreamEvent | null {
-  if (event.eventType !== 'text_delta' || !event.text) return null;
-  // parentToolUseId is set on events nested inside a Task/SubAgent — that text
-  // belongs to the subagent, not to the seat's own reply.
-  if (event.parentToolUseId) return null;
-  const seatId = seatIdFromNodeId(node.id);
-  if (seatId === null) return null;
+  seatId: number,
+  eventType: StreamEvent['eventType'],
+  overrides: Partial<StreamEvent> = {},
+): StreamEvent {
   const seat = getGroupSeat(seatId);
-  if (!seat || seat.group_id !== ctx.chatJid) return null;
-
+  const seatName = seat?.role_prompt?.trim() || seat?.agent_definition_id || '';
   return {
-    eventType: 'group_message_delta',
-    displayLevel: 'primary',
+    eventType,
+    displayLevel: 'primary' as const,
     agentScope: 'system',
     graphEvent: { runId: ctx.graphRunId, nodeId: node.id },
     groupMessage: {
       groupId: ctx.chatJid,
       senderType: 'agent',
       senderSeatId: seatId,
-      content: event.text,
-    },
+      content: '',
+      seatName,
+    } as any,
+    ...overrides,
   };
+}
+
+/**
+ * Translate a seat node's stream event into group-level events so the
+ * frontend GroupChatArea can render the full agent experience: streaming
+ * thoughts, tool calls, and status — not just text_delta.
+ *
+ * Event mapping:
+ *   text_delta       → group_message_delta
+ *   thinking_delta   → group_thinking_delta
+ *   tool_use_start   → group_tool_call
+ *   tool_result      → group_tool_result
+ *   status           → group_seat_status
+ *   graph_node_start → group_seat_status (running)
+ *   graph_node_end   → group_seat_status (completed/failed)
+ */
+export function swarmSeatDeltaEvent(
+  ctx: GraphRunContext,
+  node: GraphNode,
+  event: StreamEvent,
+): StreamEvent | null {
+  const seatId = seatIdFromNodeId(node.id);
+  if (seatId === null) return null;
+  const seat = getGroupSeat(seatId);
+  if (!seat || seat.group_id !== ctx.chatJid) return null;
+
+  // ── text_delta: the seat is writing its reply ─────────────────
+  if (event.eventType === 'text_delta' && event.text && !event.parentToolUseId) {
+    return groupEvent(ctx, node, seatId, 'group_message_delta', {
+      text: event.text,
+      groupMessage: {
+        groupId: ctx.chatJid,
+        senderType: 'agent',
+        senderSeatId: seatId,
+        content: event.text,
+      } as any,
+    });
+  }
+
+  // ── thinking_delta: the seat's internal reasoning stream ──────
+  if (event.eventType === 'thinking_delta' && event.text) {
+    return groupEvent(ctx, node, seatId, 'group_thinking_delta', {
+      text: event.text,
+      groupMessage: {
+        groupId: ctx.chatJid,
+        senderType: 'agent',
+        senderSeatId: seatId,
+        content: event.text,
+      } as any,
+    });
+  }
+
+  // ── tool_use_start: the seat invoked a tool ───────────────────
+  if (event.eventType === 'tool_use_start' && event.toolName) {
+    return groupEvent(ctx, node, seatId, 'group_tool_call', {
+      toolName: event.toolName,
+      toolUseId: event.toolUseId,
+      toolInputSummary: event.toolInputSummary,
+      toolInput: event.toolInput,
+      groupMessage: {
+        groupId: ctx.chatJid,
+        senderType: 'agent',
+        senderSeatId: seatId,
+        content: event.toolName,
+        toolCall: {
+          id: event.toolUseId ?? '',
+          name: event.toolName,
+          input: event.toolInput ?? {},
+        },
+      } as any,
+    });
+  }
+
+  // ── tool_result: tool returned ────────────────────────────────
+  if (event.eventType === 'tool_result') {
+    return groupEvent(ctx, node, seatId, 'group_tool_result', {
+      toolName: event.toolName,
+      toolUseId: event.toolUseId,
+      toolResult: event.toolResult,
+      groupMessage: {
+        groupId: ctx.chatJid,
+        senderType: 'agent',
+        senderSeatId: seatId,
+        content: event.toolResult ?? '',
+        toolCall: {
+          id: event.toolUseId ?? '',
+          name: event.toolName ?? '',
+          output: event.toolResult,
+        },
+      } as any,
+    });
+  }
+
+  // ── status: execution state change ────────────────────────────
+  if (event.eventType === 'status') {
+    return groupEvent(ctx, node, seatId, 'group_seat_status', {
+      statusText: event.statusText,
+      groupMessage: {
+        groupId: ctx.chatJid,
+        senderType: 'agent',
+        senderSeatId: seatId,
+        content: event.statusText ?? '',
+        status: event.statusText ?? 'running',
+      } as any,
+    });
+  }
+
+  // ── token usage from the 'usage' event ────────────────────────
+  if (event.eventType === 'usage' && event.usage) {
+    return groupEvent(ctx, node, seatId, 'group_token_usage', {
+      usage: event.usage,
+      groupMessage: {
+        groupId: ctx.chatJid,
+        senderType: 'agent',
+        senderSeatId: seatId,
+        content: '',
+        tokenIn: event.usage.inputTokens,
+        tokenOut: event.usage.outputTokens,
+      } as any,
+    });
+  }
+
+  return null;
 }
 
 /** Stream event announcing a new group_messages row to the swarm page. */

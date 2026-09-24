@@ -57,25 +57,61 @@ export function buildSwarmDefinition(
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
   let prev: string | null = null;
+  const speaking = speakingSeats(seats);
+  const totalSeats = speaking.length;
 
-  for (const seat of speakingSeats(seats)) {
+  for (let i = 0; i < speaking.length; i++) {
+    const seat = speaking[i];
     const id = `${SEAT_NODE_PREFIX}${seat.id}`;
     const label = seat.role_prompt.trim() || seat.agent_definition_id;
+
+    // Build a prompt that enables debate, critique, and collaboration.
+    // Earlier seats see only the user message; later seats also see what
+    // previous seats said so they can analyse, challenge, or build on it.
+    const promptParts: string[] = [
+      `你是多 Agent 讨论组「${group.name}」的成员（席位 ${i + 1}/${totalSeats}）：${label}。`,
+    ];
+
+    if (seat.role_prompt.trim()) {
+      promptParts.push(`\n【角色设定】\n${seat.role_prompt.trim()}`);
+    }
+
+    // Debate & collaboration instructions — the seat behaviour varies by position:
+    if (totalSeats >= 2 && i > 0) {
+      // Late seats: see earlier seats' output, must analyse / challenge / extend
+      promptParts.push(
+        '\n【协作要求 — 你必须审阅前序席位的发言】',
+        '- 前面的席位已经给出了他们的分析和结论（会附在下方）。',
+        '- 仔细阅读前序席位的发言：指出赞同/不赞同的具体点并给出理由。',
+        '- 如果有不同观点或遗漏，请明确指出来并提供你的分析。',
+        '- 在前序席位的基础上深化讨论，而非简单重复。',
+        '- 用你的专业角色视角审视前序结论是否完备。',
+        '- 只输出你的发言正文；工具调用和思考过程会自动记录，无需额外说明。',
+      );
+    } else if (totalSeats >= 2 && i === 0) {
+      // First seat: sets the stage, knows others will critique
+      promptParts.push(
+        '\n【协作要求 — 你是本轮的首位发言者】',
+        '- 请给出你完整的初步分析和结论。',
+        '- 后续席位会审阅和补充你的观点，所以请尽量全面、结构化地阐述。',
+        '- 只输出你的发言正文；工具调用和思考过程会自动记录，无需额外说明。',
+      );
+    } else {
+      promptParts.push(
+        '\n【发言要求】',
+        '- 紧扣用户消息，用你的角色立场给出观点与论据。',
+        '- 只输出发言正文；工具调用和思考过程会自动记录，无需额外说明。',
+      );
+    }
+
     const node: GraphNode = {
       id,
       type: 'agent',
       title: label,
       isIdempotent: false,
-      prompt: [
-        `你是多 Agent 讨论组「${group.name}」的成员：${label}。`,
-        seat.role_prompt.trim() ? `\n【角色设定】\n${seat.role_prompt.trim()}` : '',
-        '\n【发言要求】\n- 紧扣用户消息，用你的角色立场给出观点与论据。\n- 只输出发言正文，不要输出 JSON、标题或元信息。',
-      ].join('\n'),
+      prompt: promptParts.join('\n'),
     };
-    // The seat's agent_definition_id is free-text from the UI and usually does
-    // NOT resolve to a real agent_definitions row. Only bind it when it does —
-    // runAgentNode would otherwise hand container-runner an id that
-    // loadGroupAgentDefinition silently drops.
+
     if (resolveAgentDef(seat.agent_definition_id)) {
       node.agentDefId = seat.agent_definition_id;
       node.agentMember = label;

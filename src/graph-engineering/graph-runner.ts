@@ -137,6 +137,10 @@ export interface GraphDeps {
 
 /** Resolve execution mode for the owner's home group (mirrors loop-orchestrator). */
 function resolveExecutionMode(ctx: GraphRunContext, deps: GraphDeps): ExecutionMode {
+  // Default for 'main' and swarm groups is host; swarm groups run in K8s
+  // without Docker, so container mode is not available.
+  if (ctx.groupFolder === 'main' || ctx.groupFolder.startsWith('swarm-')) return 'host';
+
   const groups = deps.registeredGroups();
   const homeGroup = Object.values(groups).find((g) => g.folder === ctx.groupFolder);
   if (homeGroup?.executionMode) return homeGroup.executionMode;
@@ -149,7 +153,7 @@ function resolveExecutionMode(ctx: GraphRunContext, deps: GraphDeps): ExecutionM
     .map((jid) => getRegisteredGroup(jid))
     .find((g) => g?.executionMode);
   if (persisted?.executionMode) return persisted.executionMode;
-  return ctx.groupFolder === 'main' ? 'host' : 'container';
+  return 'container';
 }
 
 /** Build a synthetic RegisteredGroup for the owner folder (mirrors runOneIteration). */
@@ -354,6 +358,29 @@ export function composeAgentPrompt(node: GraphNode, state: GraphState): string {
   const goal = typeof state.goal === 'string' ? state.goal.trim().slice(0, 8000) : '';
   if (goal) {
     prompt = `【用户消息】\n${goal}\n\n---\n\n${prompt}`;
+  }
+  // Swarm debate: feed previous seat outputs into the prompt so later seats
+  // can actually review/critique what earlier seats said (fulfilling the
+  // "前序席位的发言会附在下方" promise in the debate prompt template).
+  const prevOutputKeys = Object.keys(state)
+    .filter((k) => k.startsWith('node_') && k.endsWith('_output'))
+    .sort();
+  if (prevOutputKeys.length > 0) {
+    const previousOutputs = prevOutputKeys
+      .map((k) => {
+        const seatId = k.replace(/^node_/, '').replace(/_output$/, '');
+        const text = typeof state[k] === 'string' ? (state[k] as string) : '';
+        return `### ${seatId} 的发言\n\n${text}`;
+      })
+      .join('\n\n---\n\n');
+    if (previousOutputs) {
+      prompt = `【前序席位发言】（请仔细审阅后给出你的分析和批判）\n\n${previousOutputs}\n\n---\n\n${prompt}`;
+    }
+  }
+  // DEBUG: log state keys for diagnosing swarm debate context passing
+  const allKeys = Object.keys(state).filter(k => k.startsWith('node_'));
+  if (allKeys.length > 0) {
+    logger.info({ nodeId: node.id, stateKeys: Object.keys(state).filter(k => k.startsWith('node_')), prevOutputKeys }, 'composeAgentPrompt: state node keys');
   }
   const gateFeedbackKey = `gate_feedback_${node.id}`;
   const gateFeedback =
