@@ -50,7 +50,7 @@ DeepThink, 엔터프라이즈급 자율형 Agent 자가진화 슈퍼인텔리전
 - **Autonomy Layer & Autonomous Mode** *(v1.1.0)* — 횡단적 Autonomy Layer 가 7가지 역량(perception / cognition / decision / execution / learning / adaptation / monitoring)을 metrics collection 과 E2E acceptance 로 통합. 추가로 완전한 Autonomous Mode 가 Agent 가 사람의 개입 없이 작업을 end-to-end 완수하도록 하며, 3개의 defense layers (CLAUDE.md 헌법적 오버라이드 / Supervisor 명확화 우회 / RLHF 턴 종료 정중함) 와 4개의 hard brakes (파괴적 명령 / 턴 한도 / 토큰 한도 / 루프 탐지)를 포함
 - **Agent-as-a-Service (PaaS)** — DB 기반 Agent 정의를 생성·버전·마운트·공유·설치, 테넌트 간 공유, 사용자별 할당량·관리자 리뷰·게시 가능한 템플릿 마켓플레이스
 - **클라우드 네이티브 & 수평 확장** *(v1.4.0)* — PostgreSQL + Redis + MinIO/S3가 단일 노드 상태 스택을 대체합니다: 파드 간 팬아웃을 위한 Redis 이벤트 버스, 분산 리더 선출(IM 채널 / 스케줄러 / 주기 작업), 그리고 트레이스 I/O와 워크스페이스 파일을 위한 S3/MinIO 객체 스토리지. `DATABASE_URL` / `REDIS_URL`을 설정하지 않으면 단일 프로세스 SQLite 모드로 저하됩니다
-- **Agent 그룹 채팅 (Swarm)** *(v1.4.0)* — 좌석 기반 멀티 Agent 그룹 대화로, 각 좌석은 자체 역할 프롬프트, 발언 정책, 마운트, 토큰/시간 예산을 가진 Agent 정의에 바인딩되며, 실시간 파이프라인 실행 패널을 제공합니다
+- **Agent 그룹 채팅 (Swarm)** *(v1.4.0 / v1.5.0)* — 좌석 기반 멀티 Agent 그룹 대화로, 각 좌석은 자체 역할 프롬프트, 발언 정책, 마운트, 토큰/시간 예산을 가진 Agent 정의에 바인딩되며, 실시간 파이프라인 실행 패널을 제공합니다. **v1.5.0** 은 실행 경로를 end-to-end 로 연결합니다: 그룹 메시지가 좌석들에 대해 graph run 을 시작하고, 각 좌석의 응답은 해당 좌석에 귀속된 채 token 단위로 스트리밍되며, 좌석은 해당 turn 의 Skills / MCP 서버 / 지식 베이스를 상속합니다
 - **디지털 직원 협업 워크벤치** *(v1.4.0)* — 작업 상태 머신(`pending → in_progress → review → done` 및 재작업), 공유 블랙보드, 처리량 대시보드를 갖춘 디지털 직원의 영구 팀
 - **AgentNet Disk** *(v1.4.0)* — 폴더 트리, 업로드 / 다운로드 / 이동 / 삭제 / 검색, 복원 기능이 있는 휴지통, 파일 버전 이력을 갖춘 엔터프라이즈 파일 드라이브
 - **Eval Center** *(v1.4.0)* — 자체 PostgreSQL에서 독립 실행되는 평가 제품: 프로젝트 → 데이터셋 → 버전 → 테스트 케이스 → 루브릭 → eval 실행, 결정론적 검증, LLM 심사 점수, Golden 주석, 임베딩 기반 드리프트 탐지 포함
