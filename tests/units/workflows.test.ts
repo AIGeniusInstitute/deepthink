@@ -34,6 +34,7 @@ import {
   completeWorkflowBuild,
   failWorkflowBuild,
   type GraphDefinitionRow,
+  SCHEMA_VERSION,
 } from '../../src/db.js';
 import { registerDefinition } from '../../src/graph-engineering/graph-registry.js';
 
@@ -67,11 +68,11 @@ function makeDefRow(id: string, ownerUserId: string | null): GraphDefinitionRow 
 }
 
 describe('Agent Workflow: schema v56 migration', () => {
-  test('schema_version is 61', () => {
+  test('schema_version matches SCHEMA_VERSION', () => {
     const row = getDb()
       .prepare('SELECT value FROM router_state WHERE key = ?')
       .get('schema_version') as { value: string } | undefined;
-    expect(row?.value).toBe('61');
+    expect(row?.value).toBe(SCHEMA_VERSION);
   });
 
   test('graph_definitions has owner_user_id column', () => {

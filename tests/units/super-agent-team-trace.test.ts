@@ -15,6 +15,7 @@ import {
   upsertTraceToolCall,
   listTraceToolCalls,
   getDb,
+  SCHEMA_VERSION,
 } from '../../src/db.js';
 import { persistTraceNodeFromStreamEvent } from '../../src/chat-trace-persist.js';
 import type { StreamEvent } from '../../src/stream-event.types.js';
@@ -32,11 +33,11 @@ afterAll(() => {
 });
 
 describe('super-agent-team C1: schema v53 trace tables', () => {
-  test('schema_version is 61', () => {
+  test('schema_version matches SCHEMA_VERSION', () => {
     const row = getDb()
       .prepare('SELECT value FROM router_state WHERE key = ?')
       .get('schema_version') as { value: string } | undefined;
-    expect(row?.value).toBe('61');
+    expect(row?.value).toBe(SCHEMA_VERSION);
   });
 
   test('chat_trace_nodes has graph columns', () => {

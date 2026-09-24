@@ -45,14 +45,14 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
 | 关注点 | 默认 | 切换开关 | 实现要点 |
 |---|---|---|---|
 | 数据库 | SQLite（WAL），Bun 下用 `bun:sqlite` | `DATABASE_URL=postgresql://…` | `src/sqlite-compat.ts` 是唯一的后端选择点；`src/pg-sync-driver.ts` 用 worker_threads + `Atomics.wait` 把**异步 pg 同步桥接**回 better-sqlite3 的同步 API（`db.ts` 有 400+ 同步调用点，是这套设计的根本原因）；SQL 方言由 `src/sql-translator.ts` 运行时翻译 |
-| 跨 Pod 协调 | 进程内 | `REDIS_URL` | `src/redis-client.ts`（未配置时全部函数降级为 no-op）、`src/redis-bus.ts`：WS 广播 pub/sub、调度器选主租约、共享并发计数器 |
+| 跨 Pod 协调 | 进程内 | `REDIS_URL` | `src/redis-bus.ts` 是**唯一且完整**的实现（28 个导出：未配置时全部降级为 no-op/in-memory）：WS 广播 pub/sub、分布式锁与选主、Agent IPC（Redis 替代文件系统）、共享并发计数器、turnMounts 跨 Pod 传递、`redisEnabled` / `isRedisConnected()` |
 | 大文件 / trace IO | 本地文件系统 | `OBJECT_STORE_PROVIDER=s3` | `src/object-store.ts`；`output_ref` 统一为绝对路径或 `s3://bucket/key`，读写两端必须走同一处保持对称 |
 | 向量检索 | sqlite-vec（`vec0` 虚表） | PostgreSQL → pgvector | `src/embedding.ts`；两者都加载失败时回落线性扫描，未配置 embedding 时回落 FTS5 |
-| IM 长连接归属 | 本进程独占 | Redis 选主 | 多 Pod 下只有一个 Pod 接管 IM 长连接：`deepthink:im-leader` 租约（30s TTL，续约失败即让位），见 `src/index.ts`。同一套租约原语（`src/redis-client.ts` 的 `acquireLease`）也用于调度器单写者 |
+| IM 长连接归属 | 本进程独占 | Redis 选主 | 多 Pod 下只有一个 Pod 接管 IM 长连接：`deepthink:im-leader` 租约（30s TTL，续约失败即让位），见 `src/index.ts`。同一套租约原语（`src/redis-bus.ts` 的 `acquireOwnership` / `renewOwnership`）也用于调度器单写者 |
 
 **改 `db.ts` 或任何持久化路径时，必须同时保证 SQLite 与 PostgreSQL 两种后端可用**（PG 模式禁用 SQLite 专有语法，如 `ADD COLUMN IF NOT EXISTS` 的语义差异曾导致迁移中断），并以 `make test` 兜底。
 
-> `src/db-adapter.ts` 是一个**未被任何代码引用**的早期抽象（其注释自称 "Phase 2 not yet implemented"），真实实现是 `src/sqlite-compat.ts`。不要基于它做设计。
+> 历史上 `src/db-adapter.ts` 曾是一个未被引用的早期抽象（其注释自称 "Phase 2 not yet implemented"），已于 2026-09-24 随 `src/redis-client.ts`（同类被 `redis-bus.ts` 取代的早期草稿）一并删除。真实实现始终是 `src/sqlite-compat.ts` 与 `src/redis-bus.ts`。
 
 ### 2.1 后端模块
 
@@ -140,7 +140,7 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
 | 模块 | 职责 |
 |------|------|
 | `src/sqlite-compat.ts`、`src/pg-sync-driver.ts`、`src/sql-translator.ts` | 多后端数据层，见 §2.0 ③ |
-| `src/redis-client.ts`、`src/redis-bus.ts`、`src/object-store.ts` | 分布式状态层，见 §2.0 ③ |
+| `src/redis-bus.ts`、`src/object-store.ts` | 分布式状态层，见 §2.0 ③ |
 | `src/supervisor-agent.ts` | **长驻** Supervisor Agent：独立 DB 表 + 调度循环 + 决策审计 + 心跳 + 启动恢复。与 `src/supervisor.ts`（无状态的派发前意图解析器）**是两个不同的东西**，勿混 |
 | `src/loop-orchestrator.ts`、`src/loop-commands.ts` | Loop Engineering：长任务循环编排，状态机 `pending → running → reviewing → iterating → completed/failed/cancelled` |
 | `src/harness-registry.ts`、`src/harness-eval.ts`、`src/harness-meta-loop.ts` | Harness Engineering：注册表 / 评估断言 / 元循环 |

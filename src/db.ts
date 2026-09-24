@@ -49,6 +49,13 @@ import {
 } from './types.js';
 import { getDefaultPermissions, normalizePermissions } from './permissions.js';
 
+/**
+ * Current schema version. Written to `router_state.schema_version` by
+ * initDatabase(); consumers (and tests) should import this rather than
+ * hard-coding the literal — bump it whenever a migration is added.
+ */
+export const SCHEMA_VERSION = '70';
+
 let db: InstanceType<typeof Database>;
 let vecExtensionLoaded = false;
 /** pgvector ANN index loaded (PG mode only). Falls back to linear scan when false. */
@@ -2749,7 +2756,6 @@ export function initDatabase(): void {
     logger.warn({ err }, 'group_seats / group_messages migration v67 failed (non-blocking)');
   }
 
-  const SCHEMA_VERSION = '70';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
