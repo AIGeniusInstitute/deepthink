@@ -26,6 +26,7 @@ import {
   type UpdateGroupPayload,
   type UpdateSeatPayload,
   type SendMessagePayload,
+  type SendMessageResult,
   type PipelineRun,
   type PipelineNode,
   type TraceDetail,
@@ -62,7 +63,7 @@ export interface AgentGroupState {
   addSeat: (jid: string, data: CreateSeatPayload) => Promise<GroupSeat | null>;
   updateSeat: (jid: string, seatId: number, data: UpdateSeatPayload) => Promise<boolean>;
   removeSeat: (jid: string, seatId: number) => Promise<boolean>;
-  sendMessage: (jid: string, data: SendMessagePayload) => Promise<GroupMessage | null>;
+  sendMessage: (jid: string, data: SendMessagePayload) => Promise<SendMessageResult | null>;
   fetchMessages: (jid: string, before?: string) => Promise<void>;
   appendMessage: (msg: GroupMessage) => void;
   startRun: (jid: string) => Promise<PipelineRun | null>;
@@ -188,6 +189,14 @@ export const useAgentGroupStore = create<AgentGroupState>((set, get) => ({
     try {
       const msg = await sendGroupMessage(jid, data);
       set({ messages: [...get().messages, msg] });
+      // A text message starts a swarm run; adopt it so the Pipeline panel
+      // tracks the run the user just triggered instead of the previous one.
+      if (msg.graphRunId) {
+        set({
+          currentRun: { id: msg.graphRunId, runId: msg.graphRunId, groupJid: jid, status: 'running' },
+          nodes: [],
+        });
+      }
       return msg;
     } catch { return null; }
   },

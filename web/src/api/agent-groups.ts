@@ -106,12 +106,27 @@ export interface UpdateSeatPayload {
   seatOrder?: number;
 }
 
+/** Skills / MCP servers / knowledge bases mounted for one message. */
+export interface SelectedMounts {
+  skills?: string[];
+  mcpServers?: string[];
+  kbIds?: string[];
+}
+
 export interface SendMessagePayload {
   text?: string;
   contentRef?: string;
   msgType?: string;
   mentions?: { seatId: number; agentName?: string }[];
   parentMsgId?: number;
+  /** Applied to every seat of the run this message triggers. */
+  selectedMounts?: SelectedMounts;
+}
+
+/** A user message row, plus the swarm run it started (if any). */
+export interface SendMessageResult extends GroupMessage {
+  graphRunId?: string;
+  runError?: string;
 }
 
 export interface PipelineRun {
@@ -230,9 +245,9 @@ export function deleteGroupSeat(jid: string, seatId: number): Promise<{ ok: bool
   return apiFetch<{ ok: boolean }>(`${BASE}/${jid}/seats/${seatId}`, { method: 'DELETE' });
 }
 
-/** Backend returns the message object directly (msgToJson shape). */
-export function sendGroupMessage(jid: string, data: SendMessagePayload): Promise<GroupMessage> {
-  return apiFetch<GroupMessage>(`${BASE}/${jid}/messages`, {
+/** Backend returns the message object directly (msgToJson shape) + graphRunId. */
+export function sendGroupMessage(jid: string, data: SendMessagePayload): Promise<SendMessageResult> {
+  return apiFetch<SendMessageResult>(`${BASE}/${jid}/messages`, {
     method: 'POST',
     body: JSON.stringify(data),
   });

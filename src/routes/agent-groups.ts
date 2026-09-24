@@ -10,7 +10,7 @@
 // All routes require authentication via authMiddleware.
 
 import { Hono } from 'hono';
-import { getWebDeps, type Variables } from '../web-context.js';
+import { getWebDeps, type SelectedMounts, type Variables } from '../web-context.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { logger } from '../logger.js';
 import { z } from 'zod';
@@ -98,6 +98,15 @@ const SendMessageSchema = z.object({
     agentName: z.string().optional(),
   })).max(50).optional(),
   parentMsgId: z.number().int().optional(),
+  /** Chat mount selections for this message — same shape as the Web chat's
+   *  POST /messages `selectedMounts`, applied to every seat's turn. */
+  selectedMounts: z
+    .object({
+      skills: z.array(z.string()).max(50).optional(),
+      mcpServers: z.array(z.string()).max(50).optional(),
+      kbIds: z.array(z.string()).max(50).optional(),
+    })
+    .optional(),
 });
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -391,7 +400,7 @@ agentGroupRoutes.post('/:jid/messages', async (c) => {
   let graphRunId: string | undefined;
   let runError: string | undefined;
   if (goalText && (parsed.data.msgType ?? 'text') === 'text') {
-    const result = startSwarmRun(group, authUser, goalText);
+    const result = startSwarmRun(group, authUser, goalText, parsed.data.selectedMounts);
     if ('error' in result) runError = result.error;
     else graphRunId = result.runId;
   }
@@ -425,6 +434,7 @@ function startSwarmRun(
   group: RegisteredGroup & { jid: string },
   authUser: AuthUser,
   goalText: string,
+  turnMounts?: SelectedMounts,
 ): { runId: string } | { error: string } {
   const startGraphRun = getWebDeps()?.startGraphRun;
   if (!startGraphRun) {
@@ -435,6 +445,7 @@ function startSwarmRun(
     group,
     ownerUserId: group.created_by ?? authUser.id,
     goalText,
+    turnMounts,
     startGraphRun,
   });
 }

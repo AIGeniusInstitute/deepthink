@@ -255,10 +255,14 @@ export interface StreamEvent {
     options: { label: string; value: string }[];
     stateKey?: string;
   };
-  /** Agent Group Chat (swarm): a `group_messages` row was created. Lets the
-   *  swarm page append the message live instead of polling. */
+  /** Agent Group Chat (swarm): a `group_messages` row. Carried on
+   *  `group_message_created` (the row exists — `id` is set) and on
+   *  `group_message_delta` (only `senderSeatId` + the incremental `content`
+   *  text are meaningful; the row is only written once the seat settles). Lets
+   *  the swarm page render the reply while it is being written instead of
+   *  polling for it. */
   groupMessage?: {
-    id: number;
+    id?: number;
     groupId: string;
     runId?: string | null;
     nodeRunId?: string | null;
