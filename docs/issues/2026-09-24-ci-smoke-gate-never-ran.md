@@ -52,6 +52,51 @@ Smoke tests (Node 22)   failure
 
 外部依据：[actions/setup-node 官方文档 — Caching packages dependencies](https://github.com/actions/setup-node/blob/main/docs/advanced-usage.md#caching-packages-dependencies)（缓存依赖 lockfile；找不到即失败）
 
+### 3.b 第二层根因：npm 10 arborist 在无 lockfile 全量解析时崩溃
+
+修掉 `cache: 'npm'` 后，`Setup Node 22` 变为 success，job 继续往下走，**暴露出第二层失败**（run #59，step 4）：
+
+```
+  1. Set up job                        success    1s
+  2. Run actions/checkout@v4           success    4s
+  3. Setup Node 22                     success    4s   ← 第一层已修复
+  4. Install deps (no-save, no audit)  failure   88s   ← 卡在这里
+  5. Run smoke tests                   skipped    0s
+```
+
+88 秒才失败，说明 npm 已经实际工作了一段时间，不是配置校验类错误。本地用**与 CI 完全一致的 npm 10.9.9**（Node 22 自带）在纯净检出上复现：
+
+```
+$ npx -y npm@10 install --no-save --no-audit --no-fund   # 无 lockfile、无 node_modules
+npm error Cannot read properties of null (reading 'edgesOut')
+EXIT=1
+```
+
+debug 日志给出了崩溃点与触发包：
+
+```
+verbose stack TypeError: Cannot read properties of null (reading 'edgesOut')
+    at #loadPeerSet (.../@npmcli/arborist/lib/arborist/build-ideal-tree.js:1289:38)
+    at async #loadPeerSet (.../build-ideal-tree.js:1297:11)   ← 递归 3 层
+    at async #buildDepStep (.../build-ideal-tree.js:904:11)
+    at async Arborist.buildIdealTree (.../build-ideal-tree.js:181:7)
+...
+silly unfinished npm timer idealTree:node_modules/vitest
+silly fetch manifest @vitest/browser-playwright@5.0.1
+```
+
+即：**npm 10 的 arborist 在解析 vitest 的 peer 依赖图时崩溃**。该崩溃只在没有 lockfile、必须完整构建 ideal tree 时才触发——有 lockfile 时 `buildIdealTree` 直接读 lock，不走 `#loadPeerSet`，所以本地（有 `package-lock.json`）永远复现不了。这正是本仓库"不跟踪 lockfile"策略与 CI 相撞的第二个副作用。
+
+**对照实验（均在纯净检出 + npm 10.9.9 下）**：
+
+| 安装命令 | 结果 |
+|---|---|
+| `npm install --no-save --no-audit --no-fund` | ❌ `edgesOut` 崩溃（exit 1，约 90s） |
+| `npm install --no-save --no-audit --no-fund --legacy-peer-deps` | ✅ 521 包，16s |
+| 同上 + `make test-smoke` | ✅ 10 文件 / 122 用例全绿（exit 0） |
+
+即 `--legacy-peer-deps` 跳过 peer 解析（`#loadPeerSet` 不再被调用），既绕开崩溃，又完整跑通被测目标。
+
 ## 4. 复现路径
 
 1. 本地确认 lockfile 未被跟踪：
@@ -120,8 +165,10 @@ make test-smoke   # 10 个文件 / 122 用例，1.3s，全绿——证明问题�
            node-version: '22'
 -          cache: 'npm'
  
++      # --legacy-peer-deps 是必需的：npm 10 在无 lockfile 全量解析时会崩 #loadPeerSet
        - name: Install deps (no-save, no audit)
-         run: npm install --no-save --no-audit --no-fund
+-        run: npm install --no-save --no-audit --no-fund
++        run: npm install --no-save --no-audit --no-fund --legacy-peer-deps
  
 +      # 测试清单的唯一真相源是 Makefile 的 test-smoke target
        - name: Run smoke tests
@@ -139,6 +186,7 @@ make test-smoke   # 10 个文件 / 122 用例，1.3s，全绿——证明问题�
 
 1. **去掉 `cache: 'npm'`，而不是把 lockfile 提交进仓**。本仓库的既定策略是"依赖始终解析最新版本"（不跟踪任何 lockfile），提交根 lockfile 会与之直接冲突，且会冻结 SDK 等依赖的版本。缓存是可选优化，不能以破坏既定策略为代价——先让门禁能跑起来。
 2. **测试清单改为调用 `make test-smoke`**。这是本次顺带发现的**第二个缺陷**：工作流注释写着"触发 `make test-smoke`"，但实际内联了一份**只含 6 个文件**的副本，而 Makefile 的 `test-smoke` 是 **10 个文件**。差的正是 `memory-write-trace` / `llm-call-trace` / `skill-im-command` / `tool-governance` 这 4 个——`CLAUDE.md` §11 明确要求"新增核心能力（trace / validation / eval 等）须同步加进这个清单"，有人加进了 Makefile 却漏了 CI 这份副本。改为调用 Makefile 后，清单只剩一处，这类漂移不会再发生。
+3. **第二层用 `--legacy-peer-deps` 绕过，而不是在 CI 里提交 lockfile**。提交根 `package-lock.json` 是更彻底的解法（有 lock 就不走 `#loadPeerSet`，且 CI 可复现、可 `npm ci`），但它要反转仓库"不跟踪任何 lockfile、依赖始终解析最新版本"的既定策略（`.gitignore:32-36`），属于策略决策而非 bugfix，不在本次改动范围内——留给项目自行决定（见 §8 遗留项）。`--legacy-peer-deps` 的代价是不再安装 peer 依赖（521 包 vs 完整解析 600 包），但已实测被测目标不依赖任何 peer 包。
 
 ## 7. 处理卡住的状态
 
@@ -153,3 +201,5 @@ make test-smoke   # 10 个文件 / 122 用例，1.3s，全绿——证明问题�
 5. **遗留项（本次未处理，非失败项，避免扩大改动范围）**：
    - `actions/checkout@v4` 与 `actions/setup-node@v4` 被 GitHub 标为 "Node.js 20 is deprecated... forced to run on Node.js 24"（[2025-09-19 公告](https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/)），当前仅告警不失败，后续需升到 v5。
    - 未启用任何缓存后，每次运行都要完整 `npm install`（含 better-sqlite3 等原生模块编译），job 耗时上升。若日后要恢复缓存，需先引入一个被跟踪的 lockfile，或改用 `actions/cache` 手动以 `hashFiles('package.json')` 为 key。
+   - **是否提交根 `package-lock.json`（策略决策，需项目拍板）**：不提交是本仓库的既定策略（依赖始终解析最新版本），代价是 CI 每次全量解析——本次的 `edgesOut` 崩溃、以及无法启用 npm 缓存、安装不可复现，都源于此。提交 lockfile 可一次性消除这类问题并让 CI 可复现；代价是依赖版本被冻结，需定期更新。两个方向都成立，取决于项目更看重"始终最新"还是"构建可复现"。
+   - `--legacy-peer-deps` 不安装 peer 依赖。当前 10 个 smoke 用例只依赖 `src/` 与 `better-sqlite3`（已实测），但不排除未来新增用例需要某个 peer 包；若 CI 报 module not found，先检查是否属于这种情况。
