@@ -201,7 +201,11 @@ import type { GraphDeps } from './graph-engineering/graph-runner.js';
 import { buildTeam } from './agent-team/team-builder.js';
 import { buildCollaboration } from './agent-team/collaboration-builder.js';
 import { handleTeamStartCommand } from './agent-team/team-commands.js';
-import { groupMessageCreatedEvent, recordSwarmSeatMessage } from './agent-group/swarm-runner.js';
+import {
+  groupMessageCreatedEvent,
+  recordSwarmSeatMessage,
+  swarmSeatDeltaEvent,
+} from './agent-group/swarm-runner.js';
 import { runOrchestrator } from './agent-orchestration/orchestrator-runner.js';
 import { setSupervisorDeps } from './routes/supervisor.js';
 import { seedMarketplaceIfEmpty } from './marketplace-seed.js';
@@ -12333,6 +12337,14 @@ async function main(): Promise<void> {
         if (row) {
           broadcastStreamEvent(ctx.chatJid, groupMessageCreatedEvent(ctx.graphRunId, node.id, row));
         }
+      },
+      // Agent Group Chat: same mirroring for text that is still being written —
+      // a seat's raw text_delta becomes a seat-attributed group_message_delta so
+      // the swarm page can stream the reply instead of waiting for the node to
+      // settle. Gated inside swarmSeatDeltaEvent, so non-swarm runs are untouched.
+      onNodeStream: (ctx, node, event) => {
+        const delta = swarmSeatDeltaEvent(ctx, node, event);
+        if (delta) broadcastStreamEvent(ctx.chatJid, delta);
       },
     };
     webDeps.startGraphRun = (opts) => {

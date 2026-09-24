@@ -10,6 +10,10 @@
  * used for this because graph-events.ts slices its output to 500 chars, and the
  * persisted `output_summary` is capped at 5000; only the in-memory outcome
  * carries the reply verbatim.
+ *
+ * `swarmSeatDeltaEvent` is the same mirroring for text that is still being
+ * written: it turns a seat node's raw `text_delta` into a seat-attributed
+ * `group_message_delta`, driven by GraphDeps.onNodeStream.
  */
 
 import { createGroupMessage, getGroupSeat, type GroupMessageRow } from '../db.js';
@@ -17,7 +21,7 @@ import type { GraphNode, NodeRunOutcome } from '../graph-engineering/graph-types
 import type { GraphRunContext } from '../graph-engineering/graph-runner.js';
 import type { StreamEvent } from '../stream-event.types.js';
 import type { RegisteredGroup } from '../types.js';
-import type { WebDeps } from '../web-context.js';
+import type { SelectedMounts, WebDeps } from '../web-context.js';
 import { ensureSwarmDefinition, seatIdFromNodeId } from './swarm-definition.js';
 
 /** Reply text kept per seat message (matches the previous ad-hoc cap). */
@@ -27,6 +31,8 @@ export interface TriggerSwarmRunOptions {
   group: RegisteredGroup & { jid: string };
   ownerUserId: string;
   goalText: string;
+  /** Skills / MCP servers / knowledge bases selected for this message. */
+  turnMounts?: SelectedMounts;
   startGraphRun: NonNullable<WebDeps['startGraphRun']>;
 }
 
@@ -50,7 +56,9 @@ export function triggerSwarmRun(
     // The seats are chained by edges, so the scheduler already serialises
     // them; a wider parallel budget would only fan out containers.
     maxParallel: 1,
-    initialState: { goal: opts.goalText },
+    // `goal` seeds the seats' prompt, `turnMounts` the skills/MCP/KB each seat
+    // gets — both are read back by graph-runner's runAgentNode.
+    initialState: { goal: opts.goalText, turnMounts: opts.turnMounts },
   });
   if (!started.success || !started.runId) {
     return { error: started.error ?? 'startGraphRun 未返回 runId' };
@@ -89,6 +97,41 @@ export function recordSwarmSeatMessage(
     contentRef: content.slice(0, MAX_SEAT_REPLY_CHARS),
     status: ok ? 'completed' : 'failed',
   });
+}
+
+/**
+ * Translate a seat node's raw stream event into a seat-attributed
+ * `group_message_delta`, so the swarm page can render the reply while it is
+ * still being written. Returns null for everything that is not top-level
+ * assistant text from one of this group's seats (non-seat nodes, tool traffic,
+ * subagent output).
+ */
+export function swarmSeatDeltaEvent(
+  ctx: GraphRunContext,
+  node: GraphNode,
+  event: StreamEvent,
+): StreamEvent | null {
+  if (event.eventType !== 'text_delta' || !event.text) return null;
+  // parentToolUseId is set on events nested inside a Task/SubAgent — that text
+  // belongs to the subagent, not to the seat's own reply.
+  if (event.parentToolUseId) return null;
+  const seatId = seatIdFromNodeId(node.id);
+  if (seatId === null) return null;
+  const seat = getGroupSeat(seatId);
+  if (!seat || seat.group_id !== ctx.chatJid) return null;
+
+  return {
+    eventType: 'group_message_delta',
+    displayLevel: 'primary',
+    agentScope: 'system',
+    graphEvent: { runId: ctx.graphRunId, nodeId: node.id },
+    groupMessage: {
+      groupId: ctx.chatJid,
+      senderType: 'agent',
+      senderSeatId: seatId,
+      content: event.text,
+    },
+  };
 }
 
 /** Stream event announcing a new group_messages row to the swarm page. */

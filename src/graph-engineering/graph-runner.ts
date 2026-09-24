@@ -44,6 +44,7 @@ import { runScript } from '../script-runner.js';
 import { scoreAssertion } from '../harness-eval.js';
 import type { ExecutionMode, RegisteredGroup } from '../types.js';
 import type { StreamEvent } from '../stream-event.types.js';
+import type { SelectedMounts } from '../web-context.js';
 import { buildEvalContext, resolveExpr, resolveValue } from './graph-expr.js';
 import { validateJson, type ValidationResult } from './json-schema-validator.js';
 import type {
@@ -124,6 +125,14 @@ export interface GraphDeps {
     node: GraphNode,
     outcome: NodeRunOutcome,
   ) => void | Promise<void>;
+  /**
+   * Called for every stream event an agent node emits, right before it is
+   * broadcast. Agent Group Chat uses it to turn a seat's raw `text_delta` into
+   * `group_message_delta` (which carries the seat id), so the swarm page can
+   * render the reply while it is still being written instead of waiting for
+   * the node to settle. Optional — no-op for every existing graph run.
+   */
+  onNodeStream?: (ctx: GraphRunContext, node: GraphNode, event: StreamEvent) => void;
 }
 
 /** Resolve execution mode for the owner's home group (mirrors loop-orchestrator). */
@@ -357,6 +366,29 @@ export function composeAgentPrompt(node: GraphNode, state: GraphState): string {
   return prompt;
 }
 
+/**
+ * Read the per-turn mounts (skills / MCP servers / knowledge bases) a caller
+ * stored in the run's initial state — the same additive channel as `goal`.
+ * Absent for every other graph run, whose agents therefore keep their previous
+ * mounts. Shape mirrors web-context's SelectedMounts; kept as a narrow
+ * whitelist so arbitrary state keys can never reach container-runner.
+ */
+export function readTurnMounts(state: GraphState): SelectedMounts | undefined {
+  const raw = state.turnMounts as SelectedMounts | undefined;
+  if (!raw || typeof raw !== 'object') return undefined;
+  const ids = (v: unknown): string[] | undefined => {
+    const list = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x) : [];
+    return list.length ? list : undefined;
+  };
+  const mounts: SelectedMounts = {
+    skills: ids(raw.skills),
+    mcpServers: ids(raw.mcpServers),
+    kbIds: ids(raw.kbIds),
+  };
+  if (!mounts.skills && !mounts.mcpServers && !mounts.kbIds) return undefined;
+  return mounts;
+}
+
 /** Run an 'agent' node — calls runHostAgent/runContainerAgent (mirrors runOneIteration). */
 async function runAgentNode(
   ctx: GraphRunContext,
@@ -368,28 +400,26 @@ async function runAgentNode(
   const group = buildOwnerGroup(ctx, executionMode);
   const turnId = `${ctx.graphRunId}-${node.id}`;
 
-  // Super Agent Team: if the node references a Team-created agent definition,
-  // set it on the synthetic group so container-runner's existing
-  // loadGroupAgentDefinition(group.agentDefId, group.created_by) loads the
-  // Team-designed systemPrompt/engine/skills/mcp — zero change to
-  // container-runner. loadGroupAgentDefinition returns undefined unless BOTH
-  // agentDefId and created_by are non-null, so set created_by = ownerUserId.
-  // (buildOwnerGroup sets owner_user_id, which RegisteredGroup doesn't read; we
-  // set the correct created_by field only when an agentDefId is present, leaving
-  // existing agentDefId-less nodes' behavior unchanged.)
+  // The node runs as the run's owner inside the owner's folder, so the
+  // synthetic group must carry the owner's identity. container-runner resolves
+  // three things off `group.created_by`: the agent definition
+  // (loadGroupAgentDefinition), the owner's Claude Code plugins
+  // (loadUserPlugins) and the owner's MCP servers / knowledge bases
+  // (applyTurnMounts' ownership checks). buildOwnerGroup sets owner_user_id,
+  // which RegisteredGroup does not read — set created_by explicitly.
+  const g = group as unknown as {
+    agentDefId?: string;
+    created_by?: string;
+    _graphAgentNode?: boolean;
+  };
+  g.created_by = ctx.ownerUserId;
+  // Marker: suppress writeAgentProjectClaudeMd for graph agent nodes so we
+  // don't clobber the shared owner-folder CLAUDE.md. The Team-designed
+  // systemPrompt still reaches the SDK via the <agent-definition> tag
+  // (agent-runner index.ts:1487), which is independent of the CLAUDE.md write.
+  g._graphAgentNode = true;
   if (node.agentDefId) {
-    const g = group as unknown as {
-      agentDefId?: string;
-      created_by?: string;
-      _graphAgentNode?: boolean;
-    };
     g.agentDefId = node.agentDefId;
-    g.created_by = ctx.ownerUserId;
-    // Marker: suppress writeAgentProjectClaudeMd for graph agent nodes so we
-    // don't clobber the shared owner-folder CLAUDE.md. The Team-designed
-    // systemPrompt still reaches the SDK via the <agent-definition> tag
-    // (agent-runner index.ts:1487), which is independent of the CLAUDE.md write.
-    g._graphAgentNode = true;
   }
 
   let output = '';
@@ -398,6 +428,10 @@ async function runAgentNode(
   let costUsd = 0;
 
   const prompt = composeAgentPrompt(node, ctx.state);
+  // Per-turn mounts (skills / MCP servers / knowledge bases) ride in the run's
+  // initial state — the same channel the triggering user message uses — and are
+  // applied by container-runner's existing applyTurnMounts.
+  const turnMounts = readTurnMounts(ctx.state);
 
   const input: ContainerInput = {
     prompt,
@@ -413,6 +447,7 @@ async function runAgentNode(
     // the node-internal sub-graph trace.
     graphRunId: ctx.graphRunId,
     graphNodeId: node.id,
+    turnMounts,
   };
 
   const agentResult = await runAgent(
@@ -436,6 +471,9 @@ async function runAgentNode(
         // at src/index.ts:3678; without this the execution-view trace panel
         // shows nothing for graph agent runs even though output_summary exists.
         persistTraceNodeFromStreamEvent(ctx.chatJid, streamed.streamEvent);
+        // Agent Group Chat: derive a seat-attributed event from the raw stream
+        // event (the raw one only carries the opaque turnId).
+        deps.onNodeStream?.(ctx, node, streamed.streamEvent);
         deps.broadcastStreamEvent?.(ctx.chatJid, streamed.streamEvent);
         const u = (streamed.streamEvent as { usage?: { inputTokens: number; outputTokens: number; costUSD: number } }).usage;
         if (u) {
