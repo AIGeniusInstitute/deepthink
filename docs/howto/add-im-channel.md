@@ -10,7 +10,7 @@
 4. 在 `src/routes/config.ts` 中添加 `/api/config/user-im/{channel}` 路由（GET/PUT）
 5. 在 `src/index.ts` 的 `loadState()` 和 `connectUserIMChannels()` 中加载新渠道
 6. 前端 `SetupChannelsPage` 和设置页添加新渠道的配置表单
-7. 在 `tests/channel-prefixes.test.ts` 的 `ALL_IM_CHANNELS` 数组中添加新渠道名
+7. 跑 `make test` 验证（历史上这里有一条"更新 `tests/channel-prefixes.test.ts` 的 `ALL_IM_CHANNELS` 数组"的步骤，该数组与测试文件均已不存在——`src/channel-prefixes.ts` 的 `CHANNEL_PREFIXES` 本身就是唯一需要同步的常量）
 
 ## 相关文档
 

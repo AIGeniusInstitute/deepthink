@@ -1,3 +1,9 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+---
+
 # DeepThink — AI 协作者指南
 
 本文档帮助 AI 和工程协作者快速理解项目架构、关键机制与修改边界。
@@ -16,7 +22,41 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
 
 ## 2. 核心架构
 
+### 2.0 三个横切面（改动执行或状态前先读）
+
+下面三层不属于任何单个模块，但几乎所有改动都会碰到，且**光看目录结构看不出来**。
+
+**① 多 Agent 执行引擎** —— `RegisteredGroup.engine`（类型见 `src/types.ts` 的 `AgentEngine`）决定这个群组用哪个引擎跑 Agent，共 5 个：
+
+| engine | 运行时 | adapter |
+|---|---|---|
+| `claude`（默认） | Claude Agent SDK（内置完整 Claude Code CLI 运行时） | `container/agent-runner/src/index.ts` 的 SDK 分支 |
+| `atomcode` | AtomCode 自带 HTTP/SSE daemon | `atomcode-engine.ts` + `src/atomcode-daemon-manager.ts` |
+| `codex` | OpenAI Codex | `codex-engine.ts` |
+| `opencode` | OpenCode | `opencode-engine.ts` |
+| `pi` | pi（stdio JSONL RPC） | `pi-engine.ts` |
+
+分发是**懒加载动态 import**：agent-runner 读 `ContainerInput.engine`，非 `claude` 时 branch 到对应 `*-engine.ts`，各 adapter 产出**同一套 `StreamEvent`**。所以上层（容器管理、流式管道、WebSocket 广播）对引擎无感知——**新增引擎只写一个 adapter，不要改上层管道**；容器内每个引擎的 CLI 与凭据注入在 `src/container-runner.ts`。配置入口是 `/engines` 页面 + 设置页对应 tab。
+
+**② 图谱引擎（`src/graph-engineering/`，12 个文件）** —— 平台唯一的 DAG 编排内核，被多个业务面复用：Team Builder、Agent Workflow 可视化编排、Orchestrator-Workers、Agent 群组（Swarm）、Loop Engineering、Harness Eval。定义、调度、执行、校验、恢复分别对应 `graph-registry` / `graph-scheduler` / `graph-runner` / `json-schema-validator` / `graph-recovery`，加性扩展点通过 `GraphDeps` 回调注入（如 `onNodeSettled` / `onNodeStream`，未接线即 no-op）。**新增编排能力优先扩这个引擎，不要另起一条并行执行链路**——v1.4.0 的 Swarm 曾另起一套 Redis 链路，结果从未跑通（`docs/issues/2026-09-23-agent-group-message-no-response.md`），v1.5.0 的修复就是把它删掉、改回这个引擎。
+
+**③ 可插拔状态层** —— 默认单机开箱即用；设了环境变量即切到分布式，**代码路径不变**：
+
+| 关注点 | 默认 | 切换开关 | 实现要点 |
+|---|---|---|---|
+| 数据库 | SQLite（WAL），Bun 下用 `bun:sqlite` | `DATABASE_URL=postgresql://…` | `src/sqlite-compat.ts` 是唯一的后端选择点；`src/pg-sync-driver.ts` 用 worker_threads + `Atomics.wait` 把**异步 pg 同步桥接**回 better-sqlite3 的同步 API（`db.ts` 有 400+ 同步调用点，是这套设计的根本原因）；SQL 方言由 `src/sql-translator.ts` 运行时翻译 |
+| 跨 Pod 协调 | 进程内 | `REDIS_URL` | `src/redis-client.ts`（未配置时全部函数降级为 no-op）、`src/redis-bus.ts`：WS 广播 pub/sub、调度器选主租约、共享并发计数器 |
+| 大文件 / trace IO | 本地文件系统 | `OBJECT_STORE_PROVIDER=s3` | `src/object-store.ts`；`output_ref` 统一为绝对路径或 `s3://bucket/key`，读写两端必须走同一处保持对称 |
+| 向量检索 | sqlite-vec（`vec0` 虚表） | PostgreSQL → pgvector | `src/embedding.ts`；两者都加载失败时回落线性扫描，未配置 embedding 时回落 FTS5 |
+| IM 长连接归属 | 本进程独占 | Redis 选主 | 多 Pod 下只有一个 Pod 接管 IM 长连接：`deepthink:im-leader` 租约（30s TTL，续约失败即让位），见 `src/index.ts`。同一套租约原语（`src/redis-client.ts` 的 `acquireLease`）也用于调度器单写者 |
+
+**改 `db.ts` 或任何持久化路径时，必须同时保证 SQLite 与 PostgreSQL 两种后端可用**（PG 模式禁用 SQLite 专有语法，如 `ADD COLUMN IF NOT EXISTS` 的语义差异曾导致迁移中断），并以 `make test` 兜底。
+
+> `src/db-adapter.ts` 是一个**未被任何代码引用**的早期抽象（其注释自称 "Phase 2 not yet implemented"），真实实现是 `src/sqlite-compat.ts`。不要基于它做设计。
+
 ### 2.1 后端模块
+
+> 下表是**选择性索引，不是全量清单**——`src/` 顶层现有 113 个模块、`src/routes/` 有 45 个路由文件、另有 14 个业务子系统目录（分列在下方两张表）。路由的挂载点在 `src/web.ts`，找某个 API 时从那里反查，不要只看这张表。
 
 | 模块 | 职责 |
 |------|------|
@@ -66,7 +106,7 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
 | `src/utils.ts` | 工具函数：`getClientIp()`（TRUST_PROXY 感知） |
 | `src/web-context.ts` | Web 共享状态：`WebDeps` 依赖注入、群组访问权限检查、WS 客户端管理 |
 | `src/middleware/auth.ts` | 认证中间件：Cookie Session 校验、权限检查中间件工厂 |
-| `src/channel-prefixes.ts` | IM channel type → JID prefix 映射，被多处共享；**新增渠道时必须同步更新此文件** |
+| `src/channel-prefixes.ts` | IM channel type → JID prefix 映射（`CHANNEL_PREFIXES` + `getChannelFromJid()`）。**是 `shared/channel-prefixes.ts` 的构建产物，勿直接编辑**——新增渠道要改源头那份，见 §3.2 |
 | `src/im-channel.ts` | 统一 IM 通道接口（`IMChannel`）、Feishu/Telegram 适配器工厂 |
 | `src/commands.ts` | Web 端斜杠命令处理器（`/clear` 重置会话） |
 | `src/im-command-utils.ts` | IM 斜杠命令纯函数工具：`formatWorkspaceList()`、`formatContextMessages()` |
@@ -79,12 +119,45 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
 | `src/config.ts` | 常量：路径、超时、并发限制、会话密钥（优先级：环境变量 > 文件 > 生成，0600 权限） |
 | `src/logger.ts` | 日志：pino + pino-pretty |
 
+**业务子系统目录**（`src/` 下的子目录，按业务面划分）：
+
+| 模块 | 职责 |
+|------|------|
+| `src/graph-engineering/` | 图谱引擎内核（12 文件），见 §2.0 ② |
+| `src/agent-group/` | Agent 群组（Swarm）：`swarm-definition.ts`（席位 → `graph_definition`，节点 id 前缀 `seat-`）、`swarm-runner.ts`（触发运行 + 席位输出回写 + 席位级流式事件） |
+| `src/agent-team/` | Team Builder：`team-builder.ts` 组队、`team-plan` / `team-prompt` / `team-commands`、`collaboration-builder.ts` 协作工作区 |
+| `src/agent-orchestration/` | 编排者-工作者模式：`orchestrator-plan.ts`（选人计划）、`orchestrator-runner.ts` |
+| `src/autonomy/` | 自主层：事件总线 / 能力注册 / 指标 / 学习与教训注入 / 自愈 / 适配 |
+| `src/eval-center/` | 评测中心：用例与运行、漂移检测、评分（自带 `eval-schema.sql`） |
+| `src/mcp-registry/` | MCP Server Registry：把任意 HTTP API 注册成标准 MCP 工具（OpenAPI 解析、凭据加密、限流、治理） |
+| `src/open-platform/` | 开放平台：API Key、MaaS（`/v1/chat/completions`）、Agent-as-a-Service、计费与结果校验 |
+| `src/sandbox/` | 沙箱：Docker 代码执行 + 浏览器自动化（`browser-agent.ts`）、安全策略 |
+| `src/feishu-cards/` | 飞书卡片构建（builder / sections / length / status-theme），被所有飞书卡片与流式卡片复用 |
+| `src/im-safety/` | IM 安全原语（见上表） |
+
+**其他横切模块**：
+
+| 模块 | 职责 |
+|------|------|
+| `src/sqlite-compat.ts`、`src/pg-sync-driver.ts`、`src/sql-translator.ts` | 多后端数据层，见 §2.0 ③ |
+| `src/redis-client.ts`、`src/redis-bus.ts`、`src/object-store.ts` | 分布式状态层，见 §2.0 ③ |
+| `src/supervisor-agent.ts` | **长驻** Supervisor Agent：独立 DB 表 + 调度循环 + 决策审计 + 心跳 + 启动恢复。与 `src/supervisor.ts`（无状态的派发前意图解析器）**是两个不同的东西**，勿混 |
+| `src/loop-orchestrator.ts`、`src/loop-commands.ts` | Loop Engineering：长任务循环编排，状态机 `pending → running → reviewing → iterating → completed/failed/cancelled` |
+| `src/harness-registry.ts`、`src/harness-eval.ts`、`src/harness-meta-loop.ts` | Harness Engineering：注册表 / 评估断言 / 元循环 |
+| `src/sdk-query.ts` | 轻量文本进-文本出 SDK 封装（`maxTurns=1`、无工具），**替代所有 `claude --print` CLI 调用**，复用设置页配置的 provider 认证 |
+| `src/agent-ai.ts`、`src/skill-ai.ts` | AI 生成/优化 Agent 与 Skill（基于 `sdk-query.ts`） |
+| `src/cross-group-acl.ts`、`src/owner-gate.ts`、`src/group-owner.ts` | 跨组访问授权、群组 owner 生命周期与运行时门禁（owner 被禁用/删除后立即停响应） |
+| `src/embedding.ts`、`src/document-parser.ts`、`src/office-converter.ts` | 知识库：向量化、文档解析、Office 转换 |
+| `src/billing.ts`、`src/provider-pool.ts` | 计费（套餐/余额/配额/兑换码/月度聚合）与多提供商负载均衡 |
+| `src/task-routing.ts` | 定时任务 IM 路由的纯函数（依赖注入、无副作用，便于单测） |
+| `src/url-safety.ts`、`src/file-manager.ts`、`src/mount-security.ts` | SSRF 防护 / 文件路径与系统路径保护 / 挂载白名单 |
+
 ### 2.2 前端
 
 | 层次 | 技术 |
 |------|------|
 | 框架 | React 19 + TypeScript + Vite 6 |
-| 状态 | Zustand 5（10 个 Store：auth、chat、groups、tasks、monitor、container-env、files、users、skills、mcp-servers） |
+| 状态 | Zustand 5，`web/src/stores/` 下 **32 个 store**（每个业务面一个：`chat`、`chat-mounts`、`auth`、`groups`、`agent-group`、`graph`、`workflow-editor`、`tasks`、`skills`、`mcp-servers`、`mcp-registry`、`knowledge-bases`、`files`、`sandbox`、`marketplace`、`billing`、`usage`、`opc`、`staff`、`team`、`collaborations`、`harness`、`loops`、`autonomous`、`supervisor`、`plugins`、`agents-paas`、`agent-definitions`、`workspace-config`、`container-env`、`users`、`monitor`） |
 | 样式 | Tailwind CSS 4（teal 主色调，`lg:` 断点响应式，移动端优先） |
 | 路由 | React Router 7（AuthGuard + SetupPage 重定向） |
 | 通信 | 统一 API 客户端（8s 超时，FormData 120s）、WebSocket 实时推送 + 指数退避重连 |
@@ -94,22 +167,18 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
 
 #### 前端路由表
 
-| 路径 | 页面 | 权限 |
+**路由的单一真相源是 `web/src/App.tsx`**——新增页面先看那里，不要在别处维护副本。页面组件在 `web/src/pages/`。当前一级导航按业务面分组，**约 45 条路由**，主要面如下：
+
+| 分组 | 路径（代表） | 说明 |
 |------|------|------|
-| `/setup` | `SetupPage` — 管理员创建向导 | 公开（仅未初始化时） |
-| `/setup/providers` | `SetupProvidersPage` — Claude/飞书配置 | 登录后 |
-| `/setup/channels` | `SetupChannelsPage` — 用户 IM 通道配置引导 | 登录后（注册后跳转） |
-| `/login` | `LoginPage` | 公开 |
-| `/register` | `RegisterPage` | 公开（可通过设置关闭） |
-| `/chat/:groupFolder?` | `ChatPage` — 主聊天界面（懒加载） | 登录后 |
-| `/groups` | 重定向到 `/settings?tab=groups` | 登录后 |
-| `/tasks` | `TasksPage` — 定时任务（懒加载） | 登录后 |
-| `/monitor` | `MonitorPage` — 系统监控（懒加载） | 登录后 |
-| `/memory` | `MemoryPage` — 记忆管理 | 登录后 |
-| `/skills` | `SkillsPage` — Skills 管理 | 登录后 |
-| `/settings` | `SettingsPage` — 系统设置（懒加载） | 登录后 |
-| `/mcp-servers` | `McpServersPage` — MCP Servers 管理 | 登录后 |
-| `/users` | `UsersPage` — 用户管理 | `manage_users` / `manage_invites` / `view_audit_log` |
+| 公开 / 首次运行 | `/setup`、`/setup/providers`、`/setup/channels`、`/login`、`/register`、`/share/:token` | 设置向导与分享页；`/setup` 仅未初始化时可达 |
+| 对话 | `/chat/:groupFolder?` | 主聊天界面（懒加载） |
+| Agent 工作台 | `/agents`（Agent Studio）、`/agent-definitions`、`/agent-groups`、`/agent-groups/:jid`、`/team`、`/collaborations`、`/opc` | Agent 群组（Swarm）在 `/agent-groups` |
+| 编排 | `/workflows`、`/workflows/:id`、`/graphs`、`/loops`、`/harness`、`/supervisor` | 全部构建在图谱引擎之上，见 §2.0 ② |
+| 能力与资源 | `/skills`、`/mcp-servers`、`/knowledge-bases`、`/plugins`、`/marketplace`、`/tools`、`/sandbox`、`/disk`、`/memory` | `/mcp-registry` 重定向到 `/mcp-servers?tab=registry` |
+| 运行与治理 | `/tasks`、`/eval-center`、`/billing`、`/engines`、`/open-platform` | `/engines` 是 5 个 Agent 引擎的开关与配置入口（见 §2.0 ①） |
+| 设置 | `/settings`（含 tabs） | `/groups`、`/monitor`、`/usage` 均重定向进 `/settings?tab=…` |
+| 管理 | `/users` | 需 `manage_users` / `manage_invites` / `view_audit_log` |
 
 ### 2.3 容器 / 宿主机执行
 
@@ -120,21 +189,28 @@ Agent Runner（`container/agent-runner/`）在 Docker 容器或宿主机进程�
 - **流式事件**：`text_delta`、`thinking_delta`、`tool_use_start/end`、`tool_progress`、`hook_started/progress/response`、`task_start`、`task_notification`、`status`、`init` —— 通过 WebSocket `stream_event` 消息广播到 Web 端
 - **文本缓冲**：`text_delta` 累积到 200 字符后刷新，避免高频小包
 - **会话循环**：`query()` → 等待 IPC 消息 → 再次 `query()` → 直到 `_close` sentinel
-- **MCP Server**：12 个工具（`send_message`、`schedule_task`、`list/pause/resume/cancel_task`、`register_group`、`install_skill`、`uninstall_skill`、`memory_append`、`memory_search`、`memory_get`），通过 SDK `createSdkMcpServer()` 以同进程模式注册
+- **MCP Server**：**36 个工具**，通过 SDK `createSdkMcpServer()` 以同进程模式注册，IPC 文件通信。按域分组：**对话与文件**（`send_message`、`send_file`、`send_image`、`web_fetch`、`web_search`）；**定时任务**（`schedule_task`、`list_tasks`、`update_task`、`pause_task`、`resume_task`、`cancel_task`）；**记忆**（`memory_append`、`memory_get`、`memory_search`）；**Skills**（`install_skill`、`uninstall_skill`、`create_skill`）；**知识库**（`kb_search`）；**群组**（`register_group`）；**网盘**（`disk_upload`、`disk_download`、`disk_list`、`disk_search`、`disk_move`、`disk_delete`、`disk_create_folder`）；**沙箱**（`sandbox_run_code`、`sandbox_close`、`sandbox_browser_navigate`、`sandbox_browser_click`、`sandbox_browser_type`、`sandbox_browser_screenshot`、`sandbox_browser_evaluate`）；**Discord**（`discord_get_channel_info`、`discord_get_history`、`discord_get_server_info`）。新增工具的步骤见 [`docs/howto/add-mcp-tool.md`](docs/howto/add-mcp-tool.md)
 - **Hooks**：PreCompact 钩子在上下文压缩前归档对话到 `conversations/` 目录
 - **敏感数据过滤**：StreamEvent 中的 `toolInputSummary` 会过滤 `ANTHROPIC_API_KEY` 等环境变量名
 - **预定义 SubAgent**：`agent-definitions.ts` 定义 `code-reviewer`（代码审查）和 `web-researcher`（网页研究）两个 SubAgent，通过 SDK `agents` 选项注册到 query() 会话中
 
-**Agent Runner 模块结构**（`container/agent-runner/src/`）：
+**Agent Runner 模块结构**（`container/agent-runner/src/`，共 22 个文件）：
 
 | 文件 | 职责 |
 |------|------|
-| `index.ts` | 主入口：stdin 读取、会话循环、query() 调用、IPC 轮询 |
-| `types.ts` | 共享类型定义（ContainerInput、ContainerOutput 等），re-export StreamEvent |
-| `utils.ts` | 纯工具函数（字符串截断、敏感数据脱敏、文件名清理等） |
-| `stream-processor.ts` | StreamEventProcessor 类：流式事件缓冲、工具状态追踪、SubAgent 消息转换 |
-| `mcp-tools.ts` | MCP 工具定义：12 个工具通过 SDK `tool()` 注册，IPC 文件通信 |
+| `index.ts` | 主入口：stdin 读取、会话循环、query() 调用、IPC 轮询、**引擎分发**（§2.0 ①）；`claude` 引擎的 SDK 分支内联在此 |
+| `atomcode-engine.ts`、`codex-engine.ts`、`opencode-engine.ts`、`pi-engine.ts` | 四个非 Claude 引擎 adapter，各自把引擎输出翻译成统一 `StreamEvent` |
 | `agent-definitions.ts` | 预定义 SubAgent（code-reviewer、web-researcher） |
+| `types.ts`、`utils.ts` | 共享类型定义（ContainerInput、ContainerOutput 等，re-export StreamEvent）；纯工具函数（字符串截断、敏感数据脱敏、文件名清理等） |
+| `stream-processor.ts` | StreamEventProcessor 类：流式事件缓冲、工具状态追踪、SubAgent 消息转换 |
+| `mcp-tools.ts` | MCP 工具定义：36 个工具通过 SDK `tool()` 注册，IPC 文件通信 |
+| `mcp-bridge.ts` | MCP server 桥接（宿主 / 容器两种模式下的连接与生命周期） |
+| `redis-ipc.ts` | 分布式模式下的 IPC（Redis 消息驱动，替代文件 IPC 轮询） |
+| `session-history.ts`、`history-image-prune.ts` | 会话历史读写与历史图片裁剪 |
+| `reminder-engine.ts` | Agent Reminder：长任务中周期性 / 事件驱动地重注入任务目标，防上下文漂移 |
+| `autonomy-recovery.ts`、`gap-resolver.ts` | 全自主恢复：终态刹车恢复、知识缺口自解（`install_skill` / `web_search`） |
+| `trace-node-allocator.ts` | trace 节点编号分配（与宿主端 `trace_steps` 对齐） |
+| `channel-prefixes.ts`、`i18n-directive.ts` | 渠道前缀（构建时同步）、多语言指令注入 |
 | `image-detector.ts` | 图片 MIME 检测（由 `shared/image-detector.ts` 构建时同步生成，勿直接编辑） |
 | `stream-event.types.ts` | StreamEvent 类型（由 `shared/stream-event.ts` 构建时同步生成，勿直接编辑） |
 
@@ -205,6 +281,12 @@ StreamEvent 类型以 `shared/stream-event.ts` 为单一真相源，构建时通
 `shared/image-detector.ts` 同样通过 `make sync-types` 同步到两处副本：
 - `src/image-detector.ts`（后端）
 - `container/agent-runner/src/image-detector.ts`（agent-runner）
+
+`shared/channel-prefixes.ts` 是**第三个**同步源，`scripts/sync-stream-event.sh` 一并处理，同步到两处副本：
+- `src/channel-prefixes.ts`（后端）
+- `container/agent-runner/src/channel-prefixes.ts`（agent-runner）
+
+**通用规则**：`shared/` 下任何一个文件都是**单向同步源**，它在 `src/`、`web/src/`、`container/agent-runner/src/` 下的同名副本会在 `make build` / `make sync-types` 时被**无条件覆盖**。改副本 = 白改。改完源头跑 `make sync-types`；`make typecheck` 会校验一致性。
 
 ### 3.3 IPC 通信
 
@@ -280,15 +362,16 @@ StreamEvent 类型以 `shared/stream-event.ts` 为单一真相源，构建时通
 
 角色：`admin`（管理员）、`member`（普通成员）
 
-5 种权限：
+6 种权限（`src/permissions.ts` 的 `ALL_PERMISSIONS`）：
 
 | 权限 | 说明 |
 |------|------|
-| `manage_system_config` | 管理系统配置（Claude / 飞书） |
+| `manage_system_config` | 管理系统配置（Claude / 引擎 / IM） |
 | `manage_group_env` | 管理群组级容器环境变量 |
 | `manage_users` | 用户管理（创建 / 禁用 / 删除） |
 | `manage_invites` | 邀请码管理 |
 | `view_audit_log` | 查看审计日志 |
+| `manage_billing` | 计费管理（套餐 / 余额 / 兑换码） |
 
 权限模板：`admin_full`、`member_basic`、`ops_manager`、`user_admin`
 
@@ -315,7 +398,17 @@ StreamEvent 类型以 `shared/stream-event.ts` 为单一真相源，构建时通
 
 ## 5. 数据库表
 
-SQLite WAL 模式，Schema 经历 v1→v24 演进（`db.ts` 中的 `SCHEMA_VERSION`）。
+默认 SQLite WAL 模式（`DATABASE_URL=postgresql://` 时切 PostgreSQL，见 §2.0 ③）。Schema 经历 **v1→v70** 演进，权威版本号是 `src/db.ts` 的 `SCHEMA_VERSION`——**改动前先读那里**，不要相信本节的数字。
+
+建表语句有**两处**，改 schema 时别漏：
+- `src/db.ts`：96 张表（`CREATE TABLE IF NOT EXISTS`），另建 `kb_documents_fts` / `kb_documents_vec` 两张虚表
+- `src/eval-center/eval-schema.sql`：评测中心独立的 16 张表（`eval_*` / `agent_trace` / `trace_span`），由 `eval-center/eval-db.ts` 加载
+
+迁移方式见 [`docs/howto/modify-db-schema.md`](docs/howto/modify-db-schema.md)。
+
+表按业务面分族：**核心会话**（`chats` / `messages` / `registered_groups` / `sessions` / `router_state`）、**群组协作**（`group_members` / `group_seats` / `group_messages` / `user_pinned_groups`）、**认证计费**（`users` / `user_sessions` / `invite_codes` / `auth_audit_log` / `billing_*` / `redeem_*`）、**图谱编排**（`graph_definitions` / `graph_runs` / `graph_node_runs` / `graph_node_run_locks`）、**Agent**（`agents` / `agent_definitions` / `agent_definition_versions` / `agent_mounts` / `agent_shares` / `agent_worker_links` / `agent_collaborators`）、**Skills 与知识库**（`skills` / `skill_versions` / `knowledge_bases` / `kb_documents` / `kb_documents_vec`）、**MCP**（`mcp_server_configs` / `mcp_registry_*`）、**可观测**（`trace_steps` / `trace_tool_calls` / `chat_trace_nodes` / `tool_call_audit_log` / `tool_call_idempotency`）、**用量计费**（`usage_records` / `usage_daily_summary` / `daily_usage` / `monthly_usage` / `model_pricing`）、**自主与 Harness**（`autonomy_*` / `loop_*` / `harness_*` / `supervisor_*`）、**业务面**（`opc_*` / `sw_*` / `sandbox_*` / `collaborations` / `marketplace_*` / `file_trash` / `file_versions` / `workspace_artifacts` / `workflow_builds` / `team_builds` / `provider_configs` / `api_keys`）。
+
+核心表（改动前最常打交道的）：
 
 | 表 | 主键 | 用途 |
 |-----|------|------|
@@ -386,13 +479,15 @@ config/global-claude-md.template.md        # 全局 CLAUDE.md 模板
 
 container/skills/             # 项目级 Skills（挂载到所有容器）
 
-shared/                       # 跨项目共享类型定义
-  stream-event.ts             # StreamEvent 类型单一真相源（构建时同步到三个子项目）
-  image-detector.ts           # 图片 MIME 检测（同步到 src/ 和 agent-runner/src/）
+shared/                       # 跨项目共享「单向真相源」，只改这里（见 §3.2）
+  stream-event.ts             # StreamEvent 类型（同步到 src/、web/src/、agent-runner/src/）
+  image-detector.ts           # 图片 MIME 检测（同步到 src/、agent-runner/src/）
+  channel-prefixes.ts         # IM 渠道前缀映射（同步到 src/、agent-runner/src/）
 
 scripts/                      # 构建辅助脚本
-  sync-stream-event.sh        # 将 shared/stream-event.ts 同步到各子项目
-  check-stream-event-sync.sh  # 校验 StreamEvent 类型副本是否一致（typecheck 时调用）
+  sync-stream-event.sh        # 将 shared/ 下的三个真相源同步到各子项目（make sync-types / make build）
+  check-stream-event-sync.sh  # 校验三个副本是否一致（make typecheck 时调用，不一致即失败）
+  check-agent-runner-prompts.sh  # 校验 agent-runner 源码引用的 prompt 文件真实存在（make typecheck 时调用；否则要到容器启动 readFileSync 才 ENOENT）
 ```
 
 ## 7. Web API
@@ -531,6 +626,9 @@ WebSocket：`/ws`（协议详见 [`docs/API.md`](docs/API.md) 的 WebSocket 章�
 | `ASSISTANT_NAME` | `DeepThink` | 助手名称 |
 | `WEB_PORT` | `9898` | 后端端口 |
 | `WEB_SESSION_SECRET` | 自动生成 | 会话签名密钥 |
+| `DATABASE_URL` | 空 → SQLite | 数据后端开关：`postgresql://…` 切 PostgreSQL（同步桥接），`sqlite://path` 指定 SQLite 路径。详见 §2.0 ③ |
+| `REDIS_URL` | 空 → 进程内 | 分布式协调开关：WS 广播 pub/sub、调度器选主、共享并发计数器。空值时全部降级为 no-op |
+| `OBJECT_STORE_PROVIDER` | `fs` | `s3` 时启用 S3/MinIO 对象存储（trace 大 IO + 工作区文件同步）；需装可选依赖 `@aws-sdk/client-s3`，并配 `S3_ENDPOINT` / `S3_BUCKET` / `S3_WS_BUCKET` / `S3_REGION` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` / `S3_FORCE_PATH_STYLE` |
 | `FEISHU_APP_ID` | - | 飞书应用 ID |
 | `FEISHU_APP_SECRET` | - | 飞书应用密钥 |
 | `CONTAINER_IMAGE` | `deepthink-agent:latest` | Docker 镜像名称 |
@@ -557,7 +655,7 @@ WebSocket：`/ws`（协议详见 [`docs/API.md`](docs/API.md) 的 WebSocket 章�
 - **Git commit message 使用简体中文**，格式：`类型: 简要描述`（如 `修复: 侧边栏下拉菜单无法点击`）
 - **Issue / PR 规范**见下方 §10.2
 - 系统路径不可通过文件 API 操作：`logs/`、`CLAUDE.md`、`.claude/`、`conversations/`
-- StreamEvent 类型以 `shared/stream-event.ts` 为单一真相源，修改后运行 `make sync-types` 同步（`make build` 自动触发，`make typecheck` 校验一致性）
+- `shared/` 下的文件（`stream-event.ts`、`image-detector.ts`、`channel-prefixes.ts`）都是**单向真相源**，只改源头，改完跑 `make sync-types`（`make build` 自动触发，`make typecheck` 通过 `scripts/check-stream-event-sync.sh` 校验一致性）。**不要编辑 `src/`、`web/src/`、`container/agent-runner/src/` 下的同步副本**——它们会被无条件覆盖
 - Claude SDK / CLI 和容器内置的第三方工具始终使用最新版本：
   - `@anthropic-ai/claude-agent-sdk` 在 `agent-runner/package.json` 用 `"*"` + 无 lock file + `CACHEBUST` 触发每次 `npm install` 重跑
   - `feishu-cli` 在 `container/Dockerfile` 通过 `github.com/riba2534/feishu-cli/releases/latest` 的 **302 redirect Location header** 提取 tag 动态下载（不走 `api.github.com` 规避 rate limit），binary 和 skills 共享同一 `$VERSION` 确保一致
@@ -643,7 +741,8 @@ make test          # 约束测试（vitest，重构前/后必跑，详见下方"
 make format        # 格式化代码（prettier）
 make install       # 安装全部依赖并编译 agent-runner
 make clean         # 清理构建产物（dist/）
-make sync-types    # 同步 shared/ 下的类型定义到各子项目
+make test-smoke    # CI 门禁用最小回归集（10 个文件，< 60s）
+make sync-types    # 同步 shared/ 下的真相源到各子项目（勿手改副本，见 §3.2）
 make update-sdk    # 更新 agent-runner 的 Claude Agent SDK 到最新版本
 make reset-init    # 重置为首装状态（清空数据库和配置，用于测试设置向导）
 make backup        # 备份运行时数据到 deepthink-backup-{date}.tar.gz
@@ -680,33 +779,31 @@ make desktop-pack-linux # 打包 Linux AppImage/.deb（需在 Linux runner 执�
 
 每个项目有独立的 `package.json`、`tsconfig.json`、`node_modules/`。此外，`shared/` 目录存放跨项目的共享类型定义（如 `stream-event.ts`），构建时通过 `make sync-types` 同步到各项目。桌面版通过 `desktop/build/{mac,win,linux}.json` 的 `extraResources` 把后端 `dist/`、`web/dist`、`container/agent-runner/` 和 Node 二进制一起打进安装包，运行时由 `BackendSupervisor` spawn 子进程方式启动后端（详见 [`docs/desktop-architecture.md`](docs/desktop-architecture.md)）。
 
-### 约束测试工程（Phase 0）
+### 约束测试工程
 
-测试框架：vitest 4.1.1，配置在 `vitest.config.ts`。
+测试框架：vitest（`^4.1.1`），配置在 `vitest.config.ts`（显式排除 `data/`、`.claude/`、`.worktrees/`——`data/` 里是用户 Agent 的工作区，可能含自己的测试套件）。
 
-测试文件按故事组织（不是按函数），作为重构安全网：
+当前 **148 个测试文件**，分三处：
 
-| 目录 | 覆盖范围 | 故事编号 |
-|------|---------|---------|
-| `tests/units/markdown.test.ts` | Markdown→纯文本转换 | D7, A4 |
-| `tests/units/text-chunk.test.ts` | 长消息分片 | A4 |
-| `tests/units/im-dedup.test.ts` | LRU 消息去重 | A10 |
-| `tests/units/jid-routing.test.ts` | JID 路由一致性 | D1 |
-| `tests/units/im-command-utils.test.ts` | IM 斜杠命令格式化 | A9 |
-| `tests/units/ipc-atomic.test.ts` | IPC 文件原子写入 | D3 |
-| `tests/units/user-isolation.test.ts` | 用户隔离（数据模型） | D2 |
-| `tests/units/oom-idle.test.ts` | OOM 恢复 + 空闲超时 | D4, D5 |
-| `tests/units/log-sanitize.test.ts` | 日志脱敏 | D7 |
-| `tests/units/group-chat.test.ts` | 群聊场景 | B1, B2, B5, B6 |
-| `tests/units/dm-integration.test.ts` | DM 集成 | A1, A2, A3, A5, A8 |
-| `tests/channel-prefixes.test.ts` | 渠道前缀映射 | D1 |
-| `tests/helpers/im-utils.ts` | 测试工具（纯函数副本） | - |
+| 位置 | 数量 | 内容 |
+|------|------|------|
+| `tests/*.test.ts` | 103 | 按**功能域或故事**组织的测试（图引擎、群队列、IM 渠道、trace、计费、沙箱……），文件名即主题 |
+| `tests/units/*.test.ts` | 45 | 更细的单元级测试（自主层、Harness、Eval、MCP Registry、Supervisor、Swarm 等） |
+| `tests/e2e/*.mjs` | 4 | 真实端到端脚本（不是 vitest 用例，需手工/CI 单独驱动） |
 
-**重要约束**：
-- `make test` 必须在 Phase 2/3 重构前后都通过（行为不变性验证）
-- 修改 `channel-prefixes.ts`、`im-command-utils.ts`、IM 通道文件前必跑
-- 测试中的纯函数来自 `tests/helpers/im-utils.ts`（Phase 2 提取到 `src/im-utils.ts` 后切换导入源）
-- `ALL_IM_CHANNELS` 数组在 `tests/channel-prefixes.test.ts` 和 `tests/units/jid-routing.test.ts` 中定义，新增渠道时必须同步更新
+`tests/helpers/` 只放跨测试共享的辅助模块。
+
+**两个测试入口，别混用**：
+
+- `make test` = `vitest run`（全量，148 个文件）——**重构前/后必跑**
+- `make test-smoke` = 10 个文件的固定清单（< 60s），**这是 CI 的 pull-request 门禁**，见 `Makefile` 的 `test-smoke` 目标；清单是写死的，**新增核心能力（trace / validation / eval 等）须同步加进这个清单**
+
+**约束**：
+- 修改渠道前缀（`shared/channel-prefixes.ts`）、`src/im-command-utils.ts`、任一 IM 通道文件前，必须先跑 `make test`
+- 新增 IM 渠道时**唯一必须改的常量是 `shared/channel-prefixes.ts` 的 `CHANNEL_PREFIXES`**（不是测试文件——历史文档里提到的 `ALL_IM_CHANNELS` 及其所在测试文件都已不存在；也不是 `src/channel-prefixes.ts`——那是构建产物）。改完跑 `make sync-types`
+- **基线并非全绿**：`make test` 有 2 个**预先存在的失败**，与你的改动无关，别去追：
+  - `tests/units/super-agent-team-trace.test.ts` 与 `tests/units/workflows.test.ts`，都断言 `schema_version === '61'`，而当前是 `'70'`（断言写死了版本号，每次 bump schema 都会失败）
+  - 判断回归要看**失败集合是否变化**，而不是"是否有失败"。全绿基线是 `1709 passed | 2 failed | 14 skipped`（148 文件 / 1725 用例）
 
 ### Howto 索引
 
@@ -721,3 +818,14 @@ make desktop-pack-linux # 打包 Linux AppImage/.deb（需在 Linux runner 执�
 - [新增 StreamEvent 类型](docs/howto/add-streamevent-type.md)
 - [新增 IM 集成渠道](docs/howto/add-im-channel.md)
 - [修改数据库 Schema](docs/howto/modify-db-schema.md)
+- [隔离环境开发（`dev-isolated`）](docs/howto/dev-isolated.md)
+
+### 其他文档入口
+
+- [完整 API 端点清单](docs/API.md)
+- [K8s 部署指南](docs/deployment/DEEPTHINK_K8S_DEPLOYMENT_GUIDE.md)
+- [桌面版架构](docs/desktop-architecture.md)
+- [权限矩阵](docs/ACL-MATRIX.md)
+- [Claude Code Plugin 开发约束](docs/plugin-development.md)
+- [WhatsApp 通道](docs/channels/whatsapp.md)
+- `docs/issues/`（故障复盘）、`docs/prd/` / `docs/tech_solution/` / `docs/test_report/` / `docs/task_state/`（需求开发流水线，按需求名分子目录）
