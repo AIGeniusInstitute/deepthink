@@ -20,20 +20,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 刻意不开 `cache: 'npm'`：本仓库根目录的 package-lock.json 被 .gitignore
+      # 忽略（依赖始终解析最新版本），CI checkout 后仓库内不存在任何 lockfile，
+      # setup-node 的缓存步骤会直接报 "Dependencies lock file is not found" 并以
+      # 非零退出码中止整个 job——install 与测试步骤全被跳过。详见
+      # docs/issues/2026-09-24-ci-smoke-gate-never-ran.md
       - name: Setup Node 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
 
       - name: Install deps (no-save, no audit)
         run: npm install --no-save --no-audit --no-fund
 
+      # 测试清单的唯一真相源是 Makefile 的 test-smoke target。此前这里内联了
+      # 一份只含 6 个文件的副本，与 Makefile 的 10 个文件长期不一致。
       - name: Run smoke tests
-        run: npx vitest run \
-          tests/units/json-schema-validator.test.ts \
-          tests/units/graph-validate-node.test.ts \
-          tests/units/harness-eval.test.ts \
-          tests/chat-trace-store.test.ts \
-          tests/open-platform-validation.test.ts \
-          tests/graph-expr.test.ts
+        run: make test-smoke
