@@ -84,7 +84,8 @@ export async function buildRunContext(
   // scratch rather than replaying a half-changed graph. Defense-in-depth on
   // top of the immutable (id, version) append-only versioning. Old runs
   // (pre-v55, manifest_hash null) skip the check — backward compatible.
-  if (run.manifest_hash && defRow.manifest_hash && run.manifest_hash !== defRow.manifest_hash) {
+  // New runs (status='pending') also skip — the hash check only matters on resume.
+  if (run.status !== 'pending' && run.manifest_hash && defRow.manifest_hash && run.manifest_hash !== defRow.manifest_hash) {
     logger.error(
       { runId, stored: run.manifest_hash, computed: defRow.manifest_hash },
       'Graph definition manifest hash mismatch — refusing resume',

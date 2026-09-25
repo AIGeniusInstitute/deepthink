@@ -2794,7 +2794,15 @@ export function broadcastStreamEvent(
   agentId?: string,
 ): void {
   const jid = normalizeHomeJid(chatJid);
-  const allowedUserIds = getGroupAllowedUserIds(chatJid);
+  // Swarm groups: use relaxed broadcast (skip allowedUserIds filtering).
+  // Reasoning: swarm group WS events carry group_message_delta / group_thinking_delta
+  // etc. that the frontend GroupChatArea already filters by chatJid. The security
+  // boundary is the REST API (group membership check), not the WS broadcast filter.
+  // Using allowedUserIds=undefined mirrors broadcastStatus() pattern and avoids
+  // stale cache / cross-pod broadcast filtering issues that block streaming events.
+  const allowedUserIds = chatJid.includes('swarm')
+    ? undefined
+    : getGroupAllowedUserIds(chatJid);
   const msg: WsMessageOut = agentId
     ? { type: 'stream_event', chatJid: jid, event, agentId }
     : { type: 'stream_event', chatJid: jid, event };

@@ -10,7 +10,7 @@
  * tool call cards, tool results, token usage summaries, and execution
  * state indicators — mirroring the main agent experience.
  */
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, Send, Brain, Wrench, CheckCircle2, XCircle, ChevronDown, ChevronRight, Clock } from 'lucide-react';
 import { useAgentGroupStore } from '@/stores/agent-group';
 import { useChatMountsStore } from '@/stores/chat-mounts';
@@ -263,33 +263,6 @@ export function GroupChatArea({ groupJid }: { groupJid: string }) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [seats, setSeats] = useState<Record<number, SeatActivity>>({});
 
-  const ensureSeat = useCallback((seatId: number, name?: string): SeatActivity => {
-    const defaults: SeatActivity = {
-      name: name ?? `Agent #${seatId}`,
-      text: '',
-      thinking: '',
-      thinkingOpen: false,
-      toolCalls: [],
-      status: 'idle' as const,
-      tokenIn: 0,
-      tokenOut: 0,
-      startedAt: Date.now(),
-    };
-    setSeats(prev => {
-      if (prev[seatId]) return prev;
-      return { ...prev, [seatId]: defaults };
-    });
-    return defaults;
-  }, []);
-
-  const updateSeat = useCallback((seatId: number, patch: Partial<SeatActivity>) => {
-    setSeats(prev => {
-      const cur = prev[seatId];
-      if (!cur) return prev;
-      return { ...prev, [seatId]: { ...cur, ...patch } };
-    });
-  }, []);
-
   useEffect(() => {
     void fetchMessages(groupJid);
 
@@ -304,11 +277,29 @@ export function GroupChatArea({ groupJid }: { groupJid: string }) {
         const chunk = event.groupMessage?.content;
         if (!seatId || !chunk) return;
         const seatName: string | undefined = (event.groupMessage as any)?.seatName;
-        ensureSeat(seatId, seatName);
+        // Single atomic setSeats — merge ensureSeat + update into one updater
+        // so React 18 batching doesn't cause the second updater to see a stale prev[seatId].
         setSeats(prev => {
-          const cur = prev[seatId];
-          if (!cur) return prev;
-          return { ...prev, [seatId]: { ...cur, text: cur.text + chunk, status: 'done' } };
+          const cur: SeatActivity = prev[seatId] ?? {
+            name: seatName ?? `Agent #${seatId}`,
+            text: '',
+            thinking: '',
+            thinkingOpen: false,
+            toolCalls: [],
+            status: 'idle' as const,
+            tokenIn: 0,
+            tokenOut: 0,
+            startedAt: Date.now(),
+          };
+          return {
+            ...prev,
+            [seatId]: {
+              ...cur,
+              text: cur.text + chunk,
+              status: 'done',
+              name: cur.name || seatName || `Agent #${seatId}`,
+            },
+          };
         });
         return;
       }
@@ -318,10 +309,19 @@ export function GroupChatArea({ groupJid }: { groupJid: string }) {
         const seatId = event.groupMessage?.senderSeatId;
         const chunk = event.groupMessage?.content;
         if (!seatId || !chunk) return;
-        ensureSeat(seatId, (event.groupMessage as any)?.seatName);
+        const seatName: string | undefined = (event.groupMessage as any)?.seatName;
         setSeats(prev => {
-          const cur = prev[seatId];
-          if (!cur) return prev;
+          const cur: SeatActivity = prev[seatId] ?? {
+            name: seatName ?? `Agent #${seatId}`,
+            text: '',
+            thinking: '',
+            thinkingOpen: true,
+            toolCalls: [],
+            status: 'thinking' as const,
+            tokenIn: 0,
+            tokenOut: 0,
+            startedAt: Date.now(),
+          };
           return {
             ...prev,
             [seatId]: {
@@ -340,10 +340,19 @@ export function GroupChatArea({ groupJid }: { groupJid: string }) {
         const seatId = event.groupMessage?.senderSeatId;
         if (!seatId) return;
         const tc = event.groupMessage?.toolCall;
-        ensureSeat(seatId, (event.groupMessage as any)?.seatName);
+        const seatName: string | undefined = (event.groupMessage as any)?.seatName;
         setSeats(prev => {
-          const cur = prev[seatId];
-          if (!cur) return prev;
+          const cur: SeatActivity = prev[seatId] ?? {
+            name: seatName ?? `Agent #${seatId}`,
+            text: '',
+            thinking: '',
+            thinkingOpen: false,
+            toolCalls: [],
+            status: 'tool_exec' as const,
+            tokenIn: 0,
+            tokenOut: 0,
+            startedAt: Date.now(),
+          };
           return {
             ...prev,
             [seatId]: {
@@ -369,7 +378,7 @@ export function GroupChatArea({ groupJid }: { groupJid: string }) {
         if (!seatId) return;
         const tc = event.groupMessage?.toolCall;
         setSeats(prev => {
-          const cur = prev[seatId];
+          const cur: SeatActivity | undefined = prev[seatId];
           if (!cur) return prev;
           const updated = [...cur.toolCalls];
           const lastIdx = updated.length - 1;
@@ -395,13 +404,30 @@ export function GroupChatArea({ groupJid }: { groupJid: string }) {
       if (event.eventType === 'group_seat_status') {
         const seatId = event.groupMessage?.senderSeatId;
         if (!seatId) return;
-        ensureSeat(seatId, (event.groupMessage as any)?.seatName);
+        const seatName: string | undefined = (event.groupMessage as any)?.seatName;
         const newStatus = event.groupMessage?.status;
         if (newStatus === 'completed' || newStatus === 'failed' || newStatus === 'interrupted') {
-          updateSeat(seatId, {
-            status: newStatus === 'failed' ? 'failed' : 'done',
-            tokenIn: event.groupMessage?.tokenIn ?? 0,
-            tokenOut: event.groupMessage?.tokenOut ?? 0,
+          setSeats(prev => {
+            const cur: SeatActivity = prev[seatId] ?? {
+              name: seatName ?? `Agent #${seatId}`,
+              text: '',
+              thinking: '',
+              thinkingOpen: false,
+              toolCalls: [],
+              status: 'idle' as const,
+              tokenIn: 0,
+              tokenOut: 0,
+              startedAt: Date.now(),
+            };
+            return {
+              ...prev,
+              [seatId]: {
+                ...cur,
+                status: newStatus === 'failed' ? 'failed' : 'done',
+                tokenIn: event.groupMessage?.tokenIn ?? 0,
+                tokenOut: event.groupMessage?.tokenOut ?? 0,
+              },
+            };
           });
         }
         return;
@@ -411,9 +437,17 @@ export function GroupChatArea({ groupJid }: { groupJid: string }) {
       if (event.eventType === 'group_token_usage') {
         const seatId = event.groupMessage?.senderSeatId;
         if (!seatId) return;
-        updateSeat(seatId, {
-          tokenIn: event.groupMessage?.tokenIn ?? 0,
-          tokenOut: event.groupMessage?.tokenOut ?? 0,
+        setSeats(prev => {
+          const cur: SeatActivity | undefined = prev[seatId];
+          if (!cur) return prev;
+          return {
+            ...prev,
+            [seatId]: {
+              ...cur,
+              tokenIn: event.groupMessage?.tokenIn ?? 0,
+              tokenOut: event.groupMessage?.tokenOut ?? 0,
+            },
+          };
         });
         return;
       }
@@ -445,12 +479,29 @@ export function GroupChatArea({ groupJid }: { groupJid: string }) {
       if (seatId === null) return;
       if (event.eventType === 'graph_node_start') {
         const title: string | undefined = (event.graphEvent as any)?.title;
-        ensureSeat(seatId, title);
-        updateSeat(seatId, { status: 'thinking', text: '', thinking: '', toolCalls: [] });
+        setSeats(prev => {
+          const cur: SeatActivity = prev[seatId] ?? {
+            name: title ?? `Agent #${seatId}`,
+            text: '',
+            thinking: '',
+            thinkingOpen: false,
+            toolCalls: [],
+            status: 'idle' as const,
+            tokenIn: 0,
+            tokenOut: 0,
+            startedAt: Date.now(),
+          };
+          return { ...prev, [seatId]: { ...cur, status: 'thinking', text: '', thinking: '', toolCalls: [] } };
+        });
       } else if (event.eventType === 'graph_node_end' || event.eventType === 'graph_node_status') {
         if (event.graphEvent?.status === 'completed' || event.graphEvent?.status === 'failed') {
-          updateSeat(seatId, {
-            status: event.graphEvent.status === 'failed' ? 'failed' : 'done',
+          setSeats(prev => {
+            const cur: SeatActivity | undefined = prev[seatId];
+            if (!cur) return prev;
+            return {
+              ...prev,
+              [seatId]: { ...cur, status: event.graphEvent!.status === 'failed' ? 'failed' : 'done' },
+            };
           });
         }
       }
