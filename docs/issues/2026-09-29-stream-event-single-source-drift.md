@@ -136,8 +136,18 @@ grep -rn "group_thinking_delta\|group_tool_call\|group_tool_result\|group_token_
 
 1. **新增 `StreamEventType` 永远只改 `shared/stream-event.ts`**，然后 `make sync-types`。判据：`git diff` 里如果出现 `src/stream-event.types.ts` / `web/src/stream-event.types.ts` / `container/agent-runner/src/stream-event.types.ts` 的改动，**本次提交就是错的**（这三个文件与真相源内容应由 sync 生成，不应单独出现在 diff 中）。可加一条 pre-commit 检查：diff 命中这三个路径即拒绝提交并提示"改 shared/"。
 
-2. **把一致性校验前移到构建链路的 sync 之前**（当前只在 `make typecheck` 跑，`Makefile:361`）。建议在 `_check-sync`（`Makefile:246`）里先跑 `./scripts/check-stream-event-sync.sh`，校验失败就**报错中止**，而不是静默 `sync-types` 覆盖——把"副本漂移"暴露成一条明确的错误信息，而不是延迟到 tsc 阶段变成 4 条莫名其妙的 `TS2345`。这是一处构建脚本改动，本次未实施（保持修复外科手术式最小化），建议单独提一个改动。
+2. **✅ 已实施：一致性校验放进 CI 门禁，跑在提交状态上**（`.github/workflows/test.yml` 新增 step `Check shared/ type copies are in sync`，直接调用 `./scripts/check-stream-event-sync.sh`，位于 checkout 之后、`npm install` 之前）。
 
-3. **CI 门禁补 `tsc`**：`make test-smoke` 只跑 10 个测试文件，不编译。类型层漂移要到 `make build` 才暴露。若能接受几十秒的耗时，把 `make typecheck-backend` 加入 PR 门禁可提前拦截同类问题（`make typecheck` 已含 `check-stream-event-sync.sh`）。
+   为什么落点是 CI 而不是构建路径（这是本次踩过坑后修正的判断）：
 
-4. **同类风险面**：`shared/` 下另有 `image-detector.ts`、`channel-prefixes.ts` 也是单向真相源，有完全相同的失效模式（见 CLAUDE.md §3.2）。第 1、2 条同样适用。
+   - **构建路径上拦不住，也不该拦。** 先试过"在 `scripts/sync-stream-event.sh` 里检测副本被手工编辑就报错中止"，实测有假阳性：正常开发循环 `改 shared/ → make sync-types → 反悔 → git checkout shared/ → 再 sync`（以及"改完源头再改一版"）都会命中，因为副本被上一次 sync 写过、相对 HEAD 是脏的，与"手工编辑"在文本上无法区分。这个误报会发生在 `make start-prod` 的 `_check-sync` 里，等于把一个正常编辑动作变成启动失败——比原问题更糟。**已回退该方案。**
+   - **`make typecheck` 里那份校验是形同虚设的。** `typecheck: sync-types typecheck-backend …`（`Makefile:360`）的**前置依赖先跑 sync-types**，副本已被按真相源覆盖（即"治好"），其后的 `./scripts/check-stream-event-sync.sh`（`Makefile:361`）必然通过。实测：构造"副本比真相源多两行"的漂移态 → 直接跑校验脚本 `exit 1`（检出），走 `make sync-types && 校验脚本` → `All shared type copies are in sync.` / `exit 0`（漏检）。
+   - **提交状态上没有歧义**：一个正确 commit 的副本必须与真相源逐字节相同，不一致即为真缺陷，无假阳性。
+
+   实测 CI 新步骤的两个分支：漂移态 `exit 1` 并打印 `OUT OF SYNC` + diff；一致态 `All shared type copies are in sync.` / `exit 0`。
+
+3. **仍建议补 `tsc` 到 PR 门禁**：`make test-smoke` 只跑 10 个测试文件，不编译。像本次这种"副本多了类型、而生产代码正在引用它"的漂移，虽然会被 CI 的新校验步骤拦下，但**纯类型注册表类的漂移**（新增类型无人引用时）仍只有编译能发现。若要进一步收紧，可把 `make typecheck-backend` 加入 PR 门禁。
+
+4. **`make typecheck` 里那两行校验建议改造或删除**（本次未动 Makefile，保持改动最小化）：现状给人"已经校验了"的错觉。可把它前置到 `sync-types` **之前**（这样它会明确报 `OUT OF SYNC` 并提示 `make sync-types`），或直接删掉、由 CI 承担。
+
+5. **同类风险面**：`shared/` 下另有 `image-detector.ts`、`channel-prefixes.ts` 也是单向真相源，有完全相同的失效模式（见 CLAUDE.md §3.2）。第 1、2、4 条同样适用。

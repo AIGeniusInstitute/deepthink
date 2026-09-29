@@ -20,6 +20,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 生成产物一致性门禁：shared/ 是单向真相源，src/、web/src/、
+      # container/agent-runner/src/ 下的副本由 make sync-types 生成且被 git 跟踪，
+      # 因此一个正确的 commit 里副本必须与真相源逐字节相同。提交了不同步的副本
+      # （例如把类型只加进副本）会让下一次构建的 sync 静默覆盖掉它，随后表现为
+      # 莫名其妙的 tsc 报错——见 docs/issues/2026-09-29-stream-event-single-source-drift.md。
+      #
+      # 必须直接跑脚本，不能走 `make typecheck`：该 target 的前置依赖是 sync-types，
+      # 会先把副本按真相源覆盖（即"治好"漂移），其后的 check 永远通过、形同虚设。
+      # 这里跑的是 checkout 出来的提交状态，副本与真相源不一致必为真缺陷，无假阳性。
+      - name: Check shared/ type copies are in sync
+        run: ./scripts/check-stream-event-sync.sh
+
       # 刻意不开 `cache: 'npm'`：本仓库根目录的 package-lock.json 被 .gitignore
       # 忽略（依赖始终解析最新版本），CI checkout 后仓库内不存在任何 lockfile，
       # setup-node 的缓存步骤会直接报 "Dependencies lock file is not found" 并以

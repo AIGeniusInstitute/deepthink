@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-runtime-assets.cjs",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "reset:admin": "tsx src/reset-admin.ts",
