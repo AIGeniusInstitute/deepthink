@@ -44,7 +44,7 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
 
 | 关注点 | 默认 | 切换开关 | 实现要点 |
 |---|---|---|---|
-| 数据库 | SQLite（WAL），Bun 下用 `bun:sqlite` | `DATABASE_URL=postgresql://…` | `src/sqlite-compat.ts` 是唯一的后端选择点；`src/pg-sync-driver.ts` 用 worker_threads + `Atomics.wait` 把**异步 pg 同步桥接**回 better-sqlite3 的同步 API（`db.ts` 有 400+ 同步调用点，是这套设计的根本原因）；SQL 方言由 `src/sql-translator.ts` 运行时翻译 |
+| 数据库 | SQLite（WAL），用 `better-sqlite3` | `DATABASE_URL=postgresql://…` | `src/sqlite-compat.ts` 是唯一的后端选择点；`src/pg-sync-driver.ts` 用 worker_threads + `Atomics.wait` 把**异步 pg 同步桥接**回 better-sqlite3 的同步 API（`db.ts` 有 400+ 同步调用点，是这套设计的根本原因）；SQL 方言由 `src/sql-translator.ts` 运行时翻译 |
 | 跨 Pod 协调 | 进程内 | `REDIS_URL` | `src/redis-bus.ts` 是**唯一且完整**的实现（28 个导出：未配置时全部降级为 no-op/in-memory）：WS 广播 pub/sub、分布式锁与选主、Agent IPC（Redis 替代文件系统）、共享并发计数器、turnMounts 跨 Pod 传递、`redisEnabled` / `isRedisConnected()` |
 | 大文件 / trace IO | 本地文件系统 | `OBJECT_STORE_PROVIDER=s3` | `src/object-store.ts`；`output_ref` 统一为绝对路径或 `s3://bucket/key`，读写两端必须走同一处保持对称 |
 | 向量检索 | sqlite-vec（`vec0` 虚表） | PostgreSQL → pgvector | `src/embedding.ts`；两者都加载失败时回落线性扫描，未配置 embedding 时回落 FTS5 |
@@ -56,101 +56,9 @@ DeepThink, 企业级自主 Agent 超级智能体自进化平台，从 Harness En
 
 ### 2.1 后端模块
 
-> 下表是**选择性索引，不是全量清单**——`src/` 顶层现有 113 个模块、`src/routes/` 有 45 个路由文件、另有 14 个业务子系统目录（分列在下方两张表）。路由的挂载点在 `src/web.ts`，找某个 API 时从那里反查，不要只看这张表。
-
-| 模块 | 职责 |
-|------|------|
-| `src/index.ts` | 入口：管理员引导、消息轮询（2s）、IPC 监听（1s）、容器生命周期 |
-| `src/web.ts` | Hono 框架：路由挂载、WebSocket 升级、HMAC Cookie 认证、静态文件托管 |
-| `src/routes/auth.ts` | 认证：登录 / 登出 / 注册、`GET /api/auth/me`（含 `setupStatus`）、设置向导、RBAC、邀请码 |
-| `src/routes/groups.ts` | 群组 CRUD、消息分页、会话重置（重建工作区）、群组级容器环境变量 |
-| `src/routes/files.ts` | 文件上传（默认 50MB 限制，见 `MAX_FILE_SIZE_MB`）/ 下载 / 删除、目录管理、路径遍历防护 |
-| `src/routes/config.ts` | Claude / 飞书配置（AES-256-GCM 加密存储）、连通性测试、批量应用到所有容器、per-user IM 通道配置（`/api/config/user-im/feishu`、`/api/config/user-im/telegram`、`/api/config/user-im/qq`、`/api/config/user-im/dingtalk`、`/api/config/user-im/whatsapp`） |
-| `src/routes/monitor.ts` | 系统状态：容器列表、队列状态、健康检查（`GET /api/health` 无需认证） |
-| `src/routes/memory.ts` | 记忆文件读写（`groups/global/` + `groups/{folder}/`）、全文检索 |
-| `src/routes/tasks.ts` | 定时任务 CRUD + 执行日志查询 |
-| `src/routes/skills.ts` | Skills 列表与管理 |
-| `src/routes/admin.ts` | 用户管理、邀请码、审计日志、注册设置 |
-| `src/routes/browse.ts` | 目录浏览 API（`GET/POST /api/browse/directories`，受挂载白名单约束） |
-| `src/routes/agents.ts` | Sub-Agent CRUD（`GET/POST/DELETE /api/groups/:jid/agents`） |
-| `src/routes/mcp-servers.ts` | MCP Servers 管理（CRUD + `POST /api/mcp-servers/sync-host`，per-user） |
-| `src/routes/plugins.ts` | Claude Code Plugins 管理（catalog + per-user enable + versioned runtime）：admin 通过 `POST /api/plugins/catalog/scan` 触发宿主机扫描共享导入 catalog；用户从 catalog enable（`PATCH /api/plugins/enabled/:fullId`，自动 materialize runtime）；`DELETE /api/plugins/marketplaces/:name` 仅清除调用者自己的 enabled refs，不删 catalog |
-| `src/plugin-utils.ts` | Plugin 加载工具：`loadUserPlugins(userId, {runtime})` → `SdkPluginConfig[]`；per-user enable refs 在 `data/plugins/users/{userId}/plugins.json`，runtime materialize 到 `data/plugins/runtime/{userId}/snapshots/{snapshotId}/{marketplace}/{plugin}/` |
-| `src/plugin-dependency-check.ts` | Plugin 依赖 best-effort 预检：扫描 plugin 目录下 `commands/*.md` frontmatter 的 `allowed-tools: Bash()` + `hooks/hooks.json` 的 command 第一 token；`config/plugin-deps-override.json` 人工覆盖表优先级最高 |
-| `src/feishu.ts` | 飞书连接工厂（`createFeishuConnection`）：WebSocket 长连接、消息去重（LRU 1000 条 / 30min TTL）、富文本卡片、Reaction；`file` 消息下载到工作区；`post` 图文消息仅提取文字 |
-| `src/telegram.ts` | Telegram 连接工厂（`createTelegramConnection`）：Bot API Long Polling、Markdown → HTML 转换、长消息分片（3800 字符）；`message:photo` 下载为 base64 供 Vision；`message:document` 下载文件到工作区 |
-| `src/qq.ts` | QQ 连接工厂（`createQQConnection`）：Bot API v2 WebSocket 长连接、OAuth Token 管理、C2C 私聊 + 群聊 @Bot、消息去重（LRU 1000 条 / 30min TTL）、Markdown → 纯文本、长消息分片（5000 字符）、图片下载为 base64 供 Vision |
-| `src/dingtalk.ts` | 钉钉连接工厂（`createDingTalkConnection`）：Stream 协议长连接、消息去重（LRU 1000 条 / 30min TTL）；支持 `text`、`picture`（通过 downloadCode 下载）和 `image`（通过 contentUrl 下载）；图片超过 5MB 不发 base64，仅保存到 `downloads/dingtalk/` |
-| `src/whatsapp.ts` | WhatsApp 连接工厂（`createWhatsAppConnection`）：基于 `@whiskeysockets/baileys` 的 WhatsApp Web 协议；`useMultiFileAuthState` 持久化登录态；QR 经 `qrcode` 渲染 PNG data URL 推前端；自动 3s 重连（logged_out 不重连避免 QR 风暴）；`messages.upsert` 转发文本 + 媒体（image/video/audio/document）下载到 `downloads/whatsapp/{date}/`；小图片附 base64 attachment 供 Vision；`group-participants.update` 触发 onBotAddedToGroup / onBotRemovedFromGroup；群组 `require_mention` 通过 `mentionedJid` 与 `sock.user.id` 比对。详见 [`docs/channels/whatsapp.md`](docs/channels/whatsapp.md) |
-| `src/wechat.ts` | 微信连接工厂（`createWeChatConnection`）：基于 iLink Bot API 的长轮询接收 + context-token 发送 + typing indicator，LRU 消息去重；图片从微信 CDN 下载后用 AES-128-ECB 解密（密钥/逻辑在 `wechat-crypto.ts`），上传携带 iLink app-identity 头。与飞书/DingTalk/QQ/Discord/Telegram 并列的独立 IM 通道适配器 |
-| `src/discord.ts` | Discord 连接工厂：基于 `discord.js` 的 Gateway WS 适配器，支持 guild/DM、附件、2000 字符分片、ack Reaction |
-| `src/discord-streaming-edit.ts` | Discord 流式响应控制器：镜像钉钉 Card API 接口（`feedStreamEventToCard()`），让流式事件驱动逻辑可复用；500ms 节流编辑 + 代码块安全分片 |
-| `src/dingtalk-streaming-card.ts` | 钉钉 AI Card 流式响应控制器（打字机效果） |
-| `src/im-safety/` | IM 安全原语模块（vendored 自 lark SDK `feature/channel`）：短 TTL `ProcessingLock` 覆盖事件进入去重 LRU 前的 in-flight 窗口；`stale-detector` 丢弃 30 分钟以上旧消息作为重连后兜底过滤。被所有 IM 通道适配器共享 |
-| `src/im-downloader.ts` | IM 文件下载工具：`saveDownloadedFile()` 将 Buffer 写入 `downloads/{channel}/{YYYY-MM-DD}/`，支持 `feishu`/`telegram`/`qq`/`dingtalk` 通道，处理路径安全、文件名冲突和大小限制（默认 50MB，见 `MAX_FILE_SIZE_MB`） |
-| `src/im-manager.ts` | IM 连接池管理器（`IMConnectionManager`）：per-user 飞书/Telegram/QQ/钉钉/Discord/WhatsApp/微信 连接管理、热重连、批量断开 |
-| `src/container-runner.ts` | 容器生命周期：Docker run + 宿主机进程模式、卷挂载构建（isAdminHome 区分权限）、环境变量注入 |
-| `src/agent-output-parser.ts` | Agent 输出解析：OUTPUT_MARKER 流式输出解析、stdout/stderr 处理、进程生命周期回调（从 container-runner.ts 提取的共享逻辑） |
-| `src/group-queue.ts` | 并发控制：最大 20 容器 + 最大 5 宿主机进程、会话级队列、任务优先于消息、指数退避重试 |
-| `src/runtime-config.ts` | 配置存储：AES-256-GCM 加密、分层配置（容器级 > 全局 > 环境变量）、变更审计日志 |
-| `src/provider-pool.ts` | 多提供商负载均衡：round-robin / weighted-round-robin / failover 三种策略，健康状态纯内存管理，配置由 runtime-config V4 注入；`sessions.provider_id` 字段用于 sticky 选择，避免跨 OAuth 账号 thinking block 签名失效 |
-| `src/supervisor.ts`、`src/supervisor-config.ts` | Supervisor SubAgent：用户消息派发前的轻量意图解析器（**不**调用工具），输出严格 JSON 决策（`clarify` 询问用户 / `delegate` 转发原文 / `auto` 重写指令 / `accept` / `retry`）；对应全局 CLAUDE.md 中的 Supervisor Agent 强制约束；超时 60s |
-| `src/atomcode-daemon-manager.ts` | AtomCode 守护进程生命周期：AtomCode 自带 HTTP/SSE daemon（`/chat`、`/providers`），为每个 agent-runner 进程在随机 loopback 端口拉起一个、驱动会话、退出时拆除；config 路由也复用此管理器做临时 provider 管理 daemon —— 容器/宿主机 runner 之外的第三种 provider/runner 面 |
-| `src/task-scheduler.ts` | 定时调度：60s 轮询、cron / interval / once 三种模式、group / isolated 上下文 |
-| `src/file-manager.ts` | 文件安全：路径遍历防护、符号链接检测、系统路径保护（`logs/`、`CLAUDE.md`、`.claude/`、`conversations/`） |
-| `src/mount-security.ts` | 挂载安全：白名单校验、黑名单模式匹配（`.ssh`、`.gnupg` 等）、非主会话只读强制 |
-| `src/db.ts` | 数据层：SQLite WAL 模式、Schema 版本校验（v1→v24）、核心表定义 |
-| `src/auth.ts` | 密码工具：bcrypt 哈希/验证、Session Token 生成、用户名/密码校验 |
-| `src/permissions.ts` | 权限常量和模板定义（`ALL_PERMISSIONS`、`PERMISSION_TEMPLATES`） |
-| `src/schemas.ts` | Zod v4 校验 schema：API 请求体校验 |
-| `src/utils.ts` | 工具函数：`getClientIp()`（TRUST_PROXY 感知） |
-| `src/web-context.ts` | Web 共享状态：`WebDeps` 依赖注入、群组访问权限检查、WS 客户端管理 |
-| `src/middleware/auth.ts` | 认证中间件：Cookie Session 校验、权限检查中间件工厂 |
-| `src/channel-prefixes.ts` | IM channel type → JID prefix 映射（`CHANNEL_PREFIXES` + `getChannelFromJid()`）。**是 `shared/channel-prefixes.ts` 的构建产物，勿直接编辑**——新增渠道要改源头那份，见 §3.2 |
-| `src/im-channel.ts` | 统一 IM 通道接口（`IMChannel`）、Feishu/Telegram 适配器工厂 |
-| `src/commands.ts` | Web 端斜杠命令处理器（`/clear` 重置会话） |
-| `src/im-command-utils.ts` | IM 斜杠命令纯函数工具：`formatWorkspaceList()`、`formatContextMessages()` |
-| `src/telegram-pairing.ts` | Telegram 配对码：6 位随机码，5 分钟过期 |
-| `src/terminal-manager.ts` | Docker 容器终端管理（node-pty + pipe fallback，WebSocket 双向通信） |
-| `src/message-attachments.ts` | 图片附件规范化（MIME 检测、Data URL 解析） |
-| `src/image-detector.ts` | 图片 MIME 检测（magic bytes），由 `shared/image-detector.ts` 同步 |
-| `src/script-runner.ts` | 脚本任务执行器（`exec()` + 并发限制 + 超时 + 1MB 输出缓冲） |
-| `src/reset-admin.ts` | 管理员密码重置脚本入口 |
-| `src/config.ts` | 常量：路径、超时、并发限制、会话密钥（优先级：环境变量 > 文件 > 生成，0600 权限） |
-| `src/logger.ts` | 日志：pino + pino-pretty |
-
-**业务子系统目录**（`src/` 下的子目录，按业务面划分）：
-
-| 模块 | 职责 |
-|------|------|
-| `src/graph-engineering/` | 图谱引擎内核（12 文件），见 §2.0 ② |
-| `src/agent-group/` | Agent 群组（Swarm）：`swarm-definition.ts`（席位 → `graph_definition`，节点 id 前缀 `seat-`）、`swarm-runner.ts`（触发运行 + 席位输出回写 + 席位级流式事件） |
-| `src/agent-team/` | Team Builder：`team-builder.ts` 组队、`team-plan` / `team-prompt` / `team-commands`、`collaboration-builder.ts` 协作工作区 |
-| `src/agent-orchestration/` | 编排者-工作者模式：`orchestrator-plan.ts`（选人计划）、`orchestrator-runner.ts` |
-| `src/autonomy/` | 自主层：事件总线 / 能力注册 / 指标 / 学习与教训注入 / 自愈 / 适配 |
-| `src/eval-center/` | 评测中心：用例与运行、漂移检测、评分（自带 `eval-schema.sql`） |
-| `src/mcp-registry/` | MCP Server Registry：把任意 HTTP API 注册成标准 MCP 工具（OpenAPI 解析、凭据加密、限流、治理） |
-| `src/open-platform/` | 开放平台：API Key、MaaS（`/v1/chat/completions`）、Agent-as-a-Service、计费与结果校验 |
-| `src/sandbox/` | 沙箱：Docker 代码执行 + 浏览器自动化（`browser-agent.ts`）、安全策略 |
-| `src/feishu-cards/` | 飞书卡片构建（builder / sections / length / status-theme），被所有飞书卡片与流式卡片复用 |
-| `src/im-safety/` | IM 安全原语（见上表） |
-
-**其他横切模块**：
-
-| 模块 | 职责 |
-|------|------|
-| `src/sqlite-compat.ts`、`src/pg-sync-driver.ts`、`src/sql-translator.ts` | 多后端数据层，见 §2.0 ③ |
-| `src/redis-bus.ts`、`src/object-store.ts` | 分布式状态层，见 §2.0 ③ |
-| `src/supervisor-agent.ts` | **长驻** Supervisor Agent：独立 DB 表 + 调度循环 + 决策审计 + 心跳 + 启动恢复。与 `src/supervisor.ts`（无状态的派发前意图解析器）**是两个不同的东西**，勿混 |
-| `src/loop-orchestrator.ts`、`src/loop-commands.ts` | Loop Engineering：长任务循环编排，状态机 `pending → running → reviewing → iterating → completed/failed/cancelled` |
-| `src/harness-registry.ts`、`src/harness-eval.ts`、`src/harness-meta-loop.ts` | Harness Engineering：注册表 / 评估断言 / 元循环 |
-| `src/sdk-query.ts` | 轻量文本进-文本出 SDK 封装（`maxTurns=1`、无工具），**替代所有 `claude --print` CLI 调用**，复用设置页配置的 provider 认证 |
-| `src/agent-ai.ts`、`src/skill-ai.ts` | AI 生成/优化 Agent 与 Skill（基于 `sdk-query.ts`） |
-| `src/cross-group-acl.ts`、`src/owner-gate.ts`、`src/group-owner.ts` | 跨组访问授权、群组 owner 生命周期与运行时门禁（owner 被禁用/删除后立即停响应） |
-| `src/embedding.ts`、`src/document-parser.ts`、`src/office-converter.ts` | 知识库：向量化、文档解析、Office 转换 |
-| `src/billing.ts`、`src/provider-pool.ts` | 计费（套餐/余额/配额/兑换码/月度聚合）与多提供商负载均衡 |
-| `src/task-routing.ts` | 定时任务 IM 路由的纯函数（依赖注入、无副作用，便于单测） |
-| `src/url-safety.ts`、`src/file-manager.ts`、`src/mount-security.ts` | SSRF 防护 / 文件路径与系统路径保护 / 挂载白名单 |
+> 后端模块 / 业务子系统目录 / 其他横切模块 **三张全量索引表**见 [`docs/architecture-index.md`](docs/architecture-index.md)——`src/` 顶层现有 111 个模块、`src/routes/` 有 45 个路由文件、另有 14 个业务子系统目录。
+>
+> 找代码的起点：**路由挂载点在 `src/web.ts`**，找某个 API 从那里反查，不要只翻索引表；入口 `src/index.ts`；数据层 `src/db.ts`；常量 `src/config.ts`。改动执行或状态前，先读 §2.0 的三个横切面。
 
 ### 2.2 前端
 
@@ -221,9 +129,15 @@ Agent Runner（`container/agent-runner/`）在 Docker 容器或宿主机进程�
 | 模式 | 行为 | 适用对象 | 前置依赖 |
 |------|------|---------|---------|
 | `host` | Agent 作为宿主机进程运行，通过 `claude` CLI 直接访问宿主机文件系统 | admin 主容器（`folder=main`） | Claude Agent SDK（自动安装） |
-| `container` | Agent 在 Docker 容器中运行，通过卷挂载访问文件，完全隔离 | member 主容器（`folder=home-{userId}`）及其他群组 | Docker Desktop + 构建镜像 |
+| `container` | Agent 在 Docker 容器中运行，通过卷挂载访问文件，完全隔离 | member 主容器（`folder=home-{userId}`）及 Docker 可用时的其他群组 | Docker Desktop + 构建镜像 |
 
 **is_home 模型**：每个用户在注册时自动创建一个 `is_home=true` 的主容器。`loadState()` 启动时强制执行模式：admin 的主容器（`folder=main`）设为 `host`，member 的主容器（`folder=home-{userId}`）设为 `container`。
+
+> ⚠️ **执行模式不是按 `is_home` 静态推导的**——除 `loadState()` 那条规则外，还有两条路径会产出 `host`：
+> 1. **新建非主工作区时按 Docker 可用性降级**：`executionMode: (await isDockerAvailable()) ? 'container' : 'host'`（`src/index.ts:2104`）。Docker 不可用（或未启动）时，新建的 flow 工作区直接跑在宿主机上。
+> 2. **`schedule_task` 继承来源模式**：未显式指定 `execution_mode` 时 `executionMode = sourceIsHost ? 'host' : 'container'`；显式请求 `host` 但来源是容器时会被强制回 `container`（`src/index.ts:6648-6663`）。
+>
+> 所以「非主工作区 = `container`」是常见情形而非保证。判断某个群组实际用什么模式，查 `registered_groups` 表里该行的值，不要从 `is_home` 推。
 
 宿主机模式通过 `node container/agent-runner/dist/index.js` 启动 agent-runner 进程，agent-runner 内部调用 `@anthropic-ai/claude-agent-sdk`，SDK 内置了完整的 Claude Code CLI 运行时（`cli.js`），无需全局安装。
 
@@ -276,7 +190,9 @@ StreamEvent 类型以 `shared/stream-event.ts` 为单一真相源，构建时通
 - `src/stream-event.types.ts`（后端 `types.ts` re-export）
 - `web/src/stream-event.types.ts`（前端 `chat.ts` import）
 
-修改 StreamEvent 类型时，只需编辑 `shared/stream-event.ts`，然后运行 `make sync-types`（`make build` 会自动触发）。`make typecheck` 会通过 `scripts/check-stream-event-sync.sh` 校验同步状态。
+修改 StreamEvent 类型时，只需编辑 `shared/stream-event.ts`，然后运行 `make sync-types`（`make build` 会自动触发）。
+
+> ⚠️ **`make typecheck` 不是漂移门禁——它结构上不可能发现副本漂移**。`typecheck` 的前置依赖是 `sync-types`（`Makefile:360`），Make 会**先**按真相源无条件覆盖三个副本，**再**跑 `check-stream-event-sync.sh`，所以那道 check 永远通过。实测：漂移态直接跑脚本 exit 1，先 sync 再跑 exit 0。真正的门禁是 CI（`.github/workflows/test.yml` 在 checkout 后**直接**调用 `./scripts/check-stream-event-sync.sh`，跑的是提交状态）。本地要自查漂移，同样必须**直接跑脚本**，不要经过任何以 `sync-types` 为前置依赖的 target（`make build` / `make typecheck` / `make start-prod` 都会先"治好"漂移）。详见 [`docs/issues/2026-09-29-stream-event-single-source-drift.md`](docs/issues/2026-09-29-stream-event-single-source-drift.md)。
 
 `shared/image-detector.ts` 同样通过 `make sync-types` 同步到两处副本：
 - `src/image-detector.ts`（后端）
@@ -286,7 +202,7 @@ StreamEvent 类型以 `shared/stream-event.ts` 为单一真相源，构建时通
 - `src/channel-prefixes.ts`（后端）
 - `container/agent-runner/src/channel-prefixes.ts`（agent-runner）
 
-**通用规则**：`shared/` 下任何一个文件都是**单向同步源**，它在 `src/`、`web/src/`、`container/agent-runner/src/` 下的同名副本会在 `make build` / `make sync-types` 时被**无条件覆盖**。改副本 = 白改。改完源头跑 `make sync-types`；`make typecheck` 会校验一致性。
+**通用规则**：`shared/` 下任何一个文件都是**单向同步源**，它在 `src/`、`web/src/`、`container/agent-runner/src/` 下的同名副本会在 `make build` / `make sync-types` 时被**无条件覆盖**。改副本 = 白改。改完源头跑 `make sync-types`；要校验一致性必须**直接跑** `./scripts/check-stream-event-sync.sh`（见上节警告：经由 `make typecheck` 校验无效）。
 
 ### 3.3 IPC 通信
 
@@ -401,35 +317,12 @@ StreamEvent 类型以 `shared/stream-event.ts` 为单一真相源，构建时通
 默认 SQLite WAL 模式（`DATABASE_URL=postgresql://` 时切 PostgreSQL，见 §2.0 ③）。Schema 经历 **v1→v70** 演进，权威版本号是 `src/db.ts` 的 `SCHEMA_VERSION`——**改动前先读那里**，不要相信本节的数字。
 
 建表语句有**两处**，改 schema 时别漏：
-- `src/db.ts`：96 张表（`CREATE TABLE IF NOT EXISTS`），另建 `kb_documents_fts` / `kb_documents_vec` 两张虚表
+- `src/db.ts`：90 张表（`CREATE TABLE IF NOT EXISTS`），另建 `kb_documents_fts` / `kb_documents_vec` 两张虚表
 - `src/eval-center/eval-schema.sql`：评测中心独立的 16 张表（`eval_*` / `agent_trace` / `trace_span`），由 `eval-center/eval-db.ts` 加载
 
-迁移方式见 [`docs/howto/modify-db-schema.md`](docs/howto/modify-db-schema.md)。
+> ⚠️ **`.sql` 不会被 `tsc` emit，必须显式加进 `scripts/copy-runtime-assets.cjs` 的 `ASSETS` 清单**。`npm run build` 是 `tsc && node scripts/copy-runtime-assets.cjs`；漏加则该文件不在 `dist/` 里，生产 `node dist/index.js` 跑到 `readFileSync(path.join(__dirname, ...))` 直接 ENOENT。开发用 `tsx` 跑源码、文件就在旁边，**只在生产构建下暴露**——2026-09-29 的 Eval Center 事故即此（见 [`docs/issues/2026-09-29-eval-center-schema-asset-missing.md`](docs/issues/2026-09-29-eval-center-schema-asset-missing.md)）。另注意 `container/Dockerfile.server` 若绕过 npm script 直接 `RUN npx tsc`，同样不会触发该步骤。
 
-表按业务面分族：**核心会话**（`chats` / `messages` / `registered_groups` / `sessions` / `router_state`）、**群组协作**（`group_members` / `group_seats` / `group_messages` / `user_pinned_groups`）、**认证计费**（`users` / `user_sessions` / `invite_codes` / `auth_audit_log` / `billing_*` / `redeem_*`）、**图谱编排**（`graph_definitions` / `graph_runs` / `graph_node_runs` / `graph_node_run_locks`）、**Agent**（`agents` / `agent_definitions` / `agent_definition_versions` / `agent_mounts` / `agent_shares` / `agent_worker_links` / `agent_collaborators`）、**Skills 与知识库**（`skills` / `skill_versions` / `knowledge_bases` / `kb_documents` / `kb_documents_vec`）、**MCP**（`mcp_server_configs` / `mcp_registry_*`）、**可观测**（`trace_steps` / `trace_tool_calls` / `chat_trace_nodes` / `tool_call_audit_log` / `tool_call_idempotency`）、**用量计费**（`usage_records` / `usage_daily_summary` / `daily_usage` / `monthly_usage` / `model_pricing`）、**自主与 Harness**（`autonomy_*` / `loop_*` / `harness_*` / `supervisor_*`）、**业务面**（`opc_*` / `sw_*` / `sandbox_*` / `collaborations` / `marketplace_*` / `file_trash` / `file_versions` / `workspace_artifacts` / `workflow_builds` / `team_builds` / `provider_configs` / `api_keys`）。
-
-核心表（改动前最常打交道的）：
-
-| 表 | 主键 | 用途 |
-|-----|------|------|
-| `chats` | `jid` | 群组元数据（jid、名称、最后消息时间） |
-| `messages` | `(id, chat_jid)` | 消息历史（含 `is_from_me`、`source` 标识来源、`attachments`） |
-| `scheduled_tasks` | `id` | 定时任务（调度类型、上下文模式、状态、`execution_type`、`script_command`、`created_by`） |
-| `task_run_logs` | `id` (auto) | 任务执行日志（耗时、状态、结果） |
-| `registered_groups` | `jid` | 注册的会话（folder 映射、容器配置、执行模式、`customCwd`、`is_home`、`init_source_path`、`init_git_url`、`selected_skills`、`require_mention`） |
-| `sessions` | `(group_folder, agent_id)` | 会话 ID 映射（Claude session 持久化，支持 Sub-Agent 独立会话；`provider_id` 字段用于 ProviderPool sticky 选择，避免跨 OAuth 账号 thinking block 签名失效） |
-| `router_state` | `key` | KV 存储（`last_timestamp`、`last_agent_timestamp`） |
-| `users` | `id` | 用户账户（密码哈希、角色、权限、状态、`ai_name`、`ai_avatar_emoji`、`ai_avatar_color`、`avatar_emoji`、`avatar_color`、`ai_avatar_url`、`deleted_at`） |
-| `user_sessions` | `id` | 登录会话（token、过期时间、最后活跃） |
-| `invite_codes` | `code` | 注册邀请码（最大使用次数、过期时间） |
-| `auth_audit_log` | `id` (auto) | 认证审计日志 |
-| `group_members` | `(group_folder, user_id)` | 共享工作区成员（用户与群组的多对多关系） |
-| `agents` | `id` | Sub-Agent（status、kind、prompt、result_summary，属于特定群组） |
-| `usage_records` | `id` | Token 用量明细（per-model 拆行，关联 user_id、group_folder、message_id） |
-| `usage_daily_summary` | `(user_id, model, date)` | 日维度用量预聚合（本地时区日期，增量 UPSERT） |
-| `user_quotas` | `user_id` | 用户配额（预留，暂不写入数据） |
-
-**注意**：`registered_groups.folder` 允许重复（多个飞书群组可映射到同一 folder）。`registered_groups.is_home` 标记用户主容器。
+表族划分（90 张表按业务面分族）与核心表字段说明见 [`docs/db-tables.md`](docs/db-tables.md)。迁移方式见 [`docs/howto/modify-db-schema.md`](docs/howto/modify-db-schema.md)。
 
 ## 6. 目录约定
 
@@ -486,7 +379,8 @@ shared/                       # 跨项目共享「单向真相源」，只改这
 
 scripts/                      # 构建辅助脚本
   sync-stream-event.sh        # 将 shared/ 下的三个真相源同步到各子项目（make sync-types / make build）
-  check-stream-event-sync.sh  # 校验三个副本是否一致（make typecheck 时调用，不一致即失败）
+  check-stream-event-sync.sh  # 校验三个副本是否一致（CI 直接调用；经 make typecheck 调用无效，见 §3.2）
+  copy-runtime-assets.cjs     # 把 tsc 不会 emit 的运行时资产搬进 dist/（npm run build 的一环，见 §5）
   check-agent-runner-prompts.sh  # 校验 agent-runner 源码引用的 prompt 文件真实存在（make typecheck 时调用；否则要到容器启动 readFileSync 才 ENOENT）
 ```
 
@@ -655,13 +549,15 @@ WebSocket：`/ws`（协议详见 [`docs/API.md`](docs/API.md) 的 WebSocket 章�
 - **Git commit message 使用简体中文**，格式：`类型: 简要描述`（如 `修复: 侧边栏下拉菜单无法点击`）
 - **Issue / PR 规范**见下方 §10.2
 - 系统路径不可通过文件 API 操作：`logs/`、`CLAUDE.md`、`.claude/`、`conversations/`
-- `shared/` 下的文件（`stream-event.ts`、`image-detector.ts`、`channel-prefixes.ts`）都是**单向真相源**，只改源头，改完跑 `make sync-types`（`make build` 自动触发，`make typecheck` 通过 `scripts/check-stream-event-sync.sh` 校验一致性）。**不要编辑 `src/`、`web/src/`、`container/agent-runner/src/` 下的同步副本**——它们会被无条件覆盖
+- `shared/` 下的文件（`stream-event.ts`、`image-detector.ts`、`channel-prefixes.ts`）都是**单向真相源**，只改源头，改完跑 `make sync-types`（`make build` 自动触发）。**不要编辑 `src/`、`web/src/`、`container/agent-runner/src/` 下的同步副本**——它们会被无条件覆盖。漂移门禁在 CI（`./scripts/check-stream-event-sync.sh`），**不要用 `make typecheck` 自查**（前置依赖会先 sync 掉漂移，见 §3.2）
 - Claude SDK / CLI 和容器内置的第三方工具始终使用最新版本：
   - `@anthropic-ai/claude-agent-sdk` 在 `agent-runner/package.json` 用 `"*"` + 无 lock file + `CACHEBUST` 触发每次 `npm install` 重跑
   - `feishu-cli` 在 `container/Dockerfile` 通过 `github.com/riba2534/feishu-cli/releases/latest` 的 **302 redirect Location header** 提取 tag 动态下载（不走 `api.github.com` 规避 rate limit），binary 和 skills 共享同一 `$VERSION` 确保一致
   - 通过 `make update-sdk` 手动触发一次更新
 - 容器内以 `node` 非 root 用户运行，需注意文件权限
 - **关闭服务时禁止 `lsof -ti:PORT | xargs kill`**，该命令会杀掉所有连接到该端口的进程（包括 OrbStack/Docker 网络代理），导致 Docker daemon 崩溃。正确做法：`lsof -ti:PORT -sTCP:LISTEN | xargs kill`（仅杀监听进程）
+- **运行时只用原生 Node 工具链（`npm` / `npx` / `tsx` / `node`），不要引入 bun**。原因：主服务 WebSocket 走 `ws` 包 + `@hono/node-server` 的 `server.on('upgrade')` 握手，该模式在 bun 的 HTTP server 下不触发，会导致 WS 全部握手失败——HTTP/接口正常，但前端实时流式卡片与通知全失效（`Makefile:15`）。`src/sqlite-compat.ts` 里的 `bun:sqlite` 分支只是防御性代码，**不是受支持的运行路径**
+- **`npm run build` 不是纯 `tsc`**：它是 `tsc && node scripts/copy-runtime-assets.cjs`。任何被 `path.join(__dirname, ...)` 读取的非 `.js` 资产（如 `src/eval-center/eval-schema.sql`）都必须登记进该脚本的 `ASSETS` 清单，否则只在生产构建下 ENOENT（见 §5 与 [`docs/issues/2026-09-29-eval-center-schema-asset-missing.md`](docs/issues/2026-09-29-eval-center-schema-asset-missing.md)）
 - **Claude Code Plugin 接入**：完整约束（注入方式 / 路径 / 依赖检测 / Marketplace / 运行时行为 / catalog immutable / runtime versioned snapshot / API 设计 / 已废弃 endpoint）见 [`docs/plugin-development.md`](docs/plugin-development.md)。关键铁律：禁止原地 mutate `ContainerInput.plugins`；plugin 目录路径必须是已展开的绝对路径（不允许 `~`）；运行中 agent **不**热加载 plugin 变化，UI 必须提示"下次新会话生效"
 
 ### 10.1 Issue 修复流程
@@ -734,6 +630,17 @@ make admin-passwd  # 改管理员密码（USERNAME=xxx [PASSWORD=xxx]，清掉�
 | 改完前端热更新 | `make dev-web`（另开终端） | Vite 热更新 |
 | 改完后端快速验证 | `make dev-backend`（另开终端） | tsx watch |
 | 生产环境运行 | `make start` | pm2 路由或前台阻塞；如需后台化请自行 `make start > /tmp/deepthink.log 2>&1 &` |
+| **隔离验证**（推荐，见下） | `make start-prod PORT=9999` / `make dev-isolated` | 独立端口 + **独立数据目录**，不碰主实例 |
+
+> ⚠️ **在 DeepThink agent 会话的 shell 里跑服务，一律用隔离命令，不要用 `make dev` / `make start`**。agent shell 会继承生产实例的 `WEB_PORT` / `DEEPTHINK_DATA_DIR`，裸跑会直接撞生产库（Makefile:50 的注释明确写了这一点）。
+
+**`make start-prod`**（`PORT` 必填，如 `make start-prod PORT=9999`）：面向"起一个可反复重启的隔离生产实例"，是排查线上问题、验收改动的标准手段（近两次事故都靠它复现与验证）。
+
+- 端口被旧实例占用时先自动 `stop-prod`，再增量编译并**后台守护**启动（`nohup` + `scripts/deepthink-watchdog.sh` 守护，进程挂了会自动拉起）
+- 数据目录隔离到 `$HOME/.deepthink-$PORT`，日志 `logs/deepthink-$PORT.log`，pidfile / 停止标记同目录
+- **停它必须用 `make stop-prod PORT=9999`**：该命令先写停止标记再杀端口监听进程，缺了停止标记 watchdog 会把进程重新拉起
+
+**`make dev-isolated`**：dev 模式的隔离版（默认端口 9898、数据目录 `/tmp/deepthink-dev-9898`，可用 `ISOLATED_PORT` / `ISOLATED_DATA_DIR` 覆盖），前端仍走 5173 的 Vite 代理。
 
 ```bash
 make typecheck     # TypeScript 全量类型检查（后端 + 前端 + agent-runner）
@@ -747,6 +654,7 @@ make update-sdk    # 更新 agent-runner 的 Claude Agent SDK 到最新版本
 make reset-init    # 重置为首装状态（清空数据库和配置，用于测试设置向导）
 make backup        # 备份运行时数据到 deepthink-backup-{date}.tar.gz
 make restore       # 从备份恢复数据（make restore 或 make restore FILE=xxx.tar.gz）
+make health        # 探测本地 :$(PORT) 的 /health 与 /ready 端点（改 PORT 即探对应实例）
 make help          # 列出所有可用的 make 命令
 ```
 
@@ -801,9 +709,9 @@ make desktop-pack-linux # 打包 Linux AppImage/.deb（需在 Linux runner 执�
 **约束**：
 - 修改渠道前缀（`shared/channel-prefixes.ts`）、`src/im-command-utils.ts`、任一 IM 通道文件前，必须先跑 `make test`
 - 新增 IM 渠道时**唯一必须改的常量是 `shared/channel-prefixes.ts` 的 `CHANNEL_PREFIXES`**（不是测试文件——历史文档里提到的 `ALL_IM_CHANNELS` 及其所在测试文件都已不存在；也不是 `src/channel-prefixes.ts`——那是构建产物）。改完跑 `make sync-types`
-- **基线并非全绿**：`make test` 有 2 个**预先存在的失败**，与你的改动无关，别去追：
-  - `tests/units/super-agent-team-trace.test.ts` 与 `tests/units/workflows.test.ts`，都断言 `schema_version === '61'`，而当前是 `'70'`（断言写死了版本号，每次 bump schema 都会失败）
-  - 判断回归要看**失败集合是否变化**，而不是"是否有失败"。全绿基线是 `1709 passed | 2 failed | 14 skipped`（148 文件 / 1725 用例）
+- **基线是全绿的**：2026-09-24 起 `make test` 的 148 文件 / 1725 用例全部通过（约 1710 passed / 14 skipped），**任何失败都当真**，都要追。历史上曾有两个固定失败（`tests/units/super-agent-team-trace.test.ts` 与 `tests/units/workflows.test.ts` 硬编码断言 `schema_version === '61'`），已于 2026-09-24 修复——现在它们 import `src/db.ts` 导出的 `SCHEMA_VERSION` 再比对，不会再因版本号推进而过期。若你看到旧文档说"这 2 个失败可忽略"，那是过期信息
+- **唯一已知抖动**：全量跑时 `tests/feishu-card.test.ts` 偶发 1 个 `Test timed out in 5000ms`，是整机高负载下 5s 超时的抖动而非回归。判别：单独重跑该文件，通过即放过
+- 在 worktree 里跑测试前先软链 `node_modules`（根目录 + `web/` + `container/agent-runner/` 三处），否则会有若干测试因 `Cannot find package` 收集失败——那是环境问题不是代码问题
 
 ### Howto 索引
 
@@ -823,6 +731,8 @@ make desktop-pack-linux # 打包 Linux AppImage/.deb（需在 Linux runner 执�
 ### 其他文档入口
 
 - [完整 API 端点清单](docs/API.md)
+- [模块索引（§2.1 三层全量表）](docs/architecture-index.md)
+- [数据库表（§5 表族 + 核心表字段）](docs/db-tables.md)
 - [K8s 部署指南](docs/deployment/DEEPTHINK_K8S_DEPLOYMENT_GUIDE.md)
 - [桌面版架构](docs/desktop-architecture.md)
 - [权限矩阵](docs/ACL-MATRIX.md)
