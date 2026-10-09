@@ -284,10 +284,16 @@ web:agent-test-54de5c67-…| agent-test-54de5c67-…| AI 大模型智能体论�
 
 最初方案是"启动时把 `agent-test-*` 整体改名成 `agent-*`"。查证后放弃，依据：
 
-- 库里存该工作区 jid/folder 的表有 **16 张**（`registered_groups`、`chats`、`messages`、
-  `scheduled_tasks`、`loop_runs`、`agents`、`chat_trace_nodes`、`graph_runs`、`team_builds`、
-  `trace_tool_calls`、`supervisor_sessions`、`sessions`、`group_members`、`user_pinned_groups`、
-  `im_context_bindings`、`usage_records`）；
+- 库里带该工作区 jid/folder 列的表有 **23 张**（扫描 `src/db.ts` 全部建表语句，取列名含
+  `jid` / `folder` 的列）：
+  `chats`、`messages`、`scheduled_tasks`、`loop_runs`、`chat_trace_nodes`、`graph_runs`、
+  `graph_node_run_locks`、`team_builds`、`trace_tool_calls`、`supervisor_sessions`、`sessions`、
+  `registered_groups`、`im_context_bindings`、`group_members`、`user_pinned_groups`、`agents`、
+  `usage_records`、`workflow_builds`、`trace_steps`、`collaborations`、`workspace_artifacts`、
+  `file_trash`、`file_versions`。
+  ⚠️ 只按 `chat_jid` / `group_folder` 两个常见列名搜会漏 3 张：`im_context_bindings`
+  用的是 `source_jid` + `workspace_jid`，`graph_node_run_locks` 用的是 `workspace_folder`，
+  而 `agents` 还另有 `last_im_jid` / `spawned_from_jid` 两个 jid 列；
 - `messages.chat_jid` 对 `chats(jid)` 有**外键**，而 `src/db.ts:291` 执行了
   `PRAGMA foreign_keys = ON`——改 PK 必须 `PRAGMA defer_foreign_keys` 或临时关校验；
 - PostgreSQL 后端本机无法验证，而 `sqlite-compat.ts` 对 `PRAGMA foreign_keys`
@@ -324,9 +330,17 @@ web:agent-test-54de5c67-…| agent-test-54de5c67-…| AI 大模型智能体论�
    几乎一定是受控/非受控混用。
 2. **路由参数变化不会卸载组件**。`/agents/A` → `/agents/B` 走的是同一个 route element，
    所以"换页就等于重新挂载"的直觉在这里是错的，`key` 必须显式加。
-3. **改主键 jid 前先数引用表**。这个库里有 16 张表引用工作区 jid/folder，且
-   `messages → chats` 有外键。`grep -c "CREATE TABLE"` + 逐列看 `_schema` 只是起步，
-   真正的判断标准是"收益（用户可见）vs 风险（不可测的 PG 路径）"。
+3. **改主键 jid 前先数引用表，且别只按常见的两个列名搜**。这个库里有 23 张表带工作区
+   jid/folder 列，且 `messages → chats` 有外键。第一次只搜 `chat_jid` / `group_folder`
+   得到 16 张（还漏了改用 `source_jid` / `workspace_jid` / `workspace_folder` 命名的
+   `im_context_bindings`、`graph_node_run_locks`），数字本身写进了复盘文档——**"大概十几张"
+   这种量级估计不该进文档，要放能复跑的扫描命令**：
+
+   ```bash
+   node -e "const s=require('fs').readFileSync('src/db.ts','utf8');const re=/CREATE TABLE IF NOT EXISTS\s+(\w+)\s*\(([\s\S]*?)\n\s*\);/g;let m,n=0;while((m=re.exec(s))){const c=[...new Set([...m[2].matchAll(/^\s*(\w*(?:jid|folder)\w*)\s+\w+/gim)].map(x=>x[1]))];if(c.length){n++;console.log(m[1],c.join(','))}}console.log('总数 =',n)"
+   ```
+
+   真正的判断标准仍是"收益（用户可见）vs 风险（不可测的 PG 路径）"。
 4. **启动迁移的调用位置有语义**。改 DB 显示名的迁移若晚于 `getAllRegisteredGroups()`，
    DB 改了但内存映射没改，会在运行期表现为"重启后第一次访问还是旧名字"。
 5. **回归测试固化关键约束**：
