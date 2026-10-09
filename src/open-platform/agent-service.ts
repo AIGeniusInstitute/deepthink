@@ -6,7 +6,10 @@
  * query() 执行并返回 Agent 文本。与 group-queue / IM 通道解耦，专供外部
  * HTTP SDK 调用。
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { GROUPS_DIR } from '../config.js';
 import {
   buildClaudeEnvLines,
   getClaudeProviderConfig,
@@ -14,6 +17,7 @@ import {
 } from '../runtime-config.js';
 import {
   getAgentDefinitionById,
+  getRegisteredGroup,
   getUserById,
   listAgentMounts,
   listAgentWorkers,
@@ -101,6 +105,28 @@ interface ResolvedAgent {
   model: string;
   mcpServers: Record<string, unknown>;
   agents: Record<string, unknown>;
+  /** Agent 的工作目录（SDK `Options.cwd`），见 resolveAgentWorkspaceDir。 */
+  workspaceDir: string;
+}
+
+/**
+ * Agent 的工作目录。与 Agent Studio「测试对话」同一间工作区（jid `web:agent-{id}`；
+ * 改名前的历史工作区 jid 为 `web:agent-test-{id}`，folder 沿用注册时那个值）。
+ *
+ * 必须显式传给 SDK：`Options.cwd` 的默认值是 **`process.cwd()`**，而本服务从仓库根目录
+ * 启动——不传就等于把平台源码树当成一个 bypassPermissions Agent 的工作目录，它既能改平台
+ * 代码，写出来的产物（论文等）也会落进仓库。web / IM 路径的等价做法见
+ * `container-runner.ts` 的 `cwd: groupDir`。
+ *
+ * 目录不存在时创建（用户没点过"测试对话"就不会有）；创建失败让它抛——宁可这次调用报错，
+ * 也不要静默退回仓库根目录运行。
+ */
+function resolveAgentWorkspaceDir(agentId: string): string {
+  const registered =
+    getRegisteredGroup(`web:agent-${agentId}`) ?? getRegisteredGroup(`web:agent-test-${agentId}`);
+  const dir = path.join(GROUPS_DIR, registered?.folder ?? `agent-${agentId}`);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
 }
 
 /** 解析 Agent 定义 + 权限。返回 {error,status} 或 ResolvedAgent。 */
@@ -135,6 +161,7 @@ export function resolveAgent(
       model: model || '',
       mcpServers: resolveAgentMcpServers(def.user_id, agentId),
       agents: buildWorkerAgents(listAgentWorkers(agentId)),
+      workspaceDir: resolveAgentWorkspaceDir(agentId),
     },
   };
 }
@@ -166,6 +193,7 @@ function buildQueryOptions(
     : undefined;
 
   const options: Record<string, unknown> = {
+    cwd: agent.workspaceDir,
     ...(agent.model ? { model: agent.model } : {}),
     ...(systemPromptAppend
       ? { systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPromptAppend } }

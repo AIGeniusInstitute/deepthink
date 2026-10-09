@@ -281,6 +281,13 @@ paasAgentsRoute.delete('/:id', async (c) => {
     `web:agent-test-${id}`,
     `web:agent-orch-${id}`,
   ].filter((jid) => getRegisteredGroup(jid) !== undefined);
+  // 上面这轮循环处理的是"已注册为工作区"的 folder（其中含"runner 停不下来就有意保留
+  // 目录"的情况，所以下面兜底时要避开它们）。
+  const handledFolders = new Set(
+    workspaceJids
+      .map((jid) => getRegisteredGroup(jid)?.folder)
+      .filter((f): f is string => !!f),
+  );
 
   const deps = getWebDeps();
   for (const jid of workspaceJids) {
@@ -315,6 +322,16 @@ paasAgentsRoute.delete('/:id', async (c) => {
       deps.setLastAgentTimestamp(jid, { timestamp: '', id: '' });
     }
     logger.info({ jid, folder: group.folder, agentId: id }, 'Agent workspace removed with agent');
+  }
+
+  // 开放平台 AaaS（/v1/agents/:id/chat/completions）把 Agent 的工作区目录当 cwd 用，
+  // 但用户可能从没点过"测试对话"——那种情况下目录存在、却没有 registered_group 行，
+  // 上面那轮循环覆盖不到（folder 由 Agent UUID 派生、唯一，所以按同样规则兜底是安全的）。
+  for (const folder of [`agent-${id}`, `agent-test-${id}`]) {
+    if (handledFolders.has(folder)) continue;
+    if (!fs.existsSync(path.join(GROUPS_DIR, folder))) continue;
+    removeFlowArtifacts(folder);
+    logger.info({ folder, agentId: id }, 'Agent API-only workspace dir removed with agent');
   }
 
   deleteAgentDefinition(id, user.id);

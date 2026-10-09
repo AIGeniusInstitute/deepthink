@@ -216,6 +216,72 @@ grep -n "Agent output:" logs/deepthink-9999.log | head
 | 保留上游 message | 路由本来就打算透出 `err.message`（`open-platform.ts:291`），是 `runAgent` 把它丢了；不保留就永远只能复现才能定位 |
 | 不做"超时返回半截文本" | 同步接口只消费最终 `result`；把被砍断的半成品当成功返回比报错更坏（调用方无法区分"写完了"和"被砍了"） |
 
+### 改动 3：把 Agent 的 `cwd` 显式指到它自己的工作区（补做，见 §8 遗留风险）
+
+超时解除后长任务会真正跑完，暴露了原实现一个更严重的问题：`buildQueryOptions()`
+**没有传 `cwd`**，而 SDK 的 `Options.cwd` 默认取 `process.cwd()`——本服务从仓库根目录启动，
+等于把**平台源码树**交给一个 `permissionMode: 'bypassPermissions'` 的 Agent 当工作目录。
+
+```diff
++function resolveAgentWorkspaceDir(agentId: string): string {
++  const registered =
++    getRegisteredGroup(`web:agent-${agentId}`) ?? getRegisteredGroup(`web:agent-test-${agentId}`);
++  const dir = path.join(GROUPS_DIR, registered?.folder ?? `agent-${agentId}`);
++  fs.mkdirSync(dir, { recursive: true });
++  return dir;
++}
++
+ export function resolveAgent(agentId, userId) {
+   ...
+       mcpServers: resolveAgentMcpServers(def.user_id, agentId),
+       agents: buildWorkerAgents(listAgentWorkers(agentId)),
++      workspaceDir: resolveAgentWorkspaceDir(agentId),
+   };
+ }
+
+   const options: Record<string, unknown> = {
++    cwd: agent.workspaceDir,
+     ...(agent.model ? { model: agent.model } : {}),
+```
+
+### 改动 4：Agent 删除时兜底清理「只有 API 用过」的工作区目录
+
+改动 3 让每个 AaaS Agent 都有了一间工作区，但用户可能从没点过 Agent Studio 的"测试对话"
+——那种情况下目录存在、却没有 `registered_group` 行，而 `DELETE /api/paas/agents/:id`
+只遍历有注册行的 folder，会留下孤儿目录（该目录是本次改动新引入的，属于"自己的 mess"）。
+
+```diff
+   ].filter((jid) => getRegisteredGroup(jid) !== undefined);
++  // 上面这轮循环处理的是"已注册为工作区"的 folder（其中含"runner 停不下来就有意保留
++  // 目录"的情况，所以下面兜底时要避开它们）。
++  const handledFolders = new Set(
++    workspaceJids.map((jid) => getRegisteredGroup(jid)?.folder).filter((f): f is string => !!f),
++  );
+
+   ...
++  for (const folder of [`agent-${id}`, `agent-test-${id}`]) {
++    if (handledFolders.has(folder)) continue;
++    if (!fs.existsSync(path.join(GROUPS_DIR, folder))) continue;
++    removeFlowArtifacts(folder);
++    logger.info({ folder, agentId: id }, 'Agent API-only workspace dir removed with agent');
++  }
++
+   deleteAgentDefinition(id, user.id);
+```
+
+刻意**跳过** `handledFolders`：那轮循环里有"runner 停不下来就有意保留目录"的保护，
+兜底不能把它覆盖掉。
+
+### 选型理由（改动 3 / 4）
+
+| 决策 | 理由 |
+|---|---|
+| 复用 Agent Studio 测试对话那间工作区，而不是另建 `agent-api-{id}` | 同一个 Agent 的产出应该待在同一间屋子：用户在 Studio 里能看到、能接着用；另建会导致"API 写的文件 UI 里找不到" |
+| `folder` 优先取注册行、缺失才回落到 `agent-{id}` | 历史工作区 jid 是 `web:agent-test-{id}` 且 folder 是注册时写死的那串；直接拼 `agent-{id}` 会跟已有目录分叉成两份 |
+| 目录不存在就创建（而不是报错） | 从没点过"测试对话"是最常见的状态，报错等于让 AaaS 对绝大多数 Agent 不可用 |
+| 创建失败不兜底回落 `process.cwd()` | 宁可这次调用**报错**，也不要静默退回"在仓库根目录里跑一个可写 Agent"——那正是本次要修掉的东西 |
+| 删除时额外扫 `agent-${id}` / `agent-test-${id}` | folder 由 Agent UUID 派生、天然唯一，按同一规则兜底不会误删别人的目录 |
+
 ---
 
 ## 7. 处理卡住的状态
@@ -236,20 +302,36 @@ grep -n "Agent output:" logs/deepthink-9999.log | head
    兜底文案，会覆盖真正的子进程错误。看到它先想"谁 abort 了我"，不要先去查可执行文件。
 4. 巡检建议：开放平台接口若再次出现"耗时高度集中于某个恒定值（如 ~120s / ~300s）"的
    500/504，直接怀疑定时器而不是上游。
+5. **凡是"跑 Agent"的新入口，都要显式给 `cwd`**。`Options.cwd` 默认是 `process.cwd()`，
+   而平台从仓库根目录启动——漏传就等于让一个 `bypassPermissions` 的 Agent 站在源码树里。
+   这条对超时/权限类 bug 尤其隐蔽：**接口返回 200 也不代表做对了**，落盘位置得断言文件系统。
+6. **修完一个"掐断"类 bug 后要回头看它掩盖了什么**。120s 的硬超时把"cwd 泄漏"藏了三个月；
+   解除限制的那一刻，原本被压住的问题会立刻变成新的线上事故——所以修"限制"时，
+   要顺着"被限制住的那条路径在实际运行中还会碰到什么"再走一遍。
 
-### 遗留风险（本次未改，需产品决策）
+### 遗留风险（原记录的 cwd 问题，本轮已修）
 
 `buildQueryOptions()` **没有传 `cwd`**，SDK 的 Claude Code 子进程因此继承主进程的
 `process.cwd()`（即 DeepThink 仓库根目录），且 `permissionMode: 'bypassPermissions'`。
 而 web 路径是显式把 `cwd` 指到该 Agent 的工作区（`container-runner.ts:2596` `cwd: groupDir`）。
 
 改前超时 120s 把多数任务掐死在"还没开始写文件"的阶段，所以没暴露；**改后长任务会真正跑完**，
-一个会写文件的 Agent 就可能把产物写进平台自己的源码树。本次按"Surgical Changes"没有顺手改，
-但它应当作为一个独立 issue 处理（候选项：指向该 Agent 的工作区 `agent-{agentId}`，与 web 路径对齐）。
+一个会写文件的 Agent 就可能把产物写进平台自己的源码树。这不是推测——上一轮两次验证运行里，
+Agent 都按 `./papers/...` 落盘（写到验证进程的 cwd 下）；验证时特意把 cwd 换成
+`/tmp/dt-verify/cwd`，所以仓库当时是干净的。
 
-这不是推测——本次两次验证运行里，Agent 都按 `./papers/...` 落盘（写到验证进程的 cwd 下）。
-验证时特意把 cwd 换成 `/tmp/dt-verify/cwd`，所以仓库当时是干净的（`git status` 无输出）；
-换成生产实例的 cwd（仓库根目录），同样一次调用就会在仓库里生成 `/Users/edy/deepthink/papers/`。
+**已于本轮修复**：改动 3（`cwd` 指向工作区）+ 改动 4（删除时兜底清理），
+验证见下方"cwd 修复验证"表——同一份脚本在改前/改后跑出**相反**结果。
+
+### 仍然存在的已知取舍（本次接受，未改）
+
+1. **AaaS 与 Agent Studio「测试对话」共用同一间工作区**，且 API 路径**没有** group-queue
+   那样的串行化。同一个 Agent 同时被 API 和 Web 调用时，两个 SDK 会话会并发在同一个
+   `cwd` 里读写。这与平台既有语义（一个 folder 一个运行中进程）不完全一致，但比"写到仓库根目录"
+   严格更好；要彻底解决需要给 API 路径接 queue 或按调用派生工作区，属于独立设计题。
+2. `resolveAgent()` 现在会**创建目录**——`getAgentDefinitionById` 之后即产生副作用。
+   纯读的调用方（如权限探活）也会建目录。当前没有这种调用方，改动面保持最小；若将来出现，
+   应把建目录挪到 `runAgent` / `streamAgent` 里。
 
 ---
 
@@ -275,3 +357,26 @@ grep -n "Agent output:" logs/deepthink-9999.log | head
 > 附带证据（见下方遗留风险）：两次运行中 Agent 都把论文产物写到了 **`<cwd>/papers/`**
 > （`/private/tmp/dt-verify/cwd/papers/…_paper.md`，663 行 / 88 处 TODO）。
 > Agent 写文件的基准就是进程 cwd，而生产实例的 cwd 是仓库根目录。
+
+### cwd 修复验证（改动 3 / 4）
+
+脚本 `/tmp/dt-verify/e2e-cwd.mjs`：隔离实例 9998（空库 + 复制来的 provider 配置），
+登录 → 建 API key → 建 Agent → 经 `/v1/agents/{id}/chat/completions` 让 Agent
+"写出 `cwd-marker.txt`" → 断言产物落在 `groups/agent-{id}/`、且仓库根目录干净
+→ `DELETE /api/paas/agents/{id}` → 断言目录被清掉。
+删除前**刻意先 `mkdir` 该目录**，好让删除断言在"旧代码从不创建它"时也有区分度。
+
+| 断言 | 改前（`git checkout` 回旧实现后重建） | 改后 |
+|---|---|---|
+| `artifact_in_workspace`（产物落在 `groups/agent-{id}/`） | ❌ `false` | ✅ `true`（内容含 marker） |
+| `artifact_leaked_to_cwd`（产物落进仓库根目录） | ❌ `true` | ✅ `false` |
+| `repo_dirty_entries`（worktree `git status`） | ❌ `["?? cwd-marker.txt"]` | ✅ 仅本次改动的两个文件 |
+| `workspace_dir_after_delete`（删除 Agent 后目录残留） | ❌ `true` | ✅ `false` |
+| `aaas_status` | 200（短任务本来就能过） | 200 |
+
+> 四条断言在改前全红、改后全绿 —— 说明它们**测的是本次改动**，而不是环境或模型行为。
+> 改前那次真实把 `cwd-marker.txt` 写进了 worktree 根目录（`?? cwd-marker.txt` 就是它），
+> 已随手清掉；这正是本 issue 要防的事情在生产里的样子。
+>
+> 注意"aaas_status 改前也是 200"：本次修的是**落盘位置**，不是"调用是否成功"——
+> 所以只用 HTTP 状态码验证会得出"没问题"的错误结论，必须断言文件系统状态。
