@@ -20,6 +20,7 @@
  * 用法：
  *   make start-prod PORT=9911          # 起一个隔离实例（数据目录 ~/.deepthink-9911）
  *   DT_BASE=http://localhost:9911 DT_USER=admin DT_PASS='xxx' \
+ *   DT_DATA_DIR=$HOME/.deepthink-9911 \
  *     node tests/e2e/agent-studio-ui.mjs
  *
  * 浏览器：用本机已安装的 Google Chrome（channel: 'chrome'），不下载 Playwright 自带内核。
@@ -32,6 +33,9 @@ const BASE = process.env.DT_BASE || 'http://localhost:9911';
 const USER = process.env.DT_USER || 'admin';
 const PASS = process.env.DT_PASS || '';
 const OUT_DIR = process.env.DT_OUT || path.join(process.cwd(), 'logs', 'agent-studio-ui');
+// 被测实例的数据目录（如 ~/.deepthink-9911）。设了才会做文件系统侧断言——E2E 是跨进程调用，
+// 猜不出来，只能显式给。不给就只验 API/DB 侧。
+const DATA_DIR = process.env.DT_DATA_DIR || '';
 
 if (!PASS) {
   console.error('❌ 需要 DT_PASS=<password>');
@@ -194,6 +198,43 @@ async function main() {
     await page.goto(`${BASE}/chat/agent-test-${legacy.agentId}`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(2500);
     check('历史 URL /chat/agent-test-:id 仍可访问', !page.url().endsWith('/chat'), page.url());
+
+    // ── 6. 删除 Agent 同时清理它的工作区 ─────────────────────────
+    // 只删脚本自己建的 Agent——绝不动库里现成的 Agent。
+    //
+    // 文件系统侧先说清一件事：光调 test-chat 只会产生 groups/ 一个目录（没真正跑过容器）。
+    // 所以这里把其余 5 个目录补建出来，让「6 个目录全部清掉」这条断言真的覆盖删除路径。
+    // 不补建的话断言其实只验证了 groups/——若有人把路由改成只删 groups/ 而不调
+    // removeFlowArtifacts，照样会通过，而 sessions/ipc/env/memory/extra 会在生产里泄漏。
+    const AGENT_DIRS = ['groups', 'sessions', 'ipc', 'env', 'memory', 'extra'];
+    const agentDirPath = (d) => path.join(DATA_DIR, d, `agent-${a.id}`);
+    if (DATA_DIR) {
+      for (const d of AGENT_DIRS) {
+        fs.mkdirSync(agentDirPath(d), { recursive: true });
+        fs.writeFileSync(path.join(agentDirPath(d), 'marker.txt'), 'e2e');
+      }
+      const missing = AGENT_DIRS.filter((d) => !fs.existsSync(agentDirPath(d)));
+      check('前提：删除前 6 个目录都在（否则断言无区分度）', missing.length === 0, missing.join(', '));
+    }
+
+    const del = await context.request.delete(`${BASE}/api/paas/agents/${a.id}`);
+    check('删除 Agent 返回成功', del.ok(), `HTTP ${del.status()}`);
+    createdAgentIds.splice(createdAgentIds.indexOf(a.id), 1); // 别在 finally 里再删一次
+
+    const groupsAfterDel = (await (await context.request.get(`${BASE}/api/groups`)).json()).groups ?? {};
+    check(
+      '删 Agent 后它的工作区从列表消失',
+      !groupsAfterDel[`web:agent-${a.id}`],
+      Object.keys(groupsAfterDel).filter((j) => j.includes(a.id)).join(', ') || '(无残留)',
+    );
+
+    // 文件系统侧：6 个 per-folder 目录必须都没了（DT_DATA_DIR 指向被删实例的数据目录时才查）
+    if (DATA_DIR) {
+      const leftovers = AGENT_DIRS.map(agentDirPath).filter((p) => fs.existsSync(p));
+      check('删 Agent 后 6 个数据目录全部清掉', leftovers.length === 0, leftovers.join(', ') || '无残留');
+    } else {
+      info('未设 DT_DATA_DIR，跳过文件系统侧断言（只验了 API/DB 侧）');
+    }
   } finally {
     // ── 清理临时 Agent ───────────────────────────────────────────
     for (const id of createdAgentIds) {

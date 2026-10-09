@@ -40,6 +40,8 @@ import {
   updateChatName,
   addGroupMember,
   updateAgentDefValidation,
+  getJidsByFolder,
+  deleteGroupData,
   type AgentDefinitionRow,
   type AgentMountRow,
   type KnowledgeBaseRow,
@@ -54,6 +56,7 @@ import type { AgentDefinition, AgentMount, ResourceType, RegisteredGroup } from 
 import { logger } from '../logger.js';
 import { getWebDeps } from '../web-context.js';
 import { GROUPS_DIR } from '../config.js';
+import { removeFlowArtifacts } from '../file-manager.js';
 import { generateAgentContent, optimizeAgentContent } from '../agent-ai.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -261,13 +264,60 @@ paasAgentsRoute.patch('/:id/validation', async (c) => {
   });
 });
 
-paasAgentsRoute.delete('/:id', (c) => {
+// 删除 Agent 时一并清理它的工作区。
+// 工作区的 jid/folder 由 Agent UUID 派生（web:agent-{id} / agent-{id}），Agent 一删就永久无法
+// 重新绑定，留着只会变成对话列表里点进去空无一物的"幽灵工作区"并占磁盘。历史行为只删
+// agent_definitions 一行，工作区行与 6 个数据目录全部留下。
+paasAgentsRoute.delete('/:id', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
-  const ok = deleteAgentDefinition(id, user.id);
-  if (!ok) {
+  if (!getAgentDefinition(id, user.id)) {
     return c.json({ error: 'Agent definition not found' }, 404);
   }
+
+  // 一个 Agent 最多三间工作区：测试对话（新命名）、测试对话（改名前的历史命名）、编排工作区
+  const workspaceJids = [
+    `web:agent-${id}`,
+    `web:agent-test-${id}`,
+    `web:agent-orch-${id}`,
+  ].filter((jid) => getRegisteredGroup(jid) !== undefined);
+
+  const deps = getWebDeps();
+  for (const jid of workspaceJids) {
+    const group = getRegisteredGroup(jid);
+    if (!group) continue;
+
+    if (deps) {
+      // 与 DELETE /api/groups/:jid 一致：先停掉所有引用该 folder 的 runner（含子 Agent 与
+      // 定时任务的虚拟 JID），否则它们会带着被删掉的 cwd/session 目录继续跑。
+      const siblingJids = getJidsByFolder(group.folder);
+      const stopJids = Array.from(
+        new Set([...siblingJids, ...siblingJids.flatMap((j) => deps.queue.listDescendantJids(j))]),
+      );
+      try {
+        await Promise.all(stopJids.map((j) => deps.queue.stopGroup(j, { force: true })));
+      } catch (err) {
+        // 停不下来就不删这间工作区的数据：宁可留一个工作区，也不删掉正被 runner 使用的目录
+        logger.error(
+          { err, jid, stopJids, agentId: id },
+          'Failed to stop container before deleting agent workspace',
+        );
+        continue;
+      }
+    }
+
+    deleteGroupData(jid, group.folder);
+    removeFlowArtifacts(group.folder);
+
+    if (deps) {
+      delete deps.getRegisteredGroups()[jid];
+      delete deps.getSessions()[group.folder];
+      deps.setLastAgentTimestamp(jid, { timestamp: '', id: '' });
+    }
+    logger.info({ jid, folder: group.folder, agentId: id }, 'Agent workspace removed with agent');
+  }
+
+  deleteAgentDefinition(id, user.id);
   return c.json({ success: true });
 });
 
