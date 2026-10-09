@@ -378,3 +378,26 @@ sqlite3 ~/.deepthink-9999/db/messages.db \
 - **给回归加断言而不是给文档加说明**：`tests/units/remove-flow-artifacts.test.ts` 逐个列出 6 个目录并断言同级目录不受影响——下次有人再加 per-folder 目录却忘了清理，或者把删除误写成扫父目录，测试会直接红。
 - **E2E 支持文件系统侧断言需要显式给 `DT_DATA_DIR`**：E2E 是跨进程调用，猜不出被测实例的数据目录（`~/.deepthink-<PORT>`，由 Makefile 注入）。不给就只验 API/DB 侧并在输出里明确写「跳过了文件系统侧」，**不静默降级**。
 - **排查这类问题优先用隔离实例**：`make start-prod PORT=9999`（数据目录 `$HOME/.deepthink-9999`，与生产完全隔离），本次全部复现与验证都在它上面完成。停止必须用 `make stop-prod PORT=9999`——该命令先写停止标记再杀端口监听进程，缺了停止标记 watchdog 会把进程重新拉起；且**禁止** `lsof -ti:PORT | xargs kill`（会连 Docker/OrbStack 网络代理一起杀掉）。
+
+### 8.5 ⚠️ 看似缺口但**不是**缺口：非主群组的 `memory/` 路径 —— 不要"修"它
+
+排查过程中有一条外部提出来的疑点，一度看起来像第三个清理缺口，**核完后确认不是**，这里明确记下来，防止后人把它当 bug 修掉而**删掉用户的共享记忆**：
+
+现象：`removeFlowArtifacts` 删的是 `data/memory/{folder}`，而容器实际挂载的 memory 目录对**非主群组**来说是**属主的主容器目录**：
+
+```ts
+// src/container-runner.ts:694-699（容器模式挂载）与 :2283-2289（宿主机模式环境变量）两处同逻辑
+const memoryFolder = group.is_home ? group.folder : (ownerHomeFolder || group.folder);
+const memoryDir = path.join(DATA_DIR, 'memory', memoryFolder);
+```
+
+看起来"写入的目录"和"删除的目录"不一致，但**这个不对称是刻意的、必须保持**：
+
+- memory 是**按属主**共享的资源，不是按工作区的。一个 admin 属主的所有非主工作区共用 `data/memory/main`。
+- 所以删除**某一个**成员工作区时，绝不能去删 `data/memory/main`——那会把属主主容器的全部记忆、以及该属主所有其它工作区共用的记忆一起抹掉。
+- `removeFlowArtifacts` 只删 `data/memory/{该工作区自己的 folder}`（该目录由 `container-runner.ts:2051` 为每个群组建立、通常为空），语义正确；这与 `src/routes/groups.ts:291` 的重置路径完全一致。
+
+**推论（明确的反面教材）**：如果有人为了"消除不对称"，把 `removeFlowArtifacts` 改成对非主群组也去解析属主目录，那么删除任意一个成员工作区都会清空属主的 home 记忆——这是数据丢失级别的回归。真要动这里，必须先把"memory 属于谁"这件事想清楚。
+
+**顺带记录一条本次未深入的线索**（属另一类问题，不是清理问题，未验证到用户可见症状即止）：`src/routes/memory.ts` 的 Web 记忆接口是**基于路径**的（`MEMORY_DATA_DIR = data/memory`，按调用方给的路径做归属校验），并不把「群组」解析成「它实际生效的 memory 目录」。因此对非主群组，Web 端浏览/写入的 `data/memory/{folder}` 与容器实际挂载的 `data/memory/{属主主容器}` 可能不是同一个目录。这属于 memory 功能自身的一致性问题，需要单独调查（至少要确认 UI 上是否真的能选到非主群组、读出来的是什么），**不要**顺手改，也不要和本 issue 的清理路径混在一起修。
+
