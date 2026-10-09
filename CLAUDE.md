@@ -526,7 +526,7 @@ WebSocket：`/ws`（协议详见 [`docs/API.md`](docs/API.md) 的 WebSocket 章�
 | `FEISHU_APP_ID` | - | 飞书应用 ID |
 | `FEISHU_APP_SECRET` | - | 飞书应用密钥 |
 | `CONTAINER_IMAGE` | `deepthink-agent:latest` | Docker 镜像名称 |
-| `CONTAINER_TIMEOUT` | `1800000`（30min） | 容器最大运行时间（可通过设置页覆盖） |
+| `CONTAINER_TIMEOUT` | `1800000`（30min） | 容器最大运行时间（可通过设置页覆盖）。**同时也是开放平台 AaaS `/v1/agents/:id/chat/completions` 的 Agent 运行上限**——别在这条路径上另设更短的硬编码超时，长任务会被掐断成 500（见 [`docs/issues/2026-10-09-open-platform-agent-120s-timeout-500.md`](docs/issues/2026-10-09-open-platform-agent-120s-timeout-500.md)） |
 | `CONTAINER_MAX_OUTPUT_SIZE` | `10485760`（10MB） | 单次输出最大字节（可通过设置页覆盖） |
 | `MAX_FILE_SIZE_MB` | `50` | 文件大小上限（MB）。Web 文件面板上传与 IM 渠道收文件共用（Web 下载为流式返回，不受此限制）；在 `config.ts` 统一定义，`file-manager.ts` 与 `im-downloader.ts` re-export |
 | `IDLE_TIMEOUT` | `1800000`（30min） | 容器空闲超时（可通过设置页覆盖） |
