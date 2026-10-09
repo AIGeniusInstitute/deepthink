@@ -355,13 +355,16 @@ function calculateDirSize(dirPath: string, depth = 0): number {
   return total;
 }
 
-/** Remove all runtime artifacts for a group folder (workspace, sessions, ipc, env, memory). */
+/** Remove all runtime artifacts for a group folder (workspace, sessions, ipc, env, memory, extra). */
 export function removeFlowArtifacts(folder: string): void {
   fs.rmSync(path.join(GROUPS_DIR, folder), { recursive: true, force: true });
   fs.rmSync(path.join(DATA_DIR, 'sessions', folder), { recursive: true, force: true });
   fs.rmSync(path.join(DATA_DIR, 'ipc', folder), { recursive: true, force: true });
   fs.rmSync(path.join(DATA_DIR, 'env', folder), { recursive: true, force: true });
   fs.rmSync(path.join(DATA_DIR, 'memory', folder), { recursive: true, force: true });
+  // extra/ 是 per-folder 持久目录（容器内 /workspace/extra，含 .npm-global 全局包），
+  // 漏删会留下几 MB~几百 MB 的孤儿目录。container-runner.ts:1082 是它唯一的写入点。
+  fs.rmSync(path.join(DATA_DIR, 'extra', folder), { recursive: true, force: true });
   deleteContainerEnvConfig(folder);
 }
 

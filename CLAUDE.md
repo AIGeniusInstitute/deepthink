@@ -691,25 +691,25 @@ make desktop-pack-linux # 打包 Linux AppImage/.deb（需在 Linux runner 执�
 
 测试框架：vitest（`^4.1.1`），配置在 `vitest.config.ts`（显式排除 `data/`、`.claude/`、`.worktrees/`——`data/` 里是用户 Agent 的工作区，可能含自己的测试套件）。
 
-当前 **148 个测试文件**，分三处：
+当前 **150 个测试文件**，分三处：
 
 | 位置 | 数量 | 内容 |
 |------|------|------|
 | `tests/*.test.ts` | 103 | 按**功能域或故事**组织的测试（图引擎、群队列、IM 渠道、trace、计费、沙箱……），文件名即主题 |
-| `tests/units/*.test.ts` | 45 | 更细的单元级测试（自主层、Harness、Eval、MCP Registry、Supervisor、Swarm 等） |
-| `tests/e2e/*.mjs` | 4 | 真实端到端脚本（不是 vitest 用例，需手工/CI 单独驱动） |
+| `tests/units/*.test.ts` | 47 | 更细的单元级测试（自主层、Harness、Eval、MCP Registry、Supervisor、Swarm 等） |
+| `tests/e2e/*.mjs` | 5 | 真实端到端脚本（不是 vitest 用例，需手工/CI 单独驱动） |
 
 `tests/helpers/` 只放跨测试共享的辅助模块。
 
 **两个测试入口，别混用**：
 
-- `make test` = `vitest run`（全量，148 个文件）——**重构前/后必跑**
+- `make test` = `vitest run`（全量，150 个文件）——**重构前/后必跑**
 - `make test-smoke` = 10 个文件的固定清单（< 60s），**这是 CI 的 pull-request 门禁**，见 `Makefile` 的 `test-smoke` 目标；清单是写死的，**新增核心能力（trace / validation / eval 等）须同步加进这个清单**
 
 **约束**：
 - 修改渠道前缀（`shared/channel-prefixes.ts`）、`src/im-command-utils.ts`、任一 IM 通道文件前，必须先跑 `make test`
 - 新增 IM 渠道时**唯一必须改的常量是 `shared/channel-prefixes.ts` 的 `CHANNEL_PREFIXES`**（不是测试文件——历史文档里提到的 `ALL_IM_CHANNELS` 及其所在测试文件都已不存在；也不是 `src/channel-prefixes.ts`——那是构建产物）。改完跑 `make sync-types`
-- **基线是全绿的**：2026-09-24 起 `make test` 的 148 文件 / 1725 用例全部通过（约 1710 passed / 14 skipped），**任何失败都当真**，都要追。历史上曾有两个固定失败（`tests/units/super-agent-team-trace.test.ts` 与 `tests/units/workflows.test.ts` 硬编码断言 `schema_version === '61'`），已于 2026-09-24 修复——现在它们 import `src/db.ts` 导出的 `SCHEMA_VERSION` 再比对，不会再因版本号推进而过期。若你看到旧文档说"这 2 个失败可忽略"，那是过期信息
+- **基线是全绿的**：2026-09-24 起 `make test` 的全部用例通过——当前 150 文件 / 1734 用例，跑出来是 **1719 passed / 14 skipped**（另加下方那条已知抖动），**任何失败都当真**，都要追。历史上曾有两个固定失败（`tests/units/super-agent-team-trace.test.ts` 与 `tests/units/workflows.test.ts` 硬编码断言 `schema_version === '61'`），已于 2026-09-24 修复——现在它们 import `src/db.ts` 导出的 `SCHEMA_VERSION` 再比对，不会再因版本号推进而过期。若你看到旧文档说"这 2 个失败可忽略"，那是过期信息
 - **唯一已知抖动**：全量跑时 `tests/feishu-card.test.ts` 偶发 1 个 `Test timed out in 5000ms`，是整机高负载下 5s 超时的抖动而非回归。判别：单独重跑该文件，通过即放过
 - 在 worktree 里跑测试前先软链 `node_modules`（根目录 + `web/` + `container/agent-runner/` 三处），否则会有若干测试因 `Cannot find package` 收集失败——那是环境问题不是代码问题
 
