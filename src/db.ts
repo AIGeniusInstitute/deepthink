@@ -12525,6 +12525,30 @@ export function migrateToolGovernanceV60(): void {
   }
 }
 
+/**
+ * Agent 测试工作区名字迁移：去掉历史遗留的 "测试: " 前缀（现直接用 agent 名）。
+ *
+ * 只改显示名（registered_groups.name / chats.name），**不动 jid 与 folder**：改 jid
+ * 会牵连 messages→chats 外键（PRAGMA foreign_keys 已开启）与十余张引用该 jid/folder
+ * 的表，收益远小于风险。
+ * 幂等：名字已无前缀时 SELECT 不命中任何行。调用方需在任何内存 groups 映射构建之前调用。
+ */
+export function migrateAgentTestWorkspaceNames(): number {
+  const PREFIX = '测试: ';
+  const rows = db
+    .prepare(
+      `SELECT jid, name FROM registered_groups
+       WHERE jid LIKE 'web:agent-test-%' AND name LIKE ?`,
+    )
+    .all(`${PREFIX}%`) as Array<{ jid: string; name: string }>;
+  for (const { jid, name } of rows) {
+    const cleaned = name.slice(PREFIX.length);
+    db.prepare('UPDATE registered_groups SET name = ? WHERE jid = ?').run(cleaned, jid);
+    db.prepare('UPDATE chats SET name = ? WHERE jid = ?').run(cleaned, jid);
+  }
+  return rows.length;
+}
+
 export interface ToolCallAuditRow {
   id: string;
   user_id: string;

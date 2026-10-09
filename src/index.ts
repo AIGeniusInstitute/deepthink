@@ -108,6 +108,7 @@ import {
   getKnowledgeBase,
   getLoopRun,
   listLoopIterations,
+  migrateAgentTestWorkspaceNames,
 } from './db.js';
 // feishu.js deprecated exports are no longer needed; imManager handles all connections
 import { imManager } from './im-manager.js';
@@ -3019,6 +3020,16 @@ function loadState(): void {
       );
       saveState();
     }
+  }
+
+  // 必须在 registeredGroups 构建之前：迁移只改 DB 里的显示名
+  try {
+    const renamed = migrateAgentTestWorkspaceNames();
+    if (renamed > 0) {
+      logger.info({ renamed }, 'Dropped "测试: " prefix from agent test-workspace names');
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Agent test-workspace name migration failed (non-fatal)');
   }
 
   sessions = getAllSessions();

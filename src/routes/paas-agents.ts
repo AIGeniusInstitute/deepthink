@@ -824,8 +824,9 @@ paasAgentsRoute.post('/:id/optimize/apply', async (c) => {
 });
 
 // POST /api/paas/agents/:id/test-chat
-// 为该 Agent 创建/复用确定性测试 group（jid=web:agent-test-{agentId}），
-// 绑定 agent_def_id，返回 { jid, folder, name }，前端跳转 /chat/{folder} 即可对话。
+// 为该 Agent 创建/复用确定性工作区（jid=web:agent-{agentId}），
+// 绑定 agent_def_id，返回 { jid, folder, name }，前端跳转 /chat/agent/{agentId} 即可对话。
+// 已存在历史工作区（web:agent-test-{agentId}）时复用它，不新建。
 paasAgentsRoute.post('/:id/test-chat', (c) => {
   const user = c.get('user');
   const agentId = c.req.param('id');
@@ -837,12 +838,18 @@ paasAgentsRoute.post('/:id/test-chat', (c) => {
     return c.json({ error: 'Agent is disabled, enable it first' }, 400);
   }
 
-  const jid = `web:agent-test-${agentId}`;
-  const folder = `agent-test-${agentId}`;
-  const name = `测试: ${def.name}`;
+  const jid = `web:agent-${agentId}`;
+  // 改名前的历史工作区：jid 仍是 web:agent-test-{id}、folder 仍是 agent-test-{id}
+  // （jid/folder 不做存量迁移，理由见 docs/issues/2026-10-09-...§6.4）。
+  // 必须回落到它，否则点"测试对话"会给同一 Agent 另起一间空工作区，
+  // 用户在该 Agent 下的历史会话就再也看不到了。
+  const legacyJid = `web:agent-test-${agentId}`;
+  const folder = `agent-${agentId}`;
+  const name = def.name;
   const now = new Date().toISOString();
 
-  const existing = getRegisteredGroup(jid);
+  const existingJid = getRegisteredGroup(jid) ? jid : legacyJid;
+  const existing = getRegisteredGroup(existingJid);
   if (existing) {
     if (existing.agentDefId !== agentId || existing.name !== name) {
       const updated: RegisteredGroup = {
@@ -850,12 +857,12 @@ paasAgentsRoute.post('/:id/test-chat', (c) => {
         name,
         agentDefId: agentId,
       };
-      setRegisteredGroup(jid, updated);
-      updateChatName(jid, name);
+      setRegisteredGroup(existingJid, updated);
+      updateChatName(existingJid, name);
       const deps = getWebDeps();
-      if (deps) deps.getRegisteredGroups()[jid] = updated;
+      if (deps) deps.getRegisteredGroups()[existingJid] = updated;
     }
-    return c.json({ jid, folder: existing.folder, name });
+    return c.json({ jid: existingJid, folder: existing.folder, name });
   }
 
   const isAdmin = user.role === 'admin';

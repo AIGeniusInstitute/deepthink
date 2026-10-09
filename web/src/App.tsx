@@ -45,6 +45,7 @@ const BillingPage = lazy(() => import('./pages/BillingPage'));
 const StaffEmployeesPage = lazy(() => import('./pages/StaffEmployeesPage').then(m => ({ default: m.StaffEmployeesPage })));
 const StaffTeamsPage = lazy(() => import('./pages/StaffTeamsPage').then(m => ({ default: m.StaffTeamsPage })));
 const StaffTeamDetailPage = lazy(() => import('./pages/StaffTeamDetailPage').then(m => ({ default: m.StaffTeamDetailPage })));
+const AgentDetailPage = lazy(() => import('./pages/AgentDetailPage').then(m => ({ default: m.AgentDetailPage })));
 const DiskPage = lazy(() => import('./pages/DiskPage').then(m => ({ default: m.DiskPage })));
 const AgentGroupsListPage = lazy(() => import('./pages/AgentGroupsListPage').then(m => ({ default: m.AgentGroupsListPage })));
 const AgentGroupChatPage = lazy(() => import('./pages/AgentGroupChatPage').then(m => ({ default: m.AgentGroupChatPage })));
@@ -87,6 +88,8 @@ export function App() {
             </AuthGuard>
           }
         >
+          {/* /chat/agent/:agentId 是 /chat/:groupFolder? 的语义化别名，folder 即 agent-{id} */}
+          <Route path="/chat/agent/:agentId" element={<Suspense fallback={<PageLoader />}><ChatPage /></Suspense>} />
           <Route path="/chat/:groupFolder?" element={<Suspense fallback={<PageLoader />}><ChatPage /></Suspense>} />
           <Route path="/disk" element={<Suspense fallback={<PageLoader />}><DiskPage /></Suspense>} />
           <Route path="/agent-groups" element={<Suspense fallback={<PageLoader />}><AgentGroupsListPage /></Suspense>} />
@@ -114,6 +117,7 @@ export function App() {
           <Route path="/plugins" element={<PluginsPage />} />
           <Route path="/agent-definitions" element={<AgentDefinitionsPage />} />
           <Route path="/agents" element={<AgentStudioPage />} />
+          <Route path="/agents/:id" element={<Suspense fallback={<PageLoader />}><AgentDetailPage /></Suspense>} />
           <Route path="/knowledge-bases" element={<KnowledgeBasesPage />} />
           <Route path="/marketplace" element={<MarketplacePage />} />
           <Route path="/sandbox" element={<Suspense fallback={<PageLoader />}><SandboxPage /></Suspense>} />

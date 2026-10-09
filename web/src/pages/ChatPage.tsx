@@ -15,7 +15,7 @@ import { useClearWorkspace } from '../hooks/useClearWorkspace';
 import { type GroupEntry, compareByLastActivity, groupByDate } from '../utils/group-utils';
 
 export function ChatPage() {
-  const { groupFolder } = useParams<{ groupFolder?: string }>();
+  const { groupFolder: routeFolder, agentId: routeAgentId } = useParams<{ groupFolder?: string; agentId?: string }>();
   const navigate = useNavigate();
   const { groups, currentGroup, selectGroup, loadGroups } = useChatStore();
   const { clearState, clearLoading, openClear, closeClear, handleClearConfirm } = useClearWorkspace();
@@ -23,6 +23,21 @@ export function ChatPage() {
   const user = useAuthStore((s) => s.user);
   const appearance = useAuthStore((s) => s.appearance);
   const userInitial = (user?.display_name || user?.username || '?')[0].toUpperCase();
+
+  // /chat/agent/:agentId 是 /chat/:groupFolder? 的语义化别名。工作区 folder 可能是
+  // agent-{id}（新工作区）或 agent-test-{id}（改名前的历史工作区），所以按 jid 反查
+  // 真实 folder，而不是直接拼 `agent-{id}`；查不到时回落到新约定名。
+  // 历史 URL /chat/agent-test-{id} 仍走 routeFolder 分支，folder 未变，天然可用。
+  const agentFolder = useMemo(() => {
+    if (!routeAgentId) return undefined;
+    return (
+      groups[`web:agent-${routeAgentId}`]?.folder ??
+      groups[`web:agent-test-${routeAgentId}`]?.folder ??
+      `agent-${routeAgentId}`
+    );
+  }, [routeAgentId, groups]);
+
+  const groupFolder = routeAgentId ? agentFolder : routeFolder;
 
   const routeGroupJid = useMemo(() => {
     if (!groupFolder) return null;
