@@ -399,5 +399,9 @@ const memoryDir = path.join(DATA_DIR, 'memory', memoryFolder);
 
 **推论（明确的反面教材）**：如果有人为了"消除不对称"，把 `removeFlowArtifacts` 改成对非主群组也去解析属主目录，那么删除任意一个成员工作区都会清空属主的 home 记忆——这是数据丢失级别的回归。真要动这里，必须先把"memory 属于谁"这件事想清楚。
 
+**同一事实在"重命名"语境下**的表述（与删除相反，容易被混为一谈）：若将来要做 folder 重命名，`data/memory/{folder}` 只能在该工作区 `is_home` 时才跟着改名；非主群组**不要动**（那里没有有意义的记忆），且**永远不要**去改名 `data/memory/{属主主容器}`。换个说法：删除路径现在的行为是对的、不用改；重命名路径不存在、暂时不用写——但两件事的"正确做法"不一样，别互相套用。
+
+**已核查：当前代码库没有任何"重命名 folder"的能力**，所以上面那段是预防性说明而非待修缺陷——`src/` 下没有 `renameFolder` 之类的函数，也没有任何路由会改写 `registered_groups.folder`；唯一会批量改 agent 工作区的是启动迁移 `migrateAgentTestWorkspaceNames`（`src/db.ts:12540`），它只 `UPDATE ... SET name = ?`（`registered_groups` 与 `chats` 两处），**不碰 folder、不做任何文件系统操作**。
+
 **顺带记录一条本次未深入的线索**（属另一类问题，不是清理问题，未验证到用户可见症状即止）：`src/routes/memory.ts` 的 Web 记忆接口是**基于路径**的（`MEMORY_DATA_DIR = data/memory`，按调用方给的路径做归属校验），并不把「群组」解析成「它实际生效的 memory 目录」。因此对非主群组，Web 端浏览/写入的 `data/memory/{folder}` 与容器实际挂载的 `data/memory/{属主主容器}` 可能不是同一个目录。这属于 memory 功能自身的一致性问题，需要单独调查（至少要确认 UI 上是否真的能选到非主群组、读出来的是什么），**不要**顺手改，也不要和本 issue 的清理路径混在一起修。
 
