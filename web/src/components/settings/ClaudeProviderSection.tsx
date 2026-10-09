@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ExternalLink,
   Loader2,
 } from 'lucide-react';
 
@@ -44,41 +43,6 @@ export function ClaudeProviderSection({ setNotice, setError }: ClaudeProviderSec
 
   // 健康轮询标记
   const healthTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Claude 服务状态
-  const [claudeStatus, setClaudeStatus] = useState<{
-    indicator: string;
-    components: { name: string; status: string }[];
-  } | null>(null);
-
-  // ─── Claude 服务状态轮询 ───────────────────────────────────────
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const [statusRes, compRes] = await Promise.all([
-          fetch('https://status.claude.com/api/v2/status.json'),
-          fetch('https://status.claude.com/api/v2/components.json'),
-        ]);
-        if (!statusRes.ok || !compRes.ok) return;
-        const statusData = await statusRes.json() as { status?: { indicator?: string } };
-        const compData = await compRes.json() as { components?: Array<{ name: string; status: string }> };
-        const keyComponents = (compData.components || [])
-          .filter((c) =>
-            ['Claude API (api.anthropic.com)', 'claude.ai', 'Claude Code'].includes(c.name),
-          )
-          .map((c) => ({ name: c.name, status: c.status }));
-        setClaudeStatus({
-          indicator: statusData.status?.indicator || 'none',
-          components: keyComponents,
-        });
-      } catch {
-        // 静默忽略 — 状态信息非关键
-      }
-    };
-    fetchStatus();
-    const timer = setInterval(fetchStatus, 5 * 60 * 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   // ─── 加载提供商列表 ──────────────────────────────────────────
   const loadProviders = useCallback(async () => {
@@ -264,51 +228,6 @@ export function ClaudeProviderSection({ setNotice, setError }: ClaudeProviderSec
         deletingId={deletingId}
         disabled={busy}
       />
-
-      {/* Anthropic 服务状态 */}
-      {claudeStatus && (
-        <div className="rounded-xl border border-border px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-foreground font-medium">Anthropic 服务状态</span>
-              <span className="text-xs text-muted-foreground">
-                {claudeStatus.indicator === 'none'
-                  ? '正常运行'
-                  : claudeStatus.indicator === 'minor'
-                    ? '部分降级'
-                    : '服务中断'}
-              </span>
-            </div>
-            <a
-              href="https://status.claude.com"
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-muted-foreground hover:text-teal-600 flex items-center gap-1"
-            >
-              详情
-              <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-          {claudeStatus.components.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              {claudeStatus.components.map((comp) => (
-                <span key={comp.name} className="inline-flex items-center gap-1.5">
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      comp.status === 'operational'
-                        ? 'bg-emerald-400'
-                        : comp.status === 'degraded_performance'
-                          ? 'bg-amber-400'
-                          : 'bg-red-400'
-                    }`}
-                  />
-                  {comp.name}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* 负载均衡设置（启用 >= 2 个提供商时显示） */}
       {enabledCount >= 2 && (
