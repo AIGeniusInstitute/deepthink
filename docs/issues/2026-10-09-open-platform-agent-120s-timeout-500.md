@@ -247,6 +247,10 @@ grep -n "Agent output:" logs/deepthink-9999.log | head
 一个会写文件的 Agent 就可能把产物写进平台自己的源码树。本次按"Surgical Changes"没有顺手改，
 但它应当作为一个独立 issue 处理（候选项：指向该 Agent 的工作区 `agent-{agentId}`，与 web 路径对齐）。
 
+这不是推测——本次两次验证运行里，Agent 都按 `./papers/...` 落盘（写到验证进程的 cwd 下）。
+验证时特意把 cwd 换成 `/tmp/dt-verify/cwd`，所以仓库当时是干净的（`git status` 无输出）；
+换成生产实例的 cwd（仓库根目录），同样一次调用就会在仓库里生成 `/Users/edy/deepthink/papers/`。
+
 ---
 
 ## 验证记录
@@ -257,7 +261,17 @@ grep -n "Agent output:" logs/deepthink-9999.log | head
 | 对照（改前） | HTTP 短任务 | 200 | ✅ `HTTP:200 total:7.041031s` |
 | 回归（改后） | `runAgent()` 短任务 | ok | ✅ `{"ok":true,"elapsedMs":3751,"textLen":2}` |
 | 超时映射（改后） | `CONTAINER_TIMEOUT=60000` + 长任务 | 504 + 带秒数 | ✅ `{"ok":false,"status":504,"message":"Agent execution timed out after 62s"}` |
-| 长任务端到端（改后） | 默认 `containerTimeout`(30min) + 长任务 | 跑完返回文本 | ⏳ 见下方补记 |
+| 长任务 1（改后） | `runAgent()` + 原 prompt，默认 30min 上限 | 跑完返回 | ✅ `{"ok":true,"elapsedMs":168342,"textLen":2095}`（168s **>** 120s，旧代码必挂） |
+| HTTP 端到端（改后） | 原样重放用户那条 curl（真实 9999 实例） | 200 + 正文 | ✅ **592s** 后返回 `chat.completion` 成功载荷（663 行论文落盘） |
+| 回归（改后，实例恢复） | 实例重启后短任务 | 200 | ✅ `HTTP:200 total:4.117462s` |
 
-> 验证方式：数据目录整体复制到 `/tmp/dt-verify/data` 后隔离运行（避免写生产库的计费记录），
-> 直接调用 `runAgent()`（绕开 HTTP 层噪声），从独立 cwd 启动。
+> 验证方式：先做进程内验证——数据目录整体复制到 `/tmp/dt-verify/data` 隔离运行
+> （避免写生产库的计费记录），**直接调用 `runAgent()`** 绕开 HTTP 层噪声。
+> 再做 HTTP 端到端——`make stop-prod PORT=9999` 后用修复版 `dist/` 从独立 cwd 重启同端口同数据，
+> 原样重放用户那条 curl，最后 `make start-prod PORT=9999` 恢复 watchdog 托管。
+> 备注：HTTP 那次的 `%{http_code}` 行被 `head -c` 截断，但响应体是 `chat.completion`
+> 成功载荷——错误分支只会产出 `{"error":{...}}`，故 200 由构造保证。
+
+> 附带证据（见下方遗留风险）：两次运行中 Agent 都把论文产物写到了 **`<cwd>/papers/`**
+> （`/private/tmp/dt-verify/cwd/papers/…_paper.md`，663 行 / 88 处 TODO）。
+> Agent 写文件的基准就是进程 cwd，而生产实例的 cwd 是仓库根目录。
