@@ -7,7 +7,11 @@
  * HTTP SDK 调用。
  */
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { buildClaudeEnvLines, getClaudeProviderConfig } from '../runtime-config.js';
+import {
+  buildClaudeEnvLines,
+  getClaudeProviderConfig,
+  getSystemSettings,
+} from '../runtime-config.js';
 import {
   getAgentDefinitionById,
   getUserById,
@@ -19,8 +23,17 @@ import { loadUserMcpServers } from '../mcp-utils.js';
 import { logger } from '../logger.js';
 import { billOpenPlatformUsage } from './billing.js';
 
-const DEFAULT_TIMEOUT_MS = 120_000;
-const STREAM_TIMEOUT_MS = 300_000;
+/**
+ * Agent 单次运行的时长上限。用平台统一的 `containerTimeout`（默认 30 分钟，
+ * 设置页 / `CONTAINER_TIMEOUT` 可调），与容器 / 宿主机路径同一把尺子。
+ *
+ * 这里曾硬编码 120s（同步）/ 300s（流式），但一次 Agent 运行的耗时由任务决定
+ * 而非 HTTP 层：本平台同一个 Agent 在 web 路径下写完一篇 44KB 论文要 ~15 分钟，
+ * 于是走 API 的长任务 100% 被 AbortController 掐断。
+ */
+function agentTimeoutMs(): number {
+  return getSystemSettings().containerTimeout;
+}
 
 /** 把 Agent Studio 的 name 转成 SDK 子 Agent 合法 key（与 agent-runner 同构）。 */
 function sanitizeAgentName(name: string): string {
@@ -207,7 +220,9 @@ export async function runAgent(
     err.status = resolved.status;
     throw err;
   }
-  const { options, abortController, timer } = buildQueryOptions(resolved.agent, DEFAULT_TIMEOUT_MS);
+  const timeoutMs = agentTimeoutMs();
+  const { options, abortController, timer } = buildQueryOptions(resolved.agent, timeoutMs);
+  const startedAt = Date.now();
 
   let result = '';
   try {
@@ -220,8 +235,20 @@ export async function runAgent(
     }
     return { text: result.trim() };
   } catch (err) {
-    logger.warn({ agentId, err: (err as Error).message?.slice(0, 200) }, 'runAgent failed');
-    const e: any = new Error('Agent execution failed');
+    const upstream = (err as Error)?.message || String(err);
+    const elapsedMs = Date.now() - startedAt;
+    // abortController 只有本函数的超时定时器会触发（finally 里的 abort 在
+    // return/throw 之后才执行），所以信号已 abort ⇒ 就是超时，不是上游故障。
+    if (abortController.signal.aborted) {
+      logger.warn({ agentId, timeoutMs, elapsedMs }, 'runAgent timed out');
+      const e: any = new Error(`Agent execution timed out after ${Math.round(elapsedMs / 1000)}s`);
+      e.status = 504;
+      throw e;
+    }
+    logger.warn({ agentId, elapsedMs, err: upstream.slice(0, 200) }, 'runAgent failed');
+    // 保留上游原因：原实现把它换成通用的 "Agent execution failed"，日志里
+    // 只剩一句无信息量的话，排查必须重新复现（见 docs/issues/2026-10-09-...）。
+    const e: any = new Error(`Agent execution failed: ${upstream}`.slice(0, 300));
     e.status = 500;
     throw e;
   } finally {
@@ -245,7 +272,9 @@ export async function* streamAgent(
     err.status = resolved.status;
     throw err;
   }
-  const { options, abortController, timer } = buildQueryOptions(resolved.agent, STREAM_TIMEOUT_MS);
+  const timeoutMs = agentTimeoutMs();
+  const { options, abortController, timer } = buildQueryOptions(resolved.agent, timeoutMs);
+  const startedAt = Date.now();
 
   const id = `chatcmpl-${Date.now()}`;
   const created = Math.floor(Date.now() / 1000);
@@ -288,9 +317,20 @@ export async function* streamAgent(
       yield emit({}, 'stop');
     }
   } catch (err) {
-    logger.warn({ agentId, err: (err as Error).message?.slice(0, 200) }, 'streamAgent failed');
+    const upstream = (err as Error)?.message || String(err);
+    const elapsedMs = Date.now() - startedAt;
+    const timedOut = abortController.signal.aborted;
+    logger.warn(
+      { agentId, elapsedMs, ...(timedOut ? { timeoutMs } : { err: upstream.slice(0, 200) }) },
+      timedOut ? 'streamAgent timed out' : 'streamAgent failed',
+    );
     yield JSON.stringify({
-      error: { message: 'Agent execution failed', type: 'agent_error' },
+      error: {
+        message: timedOut
+          ? `Agent execution timed out after ${Math.round(elapsedMs / 1000)}s`
+          : `Agent execution failed: ${upstream}`.slice(0, 300),
+        type: 'agent_error',
+      },
     });
   } finally {
     clearTimeout(timer);
