@@ -284,16 +284,20 @@ web:agent-test-54de5c67-…| agent-test-54de5c67-…| AI 大模型智能体论�
 
 最初方案是"启动时把 `agent-test-*` 整体改名成 `agent-*`"。查证后放弃，依据：
 
-- 库里带该工作区 jid/folder 列的表有 **23 张**（扫描 `src/db.ts` 全部建表语句，取列名含
-  `jid` / `folder` 的列）：
+- 库里带该工作区 jid/folder 列的表有 **25 张**。其中 23 张按列名就能扫出来（扫描
+  `src/db.ts` 全部建表语句，取列名含 `jid` / `folder` 的列）：
   `chats`、`messages`、`scheduled_tasks`、`loop_runs`、`chat_trace_nodes`、`graph_runs`、
   `graph_node_run_locks`、`team_builds`、`trace_tool_calls`、`supervisor_sessions`、`sessions`、
   `registered_groups`、`im_context_bindings`、`group_members`、`user_pinned_groups`、`agents`、
   `usage_records`、`workflow_builds`、`trace_steps`、`collaborations`、`workspace_artifacts`、
   `file_trash`、`file_versions`。
-  ⚠️ 只按 `chat_jid` / `group_folder` 两个常见列名搜会漏 3 张：`im_context_bindings`
-  用的是 `source_jid` + `workspace_jid`，`graph_node_run_locks` 用的是 `workspace_folder`，
-  而 `agents` 还另有 `last_im_jid` / `spawned_from_jid` 两个 jid 列；
+  剩下的 2 张**列名里没有 jid/folder，按名扫必然漏**：`group_seats.group_id` 与
+  `group_messages.group_id` 存的就是 chat jid——见 `src/agent-group/swarm-runner.ts:81`、`:149`
+  的 `seat.group_id !== ctx.chatJid`。
+  ⚠️ 按列名搜还有两个坑：改用别的列名会漏（`im_context_bindings` 是 `source_jid` +
+  `workspace_jid`，`graph_node_run_locks` 是 `workspace_folder`，`agents` 另有
+  `last_im_jid` / `spawned_from_jid`），而 `file_trash.is_folder` 是 INTEGER 布尔标志、
+  不是目录名（该表靠同表的 `group_folder` 才算进来），所以"23"也不是"23 个 jid 列"；
 - `messages.chat_jid` 对 `chats(jid)` 有**外键**，而 `src/db.ts:291` 执行了
   `PRAGMA foreign_keys = ON`——改 PK 必须 `PRAGMA defer_foreign_keys` 或临时关校验；
 - PostgreSQL 后端本机无法验证，而 `sqlite-compat.ts` 对 `PRAGMA foreign_keys`
@@ -330,11 +334,14 @@ web:agent-test-54de5c67-…| agent-test-54de5c67-…| AI 大模型智能体论�
    几乎一定是受控/非受控混用。
 2. **路由参数变化不会卸载组件**。`/agents/A` → `/agents/B` 走的是同一个 route element，
    所以"换页就等于重新挂载"的直觉在这里是错的，`key` 必须显式加。
-3. **改主键 jid 前先数引用表，且别只按常见的两个列名搜**。这个库里有 23 张表带工作区
+3. **改主键 jid 前先数引用表，且别只按常见的两个列名搜**。这个库里有 25 张表带工作区
    jid/folder 列，且 `messages → chats` 有外键。第一次只搜 `chat_jid` / `group_folder`
-   得到 16 张（还漏了改用 `source_jid` / `workspace_jid` / `workspace_folder` 命名的
-   `im_context_bindings`、`graph_node_run_locks`），数字本身写进了复盘文档——**"大概十几张"
-   这种量级估计不该进文档，要放能复跑的扫描命令**：
+   得到 16 张，写进复盘文档后被另一个会话指出漏项——重扫是 23 张（按名），再加上两张把
+   jid 存在 `group_id` 里的（`group_seats`、`group_messages`）共 **25 张**。
+   **教训有两层**：(a) "大概十几张"这种量级估计不该进文档，要放能复跑的扫描命令；
+   (b) **按列名扫天然会漏**——`group_seats.group_id` 名字里根本没有 jid/folder，
+   扫描命令再完美也看不见，所以数字要写成"按此命令得 N，另有已知例外 M"，
+   而不是一个孤零零的准确数：
 
    ```bash
    node -e "const s=require('fs').readFileSync('src/db.ts','utf8');const re=/CREATE TABLE IF NOT EXISTS\s+(\w+)\s*\(([\s\S]*?)\n\s*\);/g;let m,n=0;while((m=re.exec(s))){const c=[...new Set([...m[2].matchAll(/^\s*(\w*(?:jid|folder)\w*)\s+\w+/gim)].map(x=>x[1]))];if(c.length){n++;console.log(m[1],c.join(','))}}console.log('总数 =',n)"
