@@ -120,4 +120,4 @@ validation / eval）须补进此集」）。
 - [x] Playwright 验收脚本 `scripts/e2e/flm-acceptance.cjs`（TC-02 ~ TC-33，共 32 条）
 - [x] UI 验收执行 —— **32 / 32 通过**，脚本 MD5 `92fc3a0942319db191b7ee16a06094f9` 跑前跑后一致
 - [x] 带截图测试报告 `docs/test_report/feedback-learning-module/`（32 张截图）
-- [ ] 合并 `feature/feedback-learning-module` → `main` 并 push
+- [x] 合并 `feature/feedback-learning-module` → `main` 并 push（`fedd342`，fast-forward，atomgit / github 均已更新）
