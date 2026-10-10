@@ -37,8 +37,9 @@ const {
   toJsonl,
   buildKnowledgeCandidates,
   persistKnowledgeCandidates,
+  learnFromEvaluations,
 } = await import('../../src/flm/flm-learn.js');
-const { listKnowledge, reviewKnowledge, insertEventIfNew } = await import('../../src/flm/flm-db.js');
+const { listKnowledge, reviewKnowledge, insertEventIfNew, allCases } = await import('../../src/flm/flm-db.js');
 
 type EvalRow = Parameters<typeof planCorrection>[0];
 
@@ -270,6 +271,45 @@ describe('FLM F4 · 案例库与检索（AC-F4.3、AC-F4.4、TC-FLM-17）', () =
     // 如实测量并断言：不足 80% 就是没达标，不允许放水。
     expect(rate).toBeGreaterThanOrEqual(0.8);
   });
+
+  test('Top-K 不返回同一目标的拷贝（回归，2026-10-10）', () => {
+    // 案例是评价的派生物：同一目标被反复评价就会沉淀出多条内容相同的案例。
+    // 实盘 137 条案例只对应 12 个不同目标，Top-5 曾返回 5 条一模一样的命中 ——
+    // 那时 5 个坑位被同一条占满，AC-F4.4 的「Top5 命中率」根本无从度量。
+    const goal = '把结算服务灰度发布到生产环境';
+    persistCases(
+      Array.from({ length: 5 }, (_, i) =>
+        buildCaseFromEvaluation(
+          { eval_id: `dupsed-${i}`, task_id: 'T-grayscale', outcome: 'achieved', attribution_stage: null } as never,
+          { goal, summary: `第 ${i} 次沉淀` },
+        ),
+      ),
+    );
+
+    const { hits } = searchCases(goal, 5);
+    // 同一条案例只允许出现一次
+    expect(hits.filter((h) => h.goal === goal).length).toBe(1);
+    // 且它仍应是相似度最高的那条（去重保优，不是随意丢弃）
+    expect(hits[0].goal).toBe(goal);
+    expect(hits[0].similarity).toBeGreaterThan(0.9);
+  });
+
+  test('同一评价重复沉淀不产生重复案例（幂等，回归 2026-10-10）', () => {
+    const goal = '为审计日志新增按操作人检索';
+    const goals = new Map([['T-idem', { goal, summary: '已完成' }]]);
+    const evals = [
+      { eval_id: 'idem-1', task_id: 'T-idem', outcome: 'achieved', attribution_stage: null },
+      { eval_id: 'idem-2', task_id: 'T-idem', outcome: 'failed', attribution_stage: 'execution' },
+    ] as never[];
+
+    const first = learnFromEvaluations(evals, goals);
+    expect(first.cases).toBe(2); // 两条评价各沉淀一条
+    const second = learnFromEvaluations(evals, goals);
+    expect(second.cases).toBe(0); // 原样再跑一次：一条都不新增
+
+    // 库里该目标恰好 2 条（每条评价一条），而不是 4 条
+    expect(allCases().filter((c) => c.goal === goal).length).toBe(2);
+  });
 });
 
 // ── F4.5 策略建议 ────────────────────────────────────────────────────
@@ -352,6 +392,26 @@ describe('FLM F4 · 数据回流（AC-F4.6、TC-FLM-19）', () => {
     expect(a.preferencePairs[0].rejected.outcome).toBe('failed');
   });
 
+  test('偏好对必须带 similarity，且它就是配对判据本身（回归，2026-10-10）', () => {
+    // 控制台的「相似度」列读的就是这个字段。它此前被算出来又丢掉，
+    // 前端拿到 undefined → `p.similarity.toFixed(2)` 抛 TypeError →
+    // 整个控制台 7 个页签一起白屏。契约字段缺失必须在这里拦住。
+    const a = buildDataFeedback(rows, goals);
+    expect(a.preferencePairs.length).toBe(1);
+    const sim = a.preferencePairs[0].similarity;
+    expect(typeof sim).toBe('number');
+    expect(Number.isFinite(sim)).toBe(true);
+    // 能配成对，说明它必然过了 minSimilarity 这道闸 —— 值与判据同源。
+    expect(sim).toBeGreaterThanOrEqual(0.5);
+    expect(sim).toBeLessThanOrEqual(1);
+  });
+
+  test('similarity 反映真实相似度：同目标高、异目标不配对', () => {
+    // 同目标下再加一条失败轨迹，配上来的应当是高相似度那一组。
+    const same = buildDataFeedback(rows, goals);
+    expect(same.preferencePairs[0].similarity).toBeGreaterThan(0.8);
+  });
+
   test('SFT 语料只取成功轨迹', () => {
     const a = buildDataFeedback(rows, goals);
     expect(a.sftSamples.length).toBe(2);
@@ -392,6 +452,47 @@ describe('FLM F4 · 数据回流（AC-F4.6、TC-FLM-19）', () => {
       expect(o.source).toBeDefined();
       expect(o.generatedAt).toBeDefined();
     }
+  });
+
+  test('记忆化不改变相似度数值：与朴素重算逐位一致（回归，2026-10-10）', () => {
+    // 配对循环改成了按目标文本缓存向量与 bigram 集合（原因见 buildDataFeedback 注释）。
+    // 这是纯优化，**输出必须逐位不变** —— 否则"更快"就变成"算错了也没人发现"。
+    // 判据直接照抄原始公式，与实现互为独立来源。
+    const a = buildDataFeedback(rows, goals);
+    const p = a.preferencePairs[0];
+    const pg = goals.get('g1')!.goal;
+    const ng = goals.get('g2')!.goal; // 同目标（成功 vs 失败）
+    const naive = 0.7 * cosine(embed(pg), embed(ng)) + 0.3 * lexicalOverlap(pg, ng);
+    expect(p.similarity).toBe(Number(naive.toFixed(4)));
+  });
+
+  test('大输入下仍是线性量级：不因正×负双重循环退化（性能结构保证）', () => {
+    // 这条钉住的不变量是"每个目标只向量化一次"。
+    //
+    // 原来 80 正 × 80 负 = 6400 次比较，每次现场重算两侧的 embed 与 bigrams
+    // （目标文本最长 300 字 → 每次 600 次 sha1 + 600 次子串切分），量级已是数秒；
+    // 而这是同步计算，会把 Node 事件循环一起冻住（实盘同进程内 1.5ms 的
+    // /api/flm/health 排队 3.5 秒），表现为整站随机超时、连接被重置 —— 排查成本极高。
+    //
+    // 阈值 500ms：修复后实测约 60ms（差 8 倍），不修复约 2 秒（差 4 倍）。
+    // 两个方向都有余量，所以既不依赖机器快慢，也不会把回归放过去。
+    const heavy = 80;
+    const long = '把使用手册，提交push。'.repeat(20).slice(0, 300); // 与 taskGoalText 的 300 字上限对齐
+    const bigRows = [] as unknown[];
+    const bigGoals = new Map<string, { goal: string; summary: string | null }>();
+    for (let i = 0; i < heavy; i += 1) {
+      // 正负同目标（相似度需过 minSimilarity 才配得上对），但每个 i 的目标互不相同，
+      // 这样"不同目标数"= 2 × heavy，记忆化的收益才有意义。
+      bigRows.push({ eval_id: `e_p${i}`, task_id: `tp${i}`, outcome: 'achieved', attribution_stage: null });
+      bigGoals.set(`tp${i}`, { goal: `${long}#${i}`, summary: 'ok' });
+      bigRows.push({ eval_id: `e_n${i}`, task_id: `tn${i}`, outcome: 'failed', attribution_stage: null });
+      bigGoals.set(`tn${i}`, { goal: `${long}#${i}`, summary: 'no' });
+    }
+    const t0 = Date.now();
+    const out = buildDataFeedback(bigRows as never[], bigGoals);
+    const elapsed = Date.now() - t0;
+    expect(out.preferencePairs.length).toBe(heavy);
+    expect(elapsed).toBeLessThan(500);
   });
 });
 

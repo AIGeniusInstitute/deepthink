@@ -521,6 +521,21 @@ export function allCases(): FlmCaseRow[] {
     .all() as FlmCaseRow[];
 }
 
+/**
+ * 已经沉淀过案例的评价 ID 集合 —— 供 `learnFromEvaluations` 做幂等去重。
+ *
+ * 案例是评价的**纯派生物**（同一条评价沉淀两次，得到的两行内容逐字段相同），
+ * 所以重复沉淀没有第二份信息量，只有副作用：案例库无限膨胀、Top-K 被同一目标的
+ * 拷贝占满。AC-F1.1.5 / AC-F2.5 已把「重复操作按更新处理、一次行为不重复计分」
+ * 定为模块级原则，这里沿用同一口径。
+ */
+export function caseEvalIds(): Set<string> {
+  const rows = getDb()
+    .prepare('SELECT DISTINCT eval_id FROM flm_cases WHERE eval_id IS NOT NULL')
+    .all() as Array<{ eval_id: string }>;
+  return new Set(rows.map((r) => r.eval_id));
+}
+
 /** 人工修正归因标签（PRD F6.3 / AC-F6.3）。 */
 export function updateCaseStage(caseId: string, stage: AttributionStage): boolean {
   const res = getDb()

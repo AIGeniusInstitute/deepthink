@@ -1,0 +1,266 @@
+{
+  "generatedAt": "2026-10-10T02:56:05.819Z",
+  "base": "http://127.0.0.1:9999",
+  "total": 32,
+  "passed": 32,
+  "failed": 0,
+  "failedCases": [],
+  "results": [
+    {
+      "tc": "TC-02",
+      "name": "聊天页对助手消息点赞",
+      "passed": true,
+      "details": "点赞后重载页面，按钮仍为已赞态（aria-pressed=true）—— 说明点赞已由服务端持久化、并经 getMyFeedback 回显",
+      "screenshot": "01-TC-02-聊天页对助手消息点赞.png",
+      "at": "2026-10-10T02:53:21.634Z"
+    },
+    {
+      "tc": "TC-03",
+      "name": "点踩 + 原因标签 + 纠错文本提交",
+      "passed": true,
+      "details": "重载后回显：点踩态=true；原因标签=[\"答非所问\"]（取自预置枚举，不可自由文本）；纠错文本已回显「期望先给结论，再展开依据。」（会作为知识条目候选送审）",
+      "screenshot": "02-TC-03-点踩_原因标签_纠错文本提交.png",
+      "at": "2026-10-10T02:53:30.787Z"
+    },
+    {
+      "tc": "TC-04",
+      "name": "FLM 控制台「反馈流」显示来源/类型/置信度/绑定",
+      "passed": true,
+      "details": "事件表可见，含来源标签与置信度数值（101 行文本）",
+      "screenshot": "03-TC-04-FLM_控制台_反馈流_显示来源_类型_置信度_绑定.png",
+      "at": "2026-10-10T02:53:32.929Z"
+    },
+    {
+      "tc": "TC-05",
+      "name": "事件详情：对齐方式 + 原始记录 + 单任务时间线下钻",
+      "passed": true,
+      "details": "对齐方式（direct=四级主键命中 / fallback=时间内容兜底）可见；任务 msg:om_x100b63ac3742aca0dda71627afdcb3b 时间线已下钻",
+      "screenshot": "04-TC-05-事件详情_对齐方式_原始记录_单任务时间线下钻.png",
+      "at": "2026-10-10T02:53:34.549Z"
+    },
+    {
+      "tc": "TC-06",
+      "name": "控制台触发系统采集",
+      "passed": true,
+      "details": "POST /admin/collect/system → 200；请求体 taskId=\"msg:om_x100b63ac3742aca0dda71627afdcb3b\"（须等于输入框 \"msg:om_x100b63ac3742aca0dda71627afdcb3b\"）=true；返回 derived=1、inserted=0（数字=true）；页面回显「派生 1 条、写入 0 条系统事件」；近期任务列表 1 处可见",
+      "screenshot": "05-TC-06-控制台触发系统采集.png",
+      "at": "2026-10-10T02:53:37.531Z"
+    },
+    {
+      "tc": "TC-07",
+      "name": "采样率调到 0% → 系统事件全部停采；调回 100% 恢复",
+      "passed": true,
+      "details": "采样 0% 时 derived=0（含失败事件一并停采）；100% 时 derived=1",
+      "screenshot": "06-TC-07-采样率调到_0_系统事件全部停采_调回_100_恢复.png",
+      "at": "2026-10-10T02:53:43.148Z"
+    },
+    {
+      "tc": "TC-08",
+      "name": "注册环境观测点",
+      "passed": true,
+      "details": "观测点在列表中可见（名称/路径/期望值）",
+      "screenshot": "07-TC-08-注册环境观测点.png",
+      "at": "2026-10-10T02:53:44.731Z"
+    },
+    {
+      "tc": "TC-09",
+      "name": "提交前后快照 → diff 判定",
+      "passed": true,
+      "details": "diff 结果：判定 met · 达成 1 / 未达成 0 · 事件 evt_7706922e-7096-421b-a059-f8dcef86a67b",
+      "screenshot": "08-TC-09-提交前后快照_diff_判定.png",
+      "at": "2026-10-10T02:53:49.141Z"
+    },
+    {
+      "tc": "TC-11",
+      "name": "脱敏：含手机号/邮箱的原文被替换为掩码",
+      "passed": true,
+      "details": "反馈接口返回 desensitized=true（手机号/邮箱/Token 等规则在归一化时替换为掩码）；事件流中 desensitized=1 的事件可查=true，该事件在「反馈流」列表中可见=true",
+      "screenshot": "09-TC-11-脱敏_含手机号_邮箱的原文被替换为掩码.png",
+      "at": "2026-10-10T02:53:51.316Z"
+    },
+    {
+      "tc": "TC-12",
+      "name": "新增脱敏规则后即时生效（热更新，无需重启）",
+      "passed": true,
+      "details": "规则 UI 新增「工号」→ 规则列表可见=true；创建后立刻提交含 EMP-123456 的反馈，desensitized=true（热更新已生效）；清理后规则列表仍可见=false",
+      "screenshot": "10-TC-12-新增脱敏规则后即时生效_热更新_无需重启_.png",
+      "at": "2026-10-10T02:53:56.195Z"
+    },
+    {
+      "tc": "TC-10",
+      "name": "三类来源事件进入统一事件流（字段齐全）",
+      "passed": true,
+      "details": "按来源分查（不受\"最新 N 条\"窗口影响）：user=200、env=18、system=8 条，三类齐备；字段齐备性在 200 条真实事件上校验（confidence/weight/alignment 类型正确）=true",
+      "screenshot": "11-TC-10-三类来源事件进入统一事件流_字段齐全_.png",
+      "at": "2026-10-10T02:53:58.319Z"
+    },
+    {
+      "tc": "TC-13",
+      "name": "批量评价（从近期任务勾选，非空数组）",
+      "passed": true,
+      "details": "勾选 3 个近期任务（非空数组）批量评价 → 新增 3 条评价（eval_time ≥ 点击时刻），评价表 100 行",
+      "screenshot": "12-TC-13-批量评价_从近期任务勾选_非空数组_.png",
+      "at": "2026-10-10T02:54:01.616Z"
+    },
+    {
+      "tc": "TC-14",
+      "name": "评价详情：归因环节 + 证据片段",
+      "passed": true,
+      "details": "证据面板含「结果依据」「质量维度」「证据链」；首异常步骤与耗时一并显示",
+      "screenshot": "13-TC-14-评价详情_归因环节_证据片段.png",
+      "at": "2026-10-10T02:54:02.709Z"
+    },
+    {
+      "tc": "TC-15",
+      "name": "人工复核队列：双轨不一致项提交复核结论",
+      "passed": true,
+      "details": "双轨不一致项 eval_c06212fa-d615-421b-bcab-c3e154d69362（evaluator=both）已展开并提交复核结论，review_status pending → resolved",
+      "screenshot": "14-TC-15-人工复核队列_双轨不一致项提交复核结论.png",
+      "at": "2026-10-10T02:54:41.180Z"
+    },
+    {
+      "tc": "TC-16",
+      "name": "短期纠偏：生成纠偏动作",
+      "passed": true,
+      "details": "纠偏动作：{\"actionId\":\"act_d05e1021-90f5-44f4-ac8a-345b5ed0eba9\",\"attempted\":2,\"succeeded\":false,\"elapsedMs\":0,\"escalated\":true,\"detail\":\"2 次重试均未成功，转人工介入\"} · 计划：{\"shouldRetry\":true,\"maxRetries\":2,\"backoffM",
+      "screenshot": "15-TC-16-短期纠偏_生成纠偏动作.png",
+      "at": "2026-10-10T02:54:42.762Z"
+    },
+    {
+      "tc": "TC-18",
+      "name": "从归因结论生成策略版本草稿",
+      "passed": true,
+      "details": "学习沉淀新增策略版本 3 个（routing、fewshot、prompt），库中共 67 个，列表渲染 67 个版本，每个带门禁/灰度/回滚操作",
+      "screenshot": "16-TC-18-从归因结论生成策略版本草稿.png",
+      "at": "2026-10-10T02:54:49.765Z"
+    },
+    {
+      "tc": "TC-17",
+      "name": "案例库检索 Top-K",
+      "passed": true,
+      "details": "检索命中 5 条，相似度 62.4/19.3/19.2/17.8/17.7%（降序=true，无 NaN/undefined=true，含样本类型=true，命中目标文本=true，候选去重=5/5）",
+      "screenshot": "17-TC-17-案例库检索_Top-K.png",
+      "at": "2026-10-10T02:54:53.759Z"
+    },
+    {
+      "tc": "TC-20",
+      "name": "纠错反馈生成知识候选 → 审核通过",
+      "passed": true,
+      "details": "知识候选 kn_938201e9-bcab-420a-a1bc-67dd77cb8100 审核通过：按钮已消失=true，接口 status=accepted；面板：accepted 联系 ***PHONE*** 或 ***EMAIL*** 处理 联系 ***PHONE*** 或 ***EMAIL*** 处理 pending 联系 ***PHO",
+      "screenshot": "18-TC-20-纠错反馈生成知识候选_审核通过.png",
+      "at": "2026-10-10T02:55:01.010Z"
+    },
+    {
+      "tc": "TC-19",
+      "name": "数据回流：偏好对 + SFT 样本，可下载 JSONL",
+      "passed": true,
+      "details": "回流面板可见并已滚入截图，偏好对 2 组 / 面板内「相似度」列 1 处（目标文本取自真实用户提问，非 taskId）；已触发下载：flm-preference-pairs.jsonl",
+      "screenshot": "19-TC-19-数据回流_偏好对_SFT_样本_可下载_JSONL.png",
+      "at": "2026-10-10T02:55:01.792Z"
+    },
+    {
+      "tc": "TC-21",
+      "name": "劣化版本过门禁被拦截（不可放量）",
+      "passed": true,
+      "details": "门禁拦截：门禁拦截：6 项核心指标劣化超过 5 阈值（任务成功率、用户满意度、质量均分、纠偏成功率、平均时延、平均成本）；控制台列表显示「门禁 blocked」=true；直接放量被拒=true",
+      "screenshot": "20-TC-21-劣化版本过门禁被拦截_不可放量_.png",
+      "at": "2026-10-10T02:55:03.949Z"
+    },
+    {
+      "tc": "TC-22",
+      "name": "合格版本灰度到 10%",
+      "passed": true,
+      "details": "版本 strat_3da494f6-5553-4b38-9477-00365213aaca 经门禁通过后从控制台按钮灰度：状态=canary 灰度=10%",
+      "screenshot": "21-TC-22-合格版本灰度到_10_.png",
+      "at": "2026-10-10T02:55:08.113Z"
+    },
+    {
+      "tc": "TC-23",
+      "name": "灰度比例 10% → 100% 转为 released",
+      "passed": true,
+      "details": "版本 strat_3da494f6-5553-4b38-9477-00365213aaca 灰度 10% → 100%：状态=released 灰度=100%",
+      "screenshot": "22-TC-23-灰度比例_10_100_转为_released.png",
+      "at": "2026-10-10T02:55:12.263Z"
+    },
+    {
+      "tc": "TC-24",
+      "name": "灰度中版本回滚到上一稳定版本（留痕）",
+      "passed": true,
+      "details": "人工签字=true；最近回滚：strat_f9dd9404-373c-4f2c-b162-9cfb5d842c39 → strat_d4f8819b-9c57-4c07-b18d-908332cf86ce · 回滚 strat_f9dd9404-373c-4f2c-b162-9cfb5d842c39；状态=rolled_back 灰度=0%",
+      "screenshot": "23-TC-24-灰度中版本回滚到上一稳定版本_留痕_.png",
+      "at": "2026-10-10T02:55:18.989Z"
+    },
+    {
+      "tc": "TC-25",
+      "name": "全链路审计时间线可回放",
+      "passed": true,
+      "details": "审计条目覆盖 generate/gate/canary/rollback（含执行者与时间戳）；缺失动作：无",
+      "screenshot": "24-TC-25-全链路审计时间线可回放.png",
+      "at": "2026-10-10T02:55:21.116Z"
+    },
+    {
+      "tc": "TC-26",
+      "name": "总览：核心指标卡片 + 趋势",
+      "passed": true,
+      "details": "五类指标卡片齐备，趋势图可见；工具维度 1 / 智能体维度 1 下钻表已渲染",
+      "screenshot": "25-TC-26-总览_核心指标卡片_趋势.png",
+      "at": "2026-10-10T02:55:23.216Z"
+    },
+    {
+      "tc": "TC-27",
+      "name": "归因视图按环节下钻",
+      "passed": true,
+      "details": "点选环节后下钻到 50 条该环节的失败样本（含首异常步骤与原因）",
+      "screenshot": "26-TC-27-归因视图按环节下钻.png",
+      "at": "2026-10-10T02:55:25.103Z"
+    },
+    {
+      "tc": "TC-28",
+      "name": "案例库修正归因标签",
+      "passed": true,
+      "details": "案例 case_67b50640-eb8c-4d95-b76c-773ef9be8b89 归因已修正为「规划」",
+      "screenshot": "27-TC-28-案例库修正归因标签.png",
+      "at": "2026-10-10T02:55:29.435Z"
+    },
+    {
+      "tc": "TC-29",
+      "name": "策略版本 A/B 对比与放量建议",
+      "passed": true,
+      "details": "A=strat_3da494f6-5553-4b(门禁 candidate 成功率 92) vs B=strat_cb9f6d29-76f7-4f(现场以 BAD_GATE 造出，candidate 成功率 70) → 表格出现「劣化」判定=true、放量建议转为不可放量=true；文本：指标 A B 差值 结论 任务成功率 92 70 -22 劣化 用户满意度 86 60 -26 劣化 质量均分 89 70 -19 劣化 纠偏成功率 74 50 -24 劣化 平均时延 5200 9000 +3800 劣化 平均成本 19000 30000 +11000 劣化 放量建议：不建议放量 · 门禁拦截：6 项核心指标劣化超过 5 阈值（任务成功率、用户满意度、质量均分、纠偏成功率、平均时",
+      "screenshot": "28-TC-29-策略版本_A_B_对比与放量建议.png",
+      "at": "2026-10-10T02:55:35.715Z"
+    },
+    {
+      "tc": "TC-30",
+      "name": "配置告警阈值并触发",
+      "passed": true,
+      "details": "反馈量下限抬到 999999 后巡检产生新告警：feedback_volume_low 最新告警时间 1791600635903 → 1791600939735（按时间戳判，不按总条数 —— 总条数被 limit 截断而饱和）；告警列表渲染内容长度 8738",
+      "screenshot": "29-TC-30-配置告警阈值并触发.png",
+      "at": "2026-10-10T02:55:46.361Z"
+    },
+    {
+      "tc": "TC-31",
+      "name": "关闭 FLM → 控制台显示已降级，不再新增事件",
+      "passed": true,
+      "details": "反馈接口返回 degraded=true；关闭后新增事件 0 条（须为 0，按 created_at ≥ 动作时刻取证，表内共 269 行）；控制台降级横幅 1 处",
+      "screenshot": "30-TC-31-关闭_FLM_控制台显示已降级_不再新增事件.png",
+      "at": "2026-10-10T02:55:54.782Z"
+    },
+    {
+      "tc": "TC-32",
+      "name": "恢复开关后采集自动恢复",
+      "passed": true,
+      "details": "health.enabled=true；反馈接口恢复受理：degraded=false，eventInserted=true（须为 true，证明采集真的回来了）",
+      "screenshot": "31-TC-32-恢复开关后采集自动恢复.png",
+      "at": "2026-10-10T02:55:58.120Z"
+    },
+    {
+      "tc": "TC-33",
+      "name": "列表加载失败时必须显式可见，且不得渲染成「暂无数据」",
+      "passed": true,
+      "details": "拦截 /api/flm/admin/strategies 强制加载失败 → 失败横幅出现=true（须为 true）；策略区文案是否谎称\"库里没有\"=false（须为 false；文案长度 46，非空以排除\"区域消失导致的平凡通过\"；实测「策略列表加载失败（Network error），这不代表库里没有版本 —— 请点上方「重试」」）；放行后点「重试」→ 横幅消失=true 且列表渲染 67 个版本（须 >0）",
+      "screenshot": "32-TC-33-列表加载失败时必须显式可见_且不得渲染成_暂无数据_.png",
+      "at": "2026-10-10T02:56:05.313Z"
+    }
+  ]
+}

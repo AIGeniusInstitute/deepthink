@@ -17,6 +17,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readConfig, type FlmConfig } from './flm-config.js';
 import {
   allCases,
+  caseEvalIds,
   insertAction,
   insertCase,
   insertKnowledge,
@@ -237,14 +238,21 @@ function bigrams(s: string): Set<string> {
   return out;
 }
 
-/** 关键词重叠度：bigram Jaccard。 */
-export function lexicalOverlap(a: string, b: string): number {
-  const A = bigrams(a);
-  const B = bigrams(b);
+/**
+ * bigram 集合的 Jaccard 重叠度。
+ * 与 `lexicalOverlap` 拆开，是为了让批量比较的调用方能**复用已经算好的 bigram 集合**
+ * —— `buildDataFeedback` 要在正×负双重循环里比较同一批目标上千次（见该函数内注释）。
+ */
+function jaccard(A: Set<string>, B: Set<string>): number {
   if (A.size === 0 || B.size === 0) return 0;
   let inter = 0;
   for (const t of A) if (B.has(t)) inter++;
   return inter / (A.size + B.size - inter);
+}
+
+/** 关键词重叠度：bigram Jaccard。 */
+export function lexicalOverlap(a: string, b: string): number {
+  return jaccard(bigrams(a), bigrams(b));
 }
 
 export interface CaseHit {
@@ -306,7 +314,25 @@ export function searchCases(query: string, topK = 5): { indexMode: IndexMode; hi
   });
 
   hits.sort((a, b) => b.similarity - a.similarity);
-  return { indexMode: hasEmbedding ? 'embedding' : 'keyword', hits: hits.slice(0, topK) };
+
+  // Top-K 必须是一组**互不相同的候选**，不能是同一条案例的 N 份拷贝。
+  //
+  // 为什么必须在这里去重：案例是评价的派生物，同一目标被反复评价就会沉淀出多条
+  // 内容完全相同的案例（实盘 137 条案例只对应 12 个不同目标，Top-5 曾返回 5 条同样
+  // 的「把使用手册，提交push」）。AC-F4.4 要求「Top5 命中率 ≥ 80%」，而 5 个坑位被
+  // 同一条占满时，"命中率"根本无从度量 —— 这时的 Top-5 不是命中集合。
+  //
+  // 保留同目标中相似度最高的那条（hits 已按相似度降序，首次出现即为最优）。
+  const seenGoals = new Set<string>();
+  const distinct: CaseHit[] = [];
+  for (const h of hits) {
+    const key = h.goal.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (seenGoals.has(key)) continue;
+    seenGoals.add(key);
+    distinct.push(h);
+    if (distinct.length >= topK) break;
+  }
+  return { indexMode: hasEmbedding ? 'embedding' : 'keyword', hits: distinct };
 }
 
 /** 由一次评价沉淀一条经验案例（AC-F4.3：成功入 positive，失败入 negative）。 */
@@ -449,6 +475,15 @@ export interface PreferencePair {
   goal: string;
   chosen: { taskId: string | null; summary: string; outcome: Outcome };
   rejected: { taskId: string | null; summary: string; outcome: Outcome };
+  /**
+   * 配对用的目标相似度（0–1，`0.7*余弦 + 0.3*词面重合`）。
+   *
+   * 这是"这两条轨迹为什么被配成一对"的唯一依据（须 ≥ minSimilarity），
+   * 控制台的「相似度」列就是展示它。此前算了却没带出去，前端拿到 undefined
+   * 调 `.toFixed()` 直接把整个控制台打白 —— 详见
+   * docs/issues/2026-10-10-flm-learning-tab-crash-blanks-console.md。
+   */
+  similarity: number;
   generatedAt: number;
 }
 
@@ -490,13 +525,45 @@ export function buildDataFeedback(
 
   const preferencePairs: PreferencePair[] = [];
   const usedNeg = new Set<string>();
+
+  // 目标文本 → 向量 / bigram 集合的记忆化。
+  //
+  // `embed` 是 O(文本长度)：目标文本最长 300 字，每字都要 sha1 一次 unigram 与一次
+  // bigram，并按位切出 600 个子串；`bigrams` 同样要切一遍。而下面是**正 × 负的双重
+  // 循环**，原先每次比较都现场重算两侧 —— 同一个目标被向量化上千次。实盘一次
+  // `/admin/data-feedback` 要 3.8 秒，而这段是**同步**计算，会把 Node 的事件循环一起
+  // 冻住：同进程内连 1.5ms 的 `/api/flm/health` 都得排队等 3.5 秒（已实测）。
+  //
+  // 相似度是纯函数，按目标文本记忆化不改变任何数值，只是把调用次数从 O(正×负) 降到
+  // O(不同目标数)。实盘 137 条案例只对应 12 个不同目标，这一步能省掉 99% 的计算。
+  const vecCache = new Map<string, number[]>();
+  const gramCache = new Map<string, Set<string>>();
+  const vecOf = (t: string): number[] => {
+    let v = vecCache.get(t);
+    if (v === undefined) {
+      v = embed(t);
+      vecCache.set(t, v);
+    }
+    return v;
+  };
+  const gramOf = (t: string): Set<string> => {
+    let g = gramCache.get(t);
+    if (g === undefined) {
+      g = bigrams(t);
+      gramCache.set(t, g);
+    }
+    return g;
+  };
+
   for (const p of positive) {
     const pg = goalByTask.get(p.task_id)!.goal;
+    const pv = vecOf(pg);
+    const pGram = gramOf(pg);
     let best: { neg: FlmEvaluationRow; sim: number } | null = null;
     for (const n of negative) {
       if (usedNeg.has(n.eval_id)) continue;
       const ng = goalByTask.get(n.task_id)!.goal;
-      const sim = 0.7 * cosine(embed(pg), embed(ng)) + 0.3 * lexicalOverlap(pg, ng);
+      const sim = 0.7 * cosine(pv, vecOf(ng)) + 0.3 * jaccard(pGram, gramOf(ng));
       if (sim >= minSimilarity && (best == null || sim > best.sim)) best = { neg: n, sim };
     }
     if (!best) continue;
@@ -514,6 +581,8 @@ export function buildDataFeedback(
         summary: goalByTask.get(best.neg.task_id)!.summary ?? '',
         outcome: best.neg.outcome,
       },
+      // 四舍五入到 4 位，避免把浮点尾巴（0.7000000000000001）抛给前端。
+      similarity: Number(best.sim.toFixed(4)),
       generatedAt: Date.now(),
     });
   }
@@ -617,15 +686,30 @@ export function persistKnowledgeCandidates(candidates: KnowledgeCandidate[]): nu
   return candidates.length;
 }
 
-/** 批量评价 → 案例沉淀的一站式入口（供评价批处理调用）。 */
+/**
+ * 批量评价 → 案例沉淀的一站式入口（供评价批处理调用）。
+ *
+ * **幂等**：已经沉淀过的评价不再重复生成案例。同一条评价沉淀两次得到的两行内容
+ * 逐字段相同 —— 案例是评价的纯派生物，重复沉淀只带来膨胀（实盘 137 条案例仅对应
+ * 12 个不同目标），并让 Top-K 检索被同一目标的拷贝占满。
+ *
+ * 不采用"按 case_id 覆盖"的写法：案例上挂着运营的人工修正（`attribution_stage`
+ * via AC-F6.3）、`verified` 与 `reuse_count`，整行替换会把这些抹掉。
+ *
+ * 已知取舍：若某条评价被重新评价且结论改变，它的旧案例不会被刷新。刷新需要区分
+ * "运营改过的案例"与"纯派生案例"，属于产品决策，不在本次范围内 —— 见
+ * docs/issues/2026-10-10-flm-case-library-duplicates-and-topk.md §6。
+ */
 export function learnFromEvaluations(
   evaluations: FlmEvaluationRow[],
   goalByTask: Map<string, { goal: string; summary: string | null }>,
 ): { cases: number; strategies: string[]; suggestions: number } {
+  const already = caseEvalIds();
   const cases: FlmCaseRow[] = [];
   for (const e of evaluations) {
     const g = goalByTask.get(e.task_id);
     if (!g) continue;
+    if (already.has(e.eval_id)) continue; // 幂等：一次评价只沉淀一次
     cases.push(buildCaseFromEvaluation(e, { goal: g.goal, summary: g.summary }));
   }
   persistCases(cases);

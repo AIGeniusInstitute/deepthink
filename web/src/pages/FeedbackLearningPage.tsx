@@ -36,6 +36,12 @@ const OUTCOME_STYLE: Record<string, string> = {
   failed: 'bg-red-100 text-red-700',
 };
 
+/** 案例样本类型（TC-FLM-17 要求命中项展示正负样本类型）。键与后端 SampleType 对齐。 */
+const SAMPLE_TYPE_STYLE: Record<string, string> = {
+  positive: 'bg-green-100 text-green-700',
+  negative: 'bg-red-100 text-red-700',
+};
+
 const STATUS_STYLE: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-600',
   canary: 'bg-blue-100 text-blue-700',
@@ -112,6 +118,21 @@ function DegradedBanner({ what }: { what: string }) {
   );
 }
 
+function LoadErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div
+      data-testid="flm-load-error"
+      className="flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
+    >
+      <AlertTriangle className="w-4 h-4 shrink-0" />
+      <span className="flex-1">
+        加载失败：{message} —— 下面的列表可能是空的，但**这不代表库里没有数据**。
+      </span>
+      <Button variant="outline" size="sm" onClick={onRetry}>重试</Button>
+    </div>
+  );
+}
+
 function MetricCard({
   label, value, suffix, hint, tone,
 }: { label: string; value: string | number; suffix?: string; hint?: string; tone?: 'good' | 'bad' | 'neutral' }) {
@@ -180,8 +201,10 @@ export function FeedbackLearningPage() {
   const [audit, setAudit] = useState<FlmAudit[]>([]);
   const [alerts, setAlerts] = useState<FlmAlert[]>([]);
   const [query, setQuery] = useState('');
-  const [hits, setHits] = useState<Array<FlmCase & { score: number }>>([]);
+  const [hits, setHits] = useState<flm.CaseHit[]>([]);
   const [indexMode, setIndexMode] = useState('');
+  /** 最近一次 loadTab 的失败原因（成功后清空）。用于把"加载失败"与"确实没有数据"分开。 */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [timelineTask, setTimelineTask] = useState('');
   const [timeline, setTimeline] = useState<TimelineItem[] | null>(null);
   const [events, setEvents] = useState<flm.FlmEvent[]>([]);
@@ -238,6 +261,7 @@ export function FeedbackLearningPage() {
 
   const loadTab = useCallback(async (which: string) => {
     try {
+      setLoadError(null);
       if (which === 'overview') {
         await loadOverview();
         // 三个下钻维度并行拉取：任一个失败不该拖垮整个看板，所以各自兜底为空数组。
@@ -283,7 +307,13 @@ export function FeedbackLearningPage() {
         setObservations((await flm.listObservations()).observations);
       }
     } catch (e) {
-      toast.error(`加载失败：${e instanceof Error ? e.message : String(e)}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      // 失败必须留下**不会消失**的痕迹。原来只弹一个 4 秒 toast，然后让 state 维持空数组 ——
+      // 页面于是渲染「暂无策略版本」这类空态，与"库里真的没有数据"长得一模一样。
+      // 实盘：一次瞬时 /admin/strategies 失败，列表显示"暂无策略版本"，而库里有 53 个版本；
+      // toast 早已消失，只剩一句不实之词。所以把失败写进 state，让它一直显眼。
+      setLoadError(msg);
+      toast.error(`加载失败：${msg}`);
     }
   }, [loadOverview, days, attrStage, eventSource]);
 
@@ -405,9 +435,16 @@ export function FeedbackLearningPage() {
 
   async function doSearch() {
     if (!query.trim()) return;
-    const r = await flm.searchCases(query, 5);
-    setHits(r.hits);
-    setIndexMode(r.indexMode);
+    // 检索失败必须有声音。此前这里没有 catch：请求异常时 `setHits` 不会被调用，
+    // 页面既不报错也不出结果，看上去和"没有命中"一模一样 —— 排查时会被误导到
+    // 检索算法上去（验收脚本就据此误判过一次 TC-FLM-17）。
+    try {
+      const r = await flm.searchCases(query, 5);
+      setHits(r.hits);
+      setIndexMode(r.indexMode);
+    } catch (e) {
+      toast.error(`案例检索失败：${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   async function loadTimeline() {
@@ -482,6 +519,8 @@ export function FeedbackLearningPage() {
       />
 
       {enabled === false && <DegradedBanner what="控制台" />}
+
+      {loadError && <LoadErrorBanner message={loadError} onRetry={() => void loadTab(tab)} />}
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex-wrap h-auto">
@@ -1200,13 +1239,27 @@ export function FeedbackLearningPage() {
                   检索命中 {hits.length} 条 · 索引模式：{indexMode}
                 </div>
                 <div className="flex flex-col gap-2" data-testid="flm-case-hits">
+                  {/* 检索命中的字段名与列表接口不同（见 api/flm.ts 的 CaseHit）：
+                      没有 title / score / case_id。这里曾按列表的形状取值，
+                      结果是标题空白 + 「相似度 NaN%」—— 渲染的字段名必须是接口真实存在的。 */}
                   {hits.map((h) => (
-                    <div key={h.case_id} className="rounded border border-border p-2">
+                    <div key={h.caseId} className="rounded border border-border p-2">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium truncate">{h.title}</span>
-                        <span className="text-xs tabular-nums text-muted-foreground">相似度 {(h.score * 100).toFixed(1)}%</span>
+                        {/* TC-FLM-17 要求命中项「含正负样本类型与相似度」——
+                            样本类型是复用时最关键的区分（positive 可照搬、negative 是避坑）。 */}
+                        <span className="text-sm font-medium truncate" data-testid="flm-case-hit-goal">{h.goal}</span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] ${SAMPLE_TYPE_STYLE[h.sampleType] ?? ''}`}>
+                            {h.sampleType}
+                          </span>
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            相似度 {Number.isFinite(h.similarity) ? (h.similarity * 100).toFixed(1) : '—'}%
+                          </span>
+                        </span>
                       </div>
-                      <div className="text-xs text-muted-foreground truncate">{h.goal}</div>
+                      {h.summary && (
+                        <div className="text-xs text-muted-foreground truncate">{h.summary}</div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1280,7 +1333,13 @@ export function FeedbackLearningPage() {
                               </span>
                               <span className="ml-1 text-[11px] text-muted-foreground">{p.rejected.summary.slice(0, 40)}</span>
                             </td>
-                            <td className="px-2 py-1.5 text-right tabular-nums text-[11px]">{p.similarity.toFixed(2)}</td>
+                            {/* 相似度缺失时显示「—」而不是崩掉：这一格曾经是
+                                `p.similarity.toFixed(2)`，后端没带这个字段，
+                                一行 undefined 就把整个控制台（7 个页签）打成白屏。
+                                单格数据异常不允许升级成整页不可用。 */}
+                            <td className="px-2 py-1.5 text-right tabular-nums text-[11px]">
+                              {Number.isFinite(p.similarity) ? p.similarity.toFixed(2) : '—'}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1534,7 +1593,7 @@ export function FeedbackLearningPage() {
           )}
 
           {strategies.length === 0 ? (
-            <Card><CardContent className="p-4"><Empty text="暂无策略版本 —— 先在「学习沉淀」生成策略建议" /></CardContent></Card>
+            <Card><CardContent className="p-4" data-testid="flm-strategies-empty"><Empty text={loadError ? `策略列表加载失败（${loadError}），这不代表库里没有版本 —— 请点上方「重试」` : '暂无策略版本 —— 先在「学习沉淀」生成策略建议'} /></CardContent></Card>
           ) : (
             <div className="flex flex-col gap-3" data-testid="flm-strategies">
               {strategies.map((s) => (

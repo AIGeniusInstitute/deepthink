@@ -285,8 +285,29 @@ export const collectSystem = (taskId: string) =>
     `${BASE}/admin/collect/system`, { method: 'POST', body: JSON.stringify({ taskId }) },
   );
 
+/**
+ * 案例检索命中。**注意与 `FlmCase` 不是同一个形状**：
+ * 列表接口（`/admin/cases`）返回的是数据库行（snake_case，带 `title`/`score`），
+ * 检索接口（`/admin/cases/search`）返回的是 `searchCases()` 计算的 `CaseHit`
+ * （camelCase，带 `similarity`/`cosineScore`/`lexicalScore`，**没有 `title`**）。
+ * 两者混用会让页面上出现「相似度 NaN%」和空标题 —— 详见
+ * docs/issues/2026-10-10-flm-learning-tab-crash-blanks-console.md。
+ */
+export interface CaseHit {
+  caseId: string;
+  taskId: string | null;
+  sampleType: string;
+  goal: string;
+  summary: string | null;
+  attributionStage: AttributionStage | null;
+  similarity: number;
+  cosineScore: number;
+  lexicalScore: number;
+  reuseCount: number;
+}
+
 export const searchCases = (q: string, topK = 5) =>
-  apiFetch<{ indexMode: string; hits: Array<FlmCase & { score: number }>; total: number }>(
+  apiFetch<{ indexMode: string; hits: CaseHit[]; total: number }>(
     `${BASE}/admin/cases/search?q=${encodeURIComponent(q)}&topK=${topK}`,
   );
 
@@ -317,11 +338,13 @@ export interface PreferencePair {
   generatedAt: number;
 }
 
+/** 字段与后端 `SftSample`（src/flm/flm-learn.ts）逐一对齐，别再凭印象写。 */
 export interface SftSample {
+  sampleId: string;
   goal: string;
-  completion: string;
+  response: string;
+  source: string;
   outcome: string;
-  taskId: string | null;
   generatedAt: number;
 }
 

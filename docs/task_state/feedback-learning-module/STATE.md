@@ -70,12 +70,15 @@ turn:{turn_id}   >  sess:{session_id}  >  msg:{message_id}  >  chat:{jid}:{hourB
 
 | 文件 | 用例数 | 覆盖 |
 |---|---|---|
-| `tests/units/flm-normalize.test.ts` | 29 | F2 归一化与冲突消解 |
-| `tests/units/flm-evaluate.test.ts` | 40 | F3 三层评价引擎（含千节点性能结构保证） |
-| `tests/units/flm-learn.test.ts` | 44 | F4 学习（含 AC-F4.4 Top-5 命中率 ≥80% 实测断言） |
-| `tests/units/flm-closedloop.test.ts` | 39 | F5 门禁 / 灰度 / 回滚 / 审计 |
-| `tests/units/flm-collect.test.ts` | 51 | F0 降级 + F1 采集 + F2/F3 端到端 + F6 聚合 |
-| **合计** | **203** | |
+| `tests/units/flm-normalize.test.ts` | 31 | F2 归一化与冲突消解 |
+| `tests/units/flm-evaluate.test.ts` | 43 | F3 三层评价引擎（含千节点性能结构保证） |
+| `tests/units/flm-learn.test.ts` | 50 | F4 学习（含 AC-F4.4 Top-5 命中率 ≥80% 实测断言、记忆化逐位一致回归） |
+| `tests/units/flm-closedloop.test.ts` | 40 | F5 门禁 / 灰度 / 回滚 / 审计 |
+| `tests/units/flm-collect.test.ts` | 55 | F0 降级 + F1 采集 + F2/F3 端到端 + F6 聚合 |
+| `tests/units/flm-console-routes.test.ts` | 14 | 控制台聚合接口 |
+| `tests/units/flm-routes.test.ts` | 13 | 登录层路由 |
+| `tests/units/flm-strategy-routes.test.ts` | 7 | 策略路由 |
+| **合计** | **253** | 8 个文件，全绿 |
 
 已加入 `Makefile` 的 `test-smoke` CI 门禁清单（Makefile 明确要求「新增核心能力（trace /
 validation / eval）须补进此集」）。
@@ -90,10 +93,31 @@ validation / eval）须补进此集」）。
 | 4 | 单次纠偏成本估算使闸门恒关 | 按整任务耗时估，任何 ratio=2 的任务立刻超限 | 改用 `durationMs / stepCount` 估单步成本 |
 | 5 | 自动化测试中 SHA 采样不可复现 | 曾用 `Math.random()` | 改 `sha1(taskId) % 100`，同 key 结果稳定 |
 
+## 四之二、验收阶段发现并修复的产品缺陷（8 起，7 份 issue 文档）
+
+这 8 起**全部在单测全绿、接口全部 200 的情况下存在**：单测覆盖后端纯函数产出，缺陷长在前端消费、上下游契约、事件循环、操作可重复性这四处。
+
+| # | 缺陷 | 根因类别 | Issue 文档 |
+|---|---|---|---|
+| 1 | 反馈去重把不同消息并成一条 | 去重键选错 | `docs/issues/2026-10-10-flm-feedback-dedup-collapses-distinct-messages.md` |
+| 2 | 评价从不落库 | `insertEvaluation` 零调用点 | `docs/issues/2026-10-10-flm-evaluations-never-persisted.md` |
+| 3 | 工具调用失败信号全链路无人识别 | 生产者/消费者状态取值集合交集为空 | `docs/issues/2026-10-10-flm-toolcall-failure-signal-never-detected.md` |
+| 4 | 「学习沉淀」页签 `undefined.toFixed()` 打白整个控制台 | 前端 interface 声明了后端不存在的字段 | `docs/issues/2026-10-10-flm-learning-tab-crash-blanks-console.md` |
+| 5 | 案例检索渲染三个不存在的字段（相似度 NaN%） | 同上（检索接口与列表接口形状混用） | 同上 §2.1 |
+| 6 | 案例库随每次沉淀膨胀，Top-K 返回重复候选 | 派生数据缺幂等键 + 检索未去重 | `docs/issues/2026-10-10-flm-case-library-duplicates-and-topk.md` |
+| 7 | `/admin/data-feedback` 同步计算 ~3.8s **冻结事件循环**，拖垮同进程其它接口 | 请求路径上的同步 CPU 密集计算 | `docs/issues/2026-10-10-flm-data-feedback-blocks-event-loop.md` |
+| 8 | 加载失败被渲染成「暂无数据」 | catch 只发 toast 不落 state + 空态文案是一次事实断言 | `docs/issues/2026-10-10-flm-load-failure-rendered-as-empty-state.md` |
+
+缺陷 7 的修复（目标文本级记忆化）实测：data-feedback 3.83s → 0.041s，并发健康探测 3.46s → 0.16s，输出逐位不变。
+
+**同时修复了验收脚本自身的 10 处判据失效**（"测试永远绿但什么都没验"），清单见测试报告 §4.2。
+
 ## 五、待办
 
-- [ ] `make test` 全量回归
-- [ ] `make start-prod PORT=9999` 部署
-- [ ] Playwright 验收脚本 `scripts/e2e/flm-acceptance.cjs`（TC-FLM-02 ~ TC-FLM-32）
-- [ ] 带截图测试报告 `docs/test_report/feedback-learning-module/`
+- [x] 单元测试全量回归 —— **253 / 253 通过**（8 个文件）
+- [x] 后端 / 前端类型检查 —— 均 `exit 0`
+- [x] `make start-prod PORT=9999` 部署（构建 + 后台守护 + watchdog）
+- [x] Playwright 验收脚本 `scripts/e2e/flm-acceptance.cjs`（TC-02 ~ TC-33，共 32 条）
+- [x] UI 验收执行 —— **32 / 32 通过**，脚本 MD5 `92fc3a0942319db191b7ee16a06094f9` 跑前跑后一致
+- [x] 带截图测试报告 `docs/test_report/feedback-learning-module/`（32 张截图）
 - [ ] 合并 `feature/feedback-learning-module` → `main` 并 push
