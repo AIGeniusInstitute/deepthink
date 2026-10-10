@@ -386,6 +386,27 @@ function findPreviousStable(type: StrategyType, excludeId: string): FlmStrategyR
  * 只看 canary 状态的版本：released 是稳定态，不需要每次巡检都判它；draft 还没上线。
  * 劣化判据与门禁同源（runRegressionGate），避免"门禁说没事、回滚说有事"的双标。
  */
+/**
+ * 平台最新/基线指标 → 按策略类型索引的 Map（供 `checkCanaryRegression` 巡检使用）。
+ *
+ * 各策略类型共用同一组数值：平台指标目前是**全局口径**，没有按策略类型分别统计。
+ * 这是如实反映现状而不是造假 —— 等有了分类型指标，只需在这里改数据源，
+ * 巡检与门禁的判据不用动。
+ */
+export function metricMapsFor(
+  baseline: CoreMetrics | null,
+  current: CoreMetrics,
+): { baselineByType: Map<StrategyType, CoreMetrics>; currentByType: Map<StrategyType, CoreMetrics> } {
+  const types: StrategyType[] = ['prompt', 'routing', 'param', 'fewshot'];
+  const baselineByType = new Map<StrategyType, CoreMetrics>();
+  const currentByType = new Map<StrategyType, CoreMetrics>();
+  for (const t of types) {
+    currentByType.set(t, current);
+    if (baseline) baselineByType.set(t, baseline);
+  }
+  return { baselineByType, currentByType };
+}
+
 export function checkCanaryRegression(
   baselineByType: Map<StrategyType, CoreMetrics>,
   currentByType: Map<StrategyType, CoreMetrics>,

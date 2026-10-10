@@ -65,7 +65,8 @@ export interface FlmEvaluation {
   path_conformity: number | null;
   step_count: number | null;
   retry_count: number | null;
-  first_anomaly_step: number | null;
+  /** 首个异常步骤的标识（后端存的是字符串节点标识，不是序号）。 */
+  first_anomaly_step: string | null;
   duration_ms: number | null;
   qualityScores: Record<string, number>;
   attribution_stage: AttributionStage | null;
@@ -258,6 +259,27 @@ export const reviewEvaluation = (evalId: string, note: string) =>
     method: 'POST', body: JSON.stringify({ note }),
   });
 
+/**
+ * 近期任务列表（TC-FLM-13）。
+ *
+ * 「批量评价」必须从这里拿 taskId —— 空数组提交后端必然 400，按钮就成了摆设。
+ * `evaluated` 用于在界面上区分已评/未评，避免重复触发消耗模型额度。
+ */
+export const listRecentTasks = (limit = 50) =>
+  apiFetch<{ tasks: RecentTask[] }>(`${BASE}/admin/tasks/recent?limit=${limit}`);
+
+/** 工具维度下钻（AC-F6.2）。 */
+export const getToolInsights = (days = 7, limit = 20) =>
+  apiFetch<{ tools: Array<{ toolName: string; total: number; failed: number; failureRate: number }> }>(
+    `${BASE}/admin/insights/tools?days=${days}&limit=${limit}`,
+  );
+
+/** 智能体/会话维度下钻（AC-F6.2）。 */
+export const getAgentInsights = (limit = 20) =>
+  apiFetch<{ agents: Array<{ chatJid: string; evaluations: number; achieved: number; successRate: number; avgQuality: number }> }>(
+    `${BASE}/admin/insights/agents?limit=${limit}`,
+  );
+
 export const collectSystem = (taskId: string) =>
   apiFetch<Degraded | { ok: boolean; derived: number; inserted: number }>(
     `${BASE}/admin/collect/system`, { method: 'POST', body: JSON.stringify({ taskId }) },
@@ -277,7 +299,7 @@ export const updateCaseStage = (caseId: string, stage: AttributionStage) =>
   });
 
 export const learn = (limit = 200) =>
-  apiFetch<Degraded | { ok: boolean; cases: number; strategies: number }>(`${BASE}/admin/learn`, {
+  apiFetch<Degraded | { ok: boolean; cases: number; strategies: string[]; suggestions: number }>(`${BASE}/admin/learn`, {
     method: 'POST', body: JSON.stringify({ limit }),
   });
 
@@ -286,8 +308,41 @@ export const correctEvaluation = (evalId: string) =>
     `${BASE}/admin/evaluations/${encodeURIComponent(evalId)}/correct`, { method: 'POST' },
   );
 
+export interface PreferencePair {
+  pairId: string;
+  goal: string;
+  chosen: { taskId: string | null; summary: string; outcome: string };
+  rejected: { taskId: string | null; summary: string; outcome: string };
+  similarity: number;
+  generatedAt: number;
+}
+
+export interface SftSample {
+  goal: string;
+  completion: string;
+  outcome: string;
+  taskId: string | null;
+  generatedAt: number;
+}
+
+/** 近期有事件的任务（TC-FLM-13 批量评价的任务来源）。 */
+export interface RecentTask {
+  taskId: string;
+  goal: string;
+  evaluated: boolean;
+}
+
+/** 数据回流产物（AC-F4.6）。字段与后端 `DataFeedbackArtifact` 一致，另带 jsonl。 */
+export interface DataFeedbackArtifact {
+  preferencePairs: PreferencePair[];
+  sftSamples: SftSample[];
+  generatedAt: number;
+  stats: { pairs: number; sft: number; positiveTasks: number; negativeTasks: number };
+  jsonl: { pairs: string; sft: string };
+}
+
 export const getDataFeedback = () =>
-  apiFetch<{ jsonl: string; pairs: number; sftCount: number; [k: string]: unknown }>(`${BASE}/admin/data-feedback`);
+  apiFetch<DataFeedbackArtifact>(`${BASE}/admin/data-feedback`);
 
 export const listKnowledge = (status?: string) =>
   apiFetch<{ knowledge: FlmKnowledge[] }>(`${BASE}/admin/knowledge${status ? `?status=${status}` : ''}`);
@@ -409,6 +464,21 @@ export const getTaskTimeline = (taskId: string) =>
 
 export const listFeedback = (limit = 100) =>
   apiFetch<{ feedback: Array<Record<string, unknown>> }>(`${BASE}/admin/feedback?limit=${limit}`);
+
+/**
+ * 归一化后的事件流（TC-FLM-04/05）。
+ *
+ * 来源、权重、置信度、冲突标记、成品对齐只在事件层存在 —— 原始反馈表里没有这些字段。
+ * 控制台要能回答"这条反馈被归一化成什么、置信度多少、是否与成品对齐"，
+ * 就必须走这个出口。
+ */
+export const listEvents = (params: { source?: string; taskId?: string; limit?: number } = {}) => {
+  const q = new URLSearchParams();
+  if (params.source) q.set('source', params.source);
+  if (params.taskId) q.set('taskId', params.taskId);
+  q.set('limit', String(params.limit ?? 100));
+  return apiFetch<{ events: FlmEvent[] }>(`${BASE}/admin/events?${q}`);
+};
 
 // ── 环境观测点与快照（PRD F1.3）─────────────────────────────────────
 
