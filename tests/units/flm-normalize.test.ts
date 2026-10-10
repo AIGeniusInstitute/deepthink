@@ -169,6 +169,22 @@ describe('FLM F2 · 去重（PRD AC-F2.5）', () => {
       computeDedupKey(draft({ occurredAt: 2000 }), ctx),
     );
   });
+
+  // 回归：曾经的键里没有「行为主体」，导致同一分钟里对不同消息的同类反馈被并成
+  // 一条。线上表现是 flm_feedback 4 行、flm_events 1 行，且没有任何报错。
+  test('同一分钟、同一会话，不同任务主体 → 不同键（不是同一次行为）', () => {
+    const ctx = { chatJid: 'c', sessionId: null, windowSec: 60 };
+    const a = computeDedupKey(draft({ occurredAt: 1000 }), { ...ctx, taskId: 'msg:m-1' });
+    const b = computeDedupKey(draft({ occurredAt: 5000 }), { ...ctx, taskId: 'msg:m-2' });
+    expect(a).not.toBe(b);
+  });
+
+  test('同一任务主体 + 同一时间窗 → 仍是同键（幂等没有被削弱）', () => {
+    const ctx = { chatJid: 'c', sessionId: null, windowSec: 60, taskId: 'msg:m-1' };
+    expect(computeDedupKey(draft({ occurredAt: 1000 }), ctx)).toBe(
+      computeDedupKey(draft({ occurredAt: 40_000 }), ctx),
+    );
+  });
 });
 
 describe('FLM F2 · 置信度（PRD AC-F2.4）', () => {

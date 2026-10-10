@@ -120,19 +120,22 @@ export function desensitizeDeep(
 /**
  * 去重键（PRD F2.5）。
  *
- * 口径：同来源 + 同类型 + 同会话 + 同步 + 同时间窗 → 同一键。
- * 时间窗从配置读（默认 60s）。用 floored 时间而非精确时间戳，是为了让「同一行为
- * 被上报两次」和「两次真实但雷同的行为在同一分钟内」都收敛为一条 —— 后者丢失的
- * 信息量远小于前者造成的重复计分。
+ * 口径：同**行为主体** + 同来源 + 同类型 + 同会话 + 同步 + 同时间窗 → 同一键。
+ * 时间窗从配置读（默认 60s），用 floored 时间而非精确时间戳。
+ *
+ * 主体那一段不能省：AC-F2.5 说的是「一次行为不重复计分」，而"一次行为"的单位是
+ * 一个反馈主体（哪条消息 / 哪个任务），不是"一个会话一分钟"。少了主体，同一分钟里
+ * 对不同消息的同类反馈会被并成一条 —— 点赞两条回答是两次行为，不是重复上报。
  */
 export function computeDedupKey(
   draft: Pick<FeedbackDraft, 'source' | 'type' | 'stepId' | 'occurredAt'>,
-  ctx: { chatJid: string | null; sessionId: string | null; windowSec: number },
+  ctx: { chatJid: string | null; sessionId: string | null; taskId?: string | null; windowSec: number },
 ): string {
   const bucket = Math.floor(draft.occurredAt / (Math.max(1, ctx.windowSec) * 1000));
   const raw = [
     draft.source,
     draft.type,
+    ctx.taskId ?? '',
     ctx.chatJid ?? '',
     ctx.sessionId ?? '',
     draft.stepId ?? '',
@@ -177,6 +180,7 @@ export function normalizeDraft(
     dedupKey: computeDedupKey(draft, {
       chatJid: keys.chatJid,
       sessionId: keys.sessionId,
+      taskId: keys.taskId,
       windowSec: config.dedupWindowSec,
     }),
     desensitized: desensitized.hit,

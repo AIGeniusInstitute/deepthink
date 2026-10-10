@@ -251,6 +251,32 @@ describe('FLM F1 · 用户反馈入库（AC-F1.1.5 幂等）', () => {
     expect(listEvents().filter((e) => e.chat_jid === CHAT).length).toBe(after);
   });
 
+  // 回归（2026-10-10）：去重键曾经不含行为主体，同一分钟里对不同消息的同类反馈被
+  // 并成一条。线上表现是 flm_feedback 4 行 / flm_events 1 行，全程无报错。
+  //
+  // 用的两条消息 turn_id / session_id **都为 NULL** —— 这才是飞书侧消息的真实形态，
+  // 也是当初漏检的原因：只要消息带了 session_id，旧实现就会因 session 不同而侥幸分开，
+  // 缺陷被掩盖。回归用例必须复刻"除主体外所有字段都相同"的条件。
+  test('同一分钟内对不同消息的同类反馈是两次行为，都要进事件流', () => {
+    const before = listEvents().filter((e) => e.chat_jid === CHAT).length;
+    const like = (messageId: string, at: number) => ingest({
+      source: 'user' as const,
+      type: 'explicit_like' as const,
+      chatJid: CHAT,
+      rawPayload: { message_id: messageId },
+      occurredAt: at,
+    });
+
+    // 两条不同消息、无会话绑定，同一分钟（时间窗 60s，两次相隔 5 秒）
+    const a = like(USER_MSG, T0 + 40_000);
+    const b = like('u-msg-2', T0 + 45_000);
+
+    expect(a.inserted).toBe(true);
+    expect(b.inserted).toBe(true);
+    expect(a.event.dedupKey).not.toBe(b.event.dedupKey);
+    expect(listEvents().filter((e) => e.chat_jid === CHAT).length).toBe(before + 2);
+  });
+
   test('反馈原文已脱敏、审计底稿保留原文', () => {
     const r = ingest({
       source: 'user',
@@ -305,11 +331,38 @@ describe('FLM F1 · 系统来源派生（AC-F1.2）', () => {
     expect(a).toBe(b);
   });
 
-  test('采样率 0 时成功事件被丢弃，但失败事件仍采集（负样本不丢）', () => {
+  test('采样率 0 时系统事件全部停采，含失败事件（AC-F1.2.2 / TC-FLM-07）', () => {
+    // 曾把失败事件排除在采样外（"负样本不能丢"），但那让 sampleRate=0 仍产出事件，
+    // 直接违背 TC-FLM-07「调到 0% 不再产出新事件」。采样率是运维的总闸，
+    // 设成 0 就该彻底静默 —— 要"故障全采"应把采样率留在高位。
     const scope = resolveTaskScope(`turn:${USER_MSG}`)!;
     const drafts = deriveSystemDrafts(scope, { ...DEFAULT_CONFIG, sampleRate: 0 });
-    expect(drafts.some((d) => d.type === 'system_tool_call')).toBe(false);
+    expect(drafts).toEqual([]);
+  });
+
+  test('采样率 100 时三类系统事件齐全（TC-FLM-07 恢复采集）', () => {
+    const scope = resolveTaskScope(`turn:${USER_MSG}`)!;
+    const drafts = deriveSystemDrafts(scope, { ...DEFAULT_CONFIG, sampleRate: 100 });
+    expect(drafts.some((d) => d.type === 'system_tool_call')).toBe(true);
     expect(drafts.some((d) => d.type === 'system_error')).toBe(true);
+  });
+
+  test('字段白名单非空时只保留白名单内的原始字段（AC-F1.2.2）', () => {
+    const scope = resolveTaskScope(`turn:${USER_MSG}`)!;
+    const drafts = deriveSystemDrafts(scope, {
+      ...DEFAULT_CONFIG,
+      sampleRate: 100,
+      fieldWhitelist: ['nodeTotal'],
+    });
+    const call = drafts.find((d) => d.type === 'system_tool_call');
+    expect(call).toBeTruthy();
+    // 只留下点名的字段，其余被裁掉 —— 白名单是最小化采集，不是"选字段进事件"。
+    expect(Object.keys(call!.rawPayload)).toEqual(['nodeTotal']);
+
+    // 空白名单 = 不限制，字段原样保留。
+    const open = deriveSystemDrafts(scope, { ...DEFAULT_CONFIG, sampleRate: 100, fieldWhitelist: [] });
+    const openCall = open.find((d) => d.type === 'system_tool_call');
+    expect(Object.keys(openCall!.rawPayload).length).toBeGreaterThan(1);
   });
 
   test('无轨迹的任务不产出系统事件', () => {
