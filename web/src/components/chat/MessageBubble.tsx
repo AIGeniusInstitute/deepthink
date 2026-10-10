@@ -10,6 +10,7 @@ import { MessageContextMenu } from './MessageContextMenu';
 import { ImageLightbox } from './ImageLightbox';
 import { InlineLoopCard } from '../loops/InlineLoopCard';
 import { ApprovalCard } from './ApprovalCard';
+import { MessageFeedback } from './MessageFeedback';
 import { mediumTap } from '../../hooks/useHaptic';
 import { useDisplayMode } from '../../hooks/useDisplayMode';
 import { formatThinkingDuration } from '../../utils/thinking-duration';
@@ -530,6 +531,14 @@ ${htmlContent}
               <FileDown className="w-3 h-3" />
             </button>
           )}
+          {isAI && !isShared && (
+            <MessageFeedback
+              messageId={message.id}
+              chatJid={message.chat_jid}
+              sessionId={message.session_id}
+              compact
+            />
+          )}
         </div>
 
         {/* Reasoning */}
@@ -888,6 +897,13 @@ ${htmlContent}
             >
               {copied ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
+            {!isShared && (
+              <MessageFeedback
+                messageId={message.id}
+                chatJid={message.chat_jid}
+                sessionId={message.session_id}
+              />
+            )}
             <button
               onClick={() => setShowShareDialog(true)}
               className="h-7 px-2 rounded-md flex items-center gap-1 text-muted-foreground hover:text-foreground hover:bg-foreground/5 text-xs max-lg:hidden cursor-pointer transition-colors"

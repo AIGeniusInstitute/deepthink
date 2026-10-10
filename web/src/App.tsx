@@ -50,6 +50,7 @@ const DiskPage = lazy(() => import('./pages/DiskPage').then(m => ({ default: m.D
 const AgentGroupsListPage = lazy(() => import('./pages/AgentGroupsListPage').then(m => ({ default: m.AgentGroupsListPage })));
 const AgentGroupChatPage = lazy(() => import('./pages/AgentGroupChatPage').then(m => ({ default: m.AgentGroupChatPage })));
 const EvalCenterPage = lazy(() => import('./pages/EvalCenterPage').then(m => ({ default: m.EvalCenterPage })));
+const FeedbackLearningPage = lazy(() => import('./pages/FeedbackLearningPage').then(m => ({ default: m.FeedbackLearningPage })));
 
 export function App() {
   const Router = shouldUseHashRouter() ? HashRouter : BrowserRouter;
@@ -95,6 +96,7 @@ export function App() {
           <Route path="/agent-groups" element={<Suspense fallback={<PageLoader />}><AgentGroupsListPage /></Suspense>} />
           <Route path="/agent-groups/:jid" element={<Suspense fallback={<PageLoader />}><AgentGroupChatPage /></Suspense>} />
           <Route path="/eval-center" element={<Suspense fallback={<PageLoader />}><EvalCenterPage /></Suspense>} />
+          <Route path="/feedback-learning" element={<Suspense fallback={<PageLoader />}><FeedbackLearningPage /></Suspense>} />
           <Route path="/groups" element={<Navigate to="/settings?tab=groups" replace />} />
           <Route path="/tasks" element={<Suspense fallback={<PageLoader />}><TasksPage /></Suspense>} />
           <Route path="/loops" element={<Suspense fallback={<PageLoader />}><LoopsPage /></Suspense>} />

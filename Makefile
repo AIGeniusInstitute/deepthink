@@ -387,7 +387,14 @@ test-smoke: ## 最小回归测试集（CI 门禁，< 60s）
 	  tests/units/memory-write-trace.test.ts \
 	  tests/units/llm-call-trace.test.ts \
 	  tests/units/skill-im-command.test.ts \
-	  tests/units/tool-governance.test.ts
+	  tests/units/tool-governance.test.ts \
+	  tests/units/flm-normalize.test.ts \
+	  tests/units/flm-evaluate.test.ts \
+	  tests/units/flm-learn.test.ts \
+	  tests/units/flm-closedloop.test.ts \
+	  tests/units/flm-collect.test.ts \
+	  tests/units/flm-routes.test.ts \
+	  tests/units/flm-strategy-routes.test.ts
 
 format: ## 格式化代码
 	$(PKG) run format

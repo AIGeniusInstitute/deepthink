@@ -54,7 +54,7 @@ import { getDefaultPermissions, normalizePermissions } from './permissions.js';
  * initDatabase(); consumers (and tests) should import this rather than
  * hard-coding the literal — bump it whenever a migration is added.
  */
-export const SCHEMA_VERSION = '70';
+export const SCHEMA_VERSION = '71';
 
 let db: InstanceType<typeof Database>;
 let vecExtensionLoaded = false;
@@ -2686,6 +2686,227 @@ export function initDatabase(): void {
       UNIQUE (group_folder, file_path, version_num)
     );
     CREATE INDEX IF NOT EXISTS idx_file_versions_path ON file_versions(group_folder, file_path, version_num DESC);
+  `);
+
+  // v71: 反馈与学习自进化模块（FLM）—— 11 张表。
+  // 采集（用户/系统/环境三类）→ 归一化统一事件 → 三层评价与归因 → 经验记忆 →
+  // 带灰度的策略版本闭环 → 运营控制台。任务轨迹不在此处建表：直接复用
+  // chat_trace_nodes / trace_steps / trace_tool_calls（见 docs/prd/feedback-learning-module）。
+  db.exec(`
+    -- 用户反馈原始记录（消息级）。type 见 flm-types.ts 的 FeedbackType。
+    -- (message_id, chat_jid, user_id) 唯一 —— 同一用户对同一消息的重复评价是
+    -- 更新而非新增（PRD AC-F1.1.5 幂等要求）。
+    CREATE TABLE IF NOT EXISTS flm_feedback (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL,
+      chat_jid TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      session_id TEXT,
+      turn_id TEXT,
+      task_id TEXT,
+      trace_id TEXT,
+      step_id TEXT,
+      type TEXT NOT NULL,
+      rating INTEGER,
+      reason_tags TEXT,
+      correction_text TEXT,
+      payload TEXT,
+      skipped INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_flm_feedback_msg_user ON flm_feedback(message_id, chat_jid, user_id);
+    CREATE INDEX IF NOT EXISTS idx_flm_feedback_jid ON flm_feedback(chat_jid, created_at DESC);
+
+    -- 归一化后的统一反馈事件（三类来源同一 Schema）。
+    -- dedup_key 唯一 —— 去重落点（PRD F2.5）。
+    CREATE TABLE IF NOT EXISTS flm_events (
+      event_id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      type TEXT NOT NULL,
+      task_id TEXT,
+      trace_id TEXT,
+      session_id TEXT,
+      step_id TEXT,
+      chat_jid TEXT,
+      user_id TEXT,
+      raw_payload TEXT,
+      normalized_payload TEXT,
+      confidence REAL NOT NULL DEFAULT 1,
+      weight REAL NOT NULL DEFAULT 1,
+      alignment TEXT NOT NULL DEFAULT 'direct',
+      dedup_key TEXT NOT NULL,
+      desensitized INTEGER NOT NULL DEFAULT 0,
+      conflict INTEGER NOT NULL DEFAULT 0,
+      tenant_id TEXT NOT NULL DEFAULT 'default',
+      occurred_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_flm_events_dedup ON flm_events(dedup_key);
+    CREATE INDEX IF NOT EXISTS idx_flm_events_task ON flm_events(task_id);
+    CREATE INDEX IF NOT EXISTS idx_flm_events_source ON flm_events(source, created_at DESC);
+
+    -- 三层评价结果 + 失败归因（PRD F3）。evidence_json 承载可解释性证据。
+    CREATE TABLE IF NOT EXISTS flm_evaluations (
+      eval_id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      trace_id TEXT,
+      session_id TEXT,
+      chat_jid TEXT,
+      outcome TEXT NOT NULL,
+      outcome_reason TEXT,
+      process_score REAL NOT NULL DEFAULT 0,
+      path_conformity REAL NOT NULL DEFAULT 0,
+      step_count INTEGER NOT NULL DEFAULT 0,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      first_anomaly_step TEXT,
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      quality_scores TEXT,
+      attribution_stage TEXT,
+      evidence_json TEXT,
+      evaluator TEXT NOT NULL DEFAULT 'rule',
+      needs_review INTEGER NOT NULL DEFAULT 0,
+      review_status TEXT NOT NULL DEFAULT 'none',
+      review_note TEXT,
+      eval_time INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_flm_eval_task ON flm_evaluations(task_id);
+    CREATE INDEX IF NOT EXISTS idx_flm_eval_outcome ON flm_evaluations(outcome, eval_time DESC);
+    CREATE INDEX IF NOT EXISTS idx_flm_eval_stage ON flm_evaluations(attribution_stage);
+    CREATE INDEX IF NOT EXISTS idx_flm_eval_review ON flm_evaluations(needs_review, review_status);
+
+    -- 经验记忆案例（正/负样本）。goal_embedding 以 JSON 存向量：本模块的检索规模是
+    -- 千级，用 float32ToBuffer 落 BLOB 或建 vec0 虚表的复杂度换不来收益。超过万级
+    -- 需改走 sqlite-vec / pgvector（flm-learn.ts 里标了这条边界）。
+    CREATE TABLE IF NOT EXISTS flm_cases (
+      case_id TEXT PRIMARY KEY,
+      task_id TEXT,
+      eval_id TEXT,
+      sample_type TEXT NOT NULL,
+      goal TEXT NOT NULL,
+      goal_embedding TEXT,
+      summary TEXT,
+      attribution_stage TEXT,
+      reuse_count INTEGER NOT NULL DEFAULT 0,
+      verified INTEGER NOT NULL DEFAULT 0,
+      source_event_id TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_flm_cases_type ON flm_cases(sample_type, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_flm_cases_stage ON flm_cases(attribution_stage);
+
+    -- 策略版本（PRD F5.1）。gray_ratio 是本模块区别于 harness-registry 的核心：
+    -- 后者只有全量 status 翻转，无灰度。
+    CREATE TABLE IF NOT EXISTS flm_strategies (
+      version_id TEXT PRIMARY KEY,
+      strategy_type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      content TEXT NOT NULL,
+      parent_version TEXT,
+      trigger_source TEXT NOT NULL DEFAULT 'human',
+      attribution_tag TEXT,
+      eval_report TEXT,
+      gate_status TEXT NOT NULL DEFAULT 'na',
+      gray_ratio INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'draft',
+      requires_human_review INTEGER NOT NULL DEFAULT 0,
+      reviewed_by TEXT,
+      publisher TEXT,
+      publish_time INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_flm_strategy_status ON flm_strategies(status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_flm_strategy_type ON flm_strategies(strategy_type);
+
+    -- 闭环动作记录（PRD F5 / 原文 FeedbackAction）。
+    CREATE TABLE IF NOT EXISTS flm_actions (
+      action_id TEXT PRIMARY KEY,
+      eval_id TEXT,
+      action_type TEXT NOT NULL,
+      before_version TEXT,
+      after_version TEXT,
+      executor TEXT NOT NULL,
+      result TEXT NOT NULL,
+      detail TEXT,
+      exec_time INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_flm_actions_time ON flm_actions(exec_time DESC);
+    CREATE INDEX IF NOT EXISTS idx_flm_actions_eval ON flm_actions(eval_id);
+
+    -- 环境观测点注册（PRD F1.3）。
+    CREATE TABLE IF NOT EXISTS flm_observations (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      path TEXT NOT NULL,
+      expected TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT,
+      created_at INTEGER NOT NULL
+    );
+
+    -- 环境前后快照与 diff（PRD F1.3）。过期快照不参与判定。
+    CREATE TABLE IF NOT EXISTS flm_snapshots (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      phase TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      ttl_seconds INTEGER NOT NULL DEFAULT 86400,
+      expired INTEGER NOT NULL DEFAULT 0,
+      captured_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_flm_snapshots_task ON flm_snapshots(task_id, phase);
+    CREATE INDEX IF NOT EXISTS idx_flm_snapshots_time ON flm_snapshots(captured_at DESC);
+
+    -- 模块配置 KV（采样率 / 字段白名单 / 重试策略 / 脱敏规则 / 告警阈值 / 降级开关）。
+    CREATE TABLE IF NOT EXISTS flm_config (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    -- 告警记录（PRD F6.5）。
+    CREATE TABLE IF NOT EXISTS flm_alerts (
+      id TEXT PRIMARY KEY,
+      metric TEXT NOT NULL,
+      threshold TEXT,
+      actual TEXT,
+      level TEXT NOT NULL DEFAULT 'warning',
+      message TEXT NOT NULL,
+      acked INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_flm_alerts_time ON flm_alerts(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_flm_alerts_acked ON flm_alerts(acked, created_at DESC);
+
+    -- 策略全链路审计（PRD F5.6）：生成 / 拦截 / 放量 / 回滚均留痕。
+    CREATE TABLE IF NOT EXISTS flm_audit (
+      id TEXT PRIMARY KEY,
+      version_id TEXT,
+      action TEXT NOT NULL,
+      detail TEXT,
+      actor TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_flm_audit_version ON flm_audit(version_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_flm_audit_time ON flm_audit(created_at DESC);
+
+    -- 知识条目候选（PRD F4.7 / AC-F4.7）：纠错类反馈先落这里，**审核通过才入知识库**。
+    -- 单独建表而非复用 flm_cases：案例是"发生过什么"（事实，只读），知识是"以后该怎么做"
+    -- （规范，要审）。两者生命周期不同，混在一张表会让审核状态污染案例检索。
+    CREATE TABLE IF NOT EXISTS flm_knowledge (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      source_event_id TEXT,
+      source_task_id TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reviewer TEXT,
+      review_note TEXT,
+      reviewed_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_flm_knowledge_status ON flm_knowledge(status, created_at DESC);
   `);
 
   // PostgreSQL: FK constraints are stripped at CREATE TABLE time by
