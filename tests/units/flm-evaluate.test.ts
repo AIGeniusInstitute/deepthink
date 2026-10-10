@@ -288,6 +288,53 @@ describe('FLM F3 · 失败归因', () => {
   });
 });
 
+// ── 上游状态契约（回归，2026-10-10）──────────────────────────────────
+//
+// 本节的判别力全部来自「喂真实状态值」，而不是喂我们**希望**上游写的值。
+//
+// 上游 `src/chat-trace-persist.ts` 给 tool-call 落库的终态只有两个：
+//     status: event.permissionDenied ? 'denied' : 'success'
+// 没有任何分支会写 failed / error / timeout / aborted。实盘全库 21091 行
+// （success 15259 + running 5832）里**失败态 0 行**。
+//
+// 于是上面那三条归因用例（工具超时/入参不合法/工具失败）虽然一直绿，却证明不了
+// 线上能用：它们喂的 status:'error' / 'failed' 正是生产端从不产出的值。
+// 这与「评价从不落库」是同一类盲区 —— 测试自己补上了生产缺失的那一环。
+describe('FLM F3 · 上游状态契约', () => {
+  test('denied（上游唯一会写的非成功终态）必须被认作失败并驱动归因', () => {
+    const r = evaluateTask(
+      ctx({
+        events: [ev({ type: 'explicit_reject' })],
+        nodes: [node({ status: 'done' })],
+        toolCalls: [tc({ status: 'denied', output: 'permission denied by policy' })],
+      }),
+    );
+    expect(r.attributionStage).toBe('tool_selection');
+  });
+
+  test('denied 的工具仍能按输出线索细分到执行环节', () => {
+    const r = evaluateTask(
+      ctx({
+        events: [ev({ type: 'explicit_reject' })],
+        nodes: [node({ status: 'done' })],
+        toolCalls: [tc({ status: 'denied', output: 'Request timeout after 30s' })],
+      }),
+    );
+    expect(r.attributionStage).toBe('execution');
+  });
+
+  test('running 不算失败（未结束 ≠ 失败），不驱动工具类归因', () => {
+    const r = evaluateTask(
+      ctx({
+        events: [ev({ type: 'explicit_reject' })],
+        nodes: [node({ status: 'done' })],
+        toolCalls: [tc({ status: 'running', output: '' })],
+      }),
+    );
+    expect(r.attributionStage).toBe('summary');
+  });
+});
+
 // ── 可解释性（AC-F3.5/AC-F3.6）───────────────────────────────────────
 
 describe('FLM F3 · 可解释性与证据', () => {

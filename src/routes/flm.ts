@@ -24,6 +24,7 @@ import {
   getEvaluation,
   getFeedbackForMessage,
   getStrategy,
+  insertEvaluation,
   insertObservation,
   listActions,
   listAlerts,
@@ -34,6 +35,7 @@ import {
   listKnowledge,
   listObservations,
   listStrategies,
+  listTaskIdsWithEvents,
   resolveReview,
   reviewKnowledge,
   updateCaseStage,
@@ -49,6 +51,7 @@ import {
   resolveTaskScope,
   resolveKeysForMessage,
   expireStaleSnapshots,
+  taskGoalText,
 } from '../flm/flm-collect.js';
 import { evaluateTask, qualityMean } from '../flm/flm-evaluate.js';
 import {
@@ -60,22 +63,27 @@ import {
   executeCorrection,
   searchCases,
   recentEvaluations,
+  toJsonl,
 } from '../flm/flm-learn.js';
 import {
   approveHumanReview,
   autoRollback,
+  checkCanaryRegression,
   compareVersions,
   isInCanary,
+  metricMapsFor,
   setCanary,
   submitForGate,
 } from '../flm/flm-closedloop.js';
 import {
   attributionView,
+  agentBreakdown,
   consoleSnapshot,
   currentVsBaseline,
   evaluateAlerts,
   raiseAlerts,
   taskTimeline,
+  toolFailureStats,
 } from '../flm/flm-insights.js';
 import {
   REASON_TAGS,
@@ -382,6 +390,25 @@ router.post('/admin/snapshots/:taskId/diff', adminRoleMiddleware, safe((c) => {
 
 // ── F2/F3 归一化与三层评价 ───────────────────────────────────────────
 
+/**
+ * 近期可评价任务（TC-FLM-13 的任务选择列表）。
+ *
+ * 存在的理由：没有这个列表，控制台的「批量评价」就只能传空数组，
+ * 后端必然 400 —— 按钮点了永远失败，用例也就无从通过。
+ * `evaluated` 让运营一眼看出哪些还没评过，避免重复触发。
+ */
+router.get('/admin/tasks/recent', adminRoleMiddleware, safe((c) => {
+  const limit = Math.min(200, Math.max(1, Number(c.req.query('limit') ?? 50)));
+  const evaluated = new Set(listEvaluations({ limit: 1000 }).map((e) => e.task_id));
+  return c.json({
+    tasks: listTaskIdsWithEvents(limit).map((taskId) => ({
+      taskId,
+      goal: taskGoalText(taskId, 120),
+      evaluated: evaluated.has(taskId),
+    })),
+  });
+}));
+
 /** 对一批任务触发三层评价（TC-FLM-13）。 */
 router.post('/admin/evaluate', adminRoleMiddleware, safe(async (c) => {
   if (!isEnabled()) return degraded(c);
@@ -398,7 +425,43 @@ router.post('/admin/evaluate', adminRoleMiddleware, safe(async (c) => {
       results.push({ taskId, skipped: '无法解析任务范围' });
       continue;
     }
-    const out = evaluateTask(ctx, { useLlm: body.useLlm === true });
+    // LLM 轨（AC-F3.2）：开启时真的去跑一次模型判定，再把结果交给评价层比对。
+    // 跑不成返回 null → 评价层保持单轨、evaluator='rule'，不制造假分歧。
+    //
+    // 懒加载：LLM 轨是可选能力，只有显式开启时才把 sdk-query 那条重链路拉进来；
+    // 也让本模块的单测不必去 mock 整套模型 provider 配置。
+    let llmVerdict: { outcome: 'achieved' | 'partial' | 'failed'; reason: string } | null = null;
+    if (body.useLlm === true) {
+      const { llmVerdictFor } = await import('../flm/flm-llm-judge.js');
+      llmVerdict = await llmVerdictFor(ctx);
+    }
+    const out = evaluateTask(ctx, { useLlm: body.useLlm === true, llmVerdict });
+    // 评价必须落库。此前这里只把结果塞进响应就返回 —— 控制台「评价记录」永远为空、
+    // 复核队列永远为空、learn 读不到评价所以案例/策略永远为 0、看板成功率恒为 0。
+    // 单测发现不了：用例自己调了 insertEvaluation，等于把生产代码漏掉的接线在测试里补上了。
+    insertEvaluation({
+      eval_id: out.evalId,
+      task_id: out.taskId,
+      trace_id: out.traceId,
+      session_id: out.sessionId,
+      chat_jid: out.chatJid,
+      outcome: out.outcome,
+      outcome_reason: out.outcomeReason,
+      process_score: out.processScore,
+      path_conformity: out.pathConformity,
+      step_count: out.stepCount,
+      retry_count: out.retryCount,
+      first_anomaly_step: out.firstAnomalyStep,
+      duration_ms: out.durationMs,
+      quality_scores: JSON.stringify(out.qualityScores),
+      attribution_stage: out.attributionStage,
+      evidence_json: JSON.stringify(out.evidence),
+      evaluator: out.evaluator,
+      needs_review: out.needsReview ? 1 : 0,
+      review_status: 'pending',
+      review_note: null,
+      eval_time: out.evalTime,
+    });
     evaluations.push(out);
     results.push({
       taskId,
@@ -451,14 +514,11 @@ router.post('/admin/learn', adminRoleMiddleware, safe(async (c) => {
     body.taskIds && body.taskIds.length > 0 ? body.taskIds.includes(e.task_id) : true,
   );
 
+  // 目标文本必须取真实用户提问：案例检索与偏好配对都靠它的相似度，
+  // 用 taskId 当 goal 会让所有目标互不相似，案例库与偏好对全空。
   const goalByTask = new Map<string, { goal: string; summary: string | null }>();
   for (const e of evals) {
-    const ctx = loadEvalContext(e.task_id);
-    const firstFeedback = ctx?.events.find((x) => x.source === 'user');
-    goalByTask.set(e.task_id, {
-      goal: String(firstFeedback?.payload.goal ?? firstFeedback?.payload.correction_text ?? e.task_id),
-      summary: e.outcome_reason,
-    });
+    goalByTask.set(e.task_id, { goal: taskGoalText(e.task_id), summary: e.outcome_reason });
   }
 
   const result = learnFromEvaluations(evals, goalByTask);
@@ -516,9 +576,11 @@ router.post('/admin/evaluations/:evalId/correct', adminRoleMiddleware, safe(asyn
 router.get('/admin/data-feedback', adminRoleMiddleware, safe((c) => {
   const evals = recentEvaluations(500);
   const goalByTask = new Map<string, { goal: string; summary: string | null }>();
-  for (const e of evals) goalByTask.set(e.task_id, { goal: e.task_id, summary: e.outcome_reason });
+  for (const e of evals) goalByTask.set(e.task_id, { goal: taskGoalText(e.task_id), summary: e.outcome_reason });
   const artifact = buildDataFeedback(evals, goalByTask);
-  return c.json(artifact);
+  // JSONL 一并给出（AC-F4.6「可导出」）：控制台拿 jsonl 直接下载，
+  // 不必自己把结构再序列化一遍，也避免前后端对字段名各写一套。
+  return c.json({ ...artifact, jsonl: toJsonl(artifact) });
 }));
 
 /** 知识条目候选（TC-FLM-20 前半）。 */
@@ -662,6 +724,22 @@ router.get('/admin/overview', adminRoleMiddleware, safe((c) => {
   const check = evaluateAlerts(current, baseline);
   const raised = raiseAlerts(check);
 
+  // 灰度劣化巡检（AC-F5.4）。挂在总览上是有意的：控制台打开就顺带巡检一次，
+  // 否则"自动回滚"只存在于单测里 —— 运行时没有任何调用点，等于没有自动回滚。
+  // 巡检自身吞异常，绝不能因为它把看板打挂。
+  let rollbacks: Array<{ fromVersion: string | null; toVersion: string | null; reason: string; elapsedMs: number }> = [];
+  try {
+    const maps = metricMapsFor(baseline, current);
+    rollbacks = checkCanaryRegression(maps.baselineByType, maps.currentByType).map((r) => ({
+      fromVersion: r.fromVersion,
+      toVersion: r.toVersion,
+      reason: r.reason,
+      elapsedMs: r.elapsedMs,
+    }));
+  } catch {
+    // 巡检失败不影响看板
+  }
+
   return c.json({
     enabled: snapshot.enabled,
     generatedAt: snapshot.generatedAt,
@@ -673,6 +751,7 @@ router.get('/admin/overview', adminRoleMiddleware, safe((c) => {
     alerts: listAlerts(100),
     recentFeedback: snapshot.recentFeedback,
     audit: snapshot.audit,
+    rollbacks,
   });
 }));
 
@@ -685,6 +764,23 @@ router.get('/admin/attribution', adminRoleMiddleware, safe((c) => {
       limit: Number(c.req.query('limit') ?? 100),
     }),
   );
+}));
+
+/**
+ * 归因多维下钻（AC-F6.2）：工具维度与智能体维度。
+ *
+ * 环节维度走 `/admin/attribution`；这两个维度原先只在 flm-insights 里算好却没有任何
+ * 出口，「按工具/智能体下钻」等于没做。放在同一段路径下，控制台一次拉全。
+ */
+router.get('/admin/insights/tools', adminRoleMiddleware, safe((c) => {
+  const days = Math.min(90, Math.max(1, Number(c.req.query('days') ?? 7)));
+  const toMs = Date.now();
+  const fromMs = toMs - days * 24 * 60 * 60 * 1000;
+  return c.json({ tools: toolFailureStats(fromMs, toMs, Math.min(100, Number(c.req.query('limit') ?? 20))) });
+}));
+
+router.get('/admin/insights/agents', adminRoleMiddleware, safe((c) => {
+  return c.json({ agents: agentBreakdown(Math.min(100, Number(c.req.query('limit') ?? 20))) });
 }));
 
 /** 告警列表与确认（TC-FLM-30）。 */
@@ -712,6 +808,26 @@ router.get('/admin/tasks/:taskId/timeline', adminRoleMiddleware, safe((c) => {
 /** 反馈原始记录（admin only —— 含未脱敏 raw_payload）。 */
 router.get('/admin/feedback', adminRoleMiddleware, safe((c) => {
   return c.json({ feedback: listFeedback(Number(c.req.query('limit') ?? 100)) });
+}));
+
+/**
+ * 归一化后的事件流（TC-FLM-04/05）。
+ *
+ * 为什么需要这条：来源权重、置信度、冲突消解、与成品对齐（alignment）都只存在于
+ * 事件层 —— 原始反馈表里没有这些字段，`/admin/feedback` 给不出来。此前事件只能按
+ * taskId 单条下钻（`/admin/tasks/:taskId/timeline`），运营无法回答"最近系统侧到底
+ * 采到了什么、哪条被判定为冲突"，归一化做得好不好等于不可验证。
+ */
+router.get('/admin/events', adminRoleMiddleware, safe((c) => {
+  const source = c.req.query('source');
+  const taskId = c.req.query('taskId');
+  return c.json({
+    events: listEvents({
+      source: source === 'user' || source === 'system' || source === 'env' ? source : undefined,
+      taskId: taskId || undefined,
+      limit: Math.min(500, Math.max(1, Number(c.req.query('limit') ?? 100))),
+    }),
+  });
 }));
 
 export default router;

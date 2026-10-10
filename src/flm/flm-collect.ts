@@ -26,7 +26,7 @@ import {
   type FlmSnapshotRow,
 } from './flm-db.js';
 import { deriveTaskId, normalizeDraft, resolveConflicts, type ResolvedKeys } from './flm-normalize.js';
-import type { EvalContext, EvalToolCallInput } from './flm-evaluate.js';
+import { isFail, isOk, type EvalContext, type EvalToolCallInput } from './flm-evaluate.js';
 import type { FeedbackDraft, NormalizedEvent } from './flm-types.js';
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -349,10 +349,12 @@ export function deriveSystemDrafts(scope: TaskScope, config: FlmConfig = readCon
     )
     .all(scope.chatJid, from, to) as Array<{ tool_name: string; status: string | null }>;
 
-  const okNode = nodes.filter((n) => n.status === 'done').length;
-  const failedNode = nodes.filter((n) => n.status === 'failed').length;
-  const okCall = calls.filter((c) => c.status === 'success').length;
-  const failedCall = calls.filter((c) => c.status === 'error' || c.status === 'failed').length;
+  // 复用 flm-evaluate 的状态谓词。这里原先是第二份手写实现，且与 isFail 不一致
+  // （少了 timeout/aborted/denied）—— 同一个"什么算失败"不允许有两处定义。
+  const okNode = nodes.filter((n) => isOk(n.status)).length;
+  const failedNode = nodes.filter((n) => isFail(n.status)).length;
+  const okCall = calls.filter((c) => isOk(c.status)).length;
+  const failedCall = calls.filter((c) => isFail(c.status)).length;
   const tokens = nodes.reduce((a, n) => a + (n.tokens || 0), 0);
 
   const drafts: FeedbackDraft[] = [];
@@ -365,16 +367,21 @@ export function deriveSystemDrafts(scope: TaskScope, config: FlmConfig = readCon
     occurredAt: scope.startMs,
   };
 
-  // 采样：只对「信息量低」的成功事件采样；失败与超时永远采（负样本不能丢）。
-  if (sampleHit(scope.taskId, config.sampleRate)) {
-    drafts.push({
-      ...base,
-      source: 'system',
-      type: 'system_tool_call',
-      stepId: 'aggregate',
-      rawPayload: { nodeTotal: nodes.length, nodeOk: okNode, callTotal: calls.length, callOk: okCall },
-    });
-  }
+  // 采样闸门对**全部**系统事件生效，包括失败事件（AC-F1.2.2 / TC-FLM-07）。
+  //
+  // 这里曾把失败与 token 事件排除在采样外，理由是"负样本不能丢"。但那让
+  // sampleRate=0 仍然产出事件，直接违背 TC-FLM-07「调到 0% 不再产出新事件」——
+  // 采样率是运维的**总闸**：设成 0 就是"别采了"，此时还偷偷写失败事件属于
+  // 不遵守配置。需要"故障全采"时应把采样率留在高位，而不是让开关失效。
+  if (!sampleHit(scope.taskId, config.sampleRate)) return [];
+
+  drafts.push({
+    ...base,
+    source: 'system',
+    type: 'system_tool_call',
+    stepId: 'aggregate',
+    rawPayload: { nodeTotal: nodes.length, nodeOk: okNode, callTotal: calls.length, callOk: okCall },
+  });
 
   if (failedNode > 0 || failedCall > 0) {
     drafts.push({
@@ -396,7 +403,26 @@ export function deriveSystemDrafts(scope: TaskScope, config: FlmConfig = readCon
     });
   }
 
-  return drafts;
+  return drafts.map((d) => ({ ...d, rawPayload: applyFieldWhitelist(d.rawPayload, config.fieldWhitelist) }));
+}
+
+/**
+ * 字段白名单（AC-F1.2.2）：只保留白名单内的原始字段。
+ *
+ * 空数组 = 不限制（默认）。白名单的目的不是"选哪些字段进事件"，而是**采集侧的最小化**
+ * —— 打开后事件只带运营显式点名的字段，避免把整包原始负载写进库里。
+ * 配置每次采集重新读取，所以改动即时生效，无需重启。
+ */
+function applyFieldWhitelist(
+  payload: Record<string, unknown>,
+  whitelist: string[],
+): Record<string, unknown> {
+  if (!Array.isArray(whitelist) || whitelist.length === 0) return payload;
+  const kept: Record<string, unknown> = {};
+  for (const key of whitelist) {
+    if (Object.prototype.hasOwnProperty.call(payload, key)) kept[key] = payload[key];
+  }
+  return kept;
 }
 
 /** 确定性采样：sha1(taskId) 取模 100 < sampleRate。 */
@@ -458,6 +484,9 @@ export function diffSnapshots(
   taskId: string,
   expectedByPoint: Record<string, string | null>,
 ): FeedbackDraft | null {
+  // 先结算 TTL（AC-F1.3.3）：过期标记是"读时结算"，不能只靠外部定时任务 ——
+  // 否则 TTL 到了但没人调用 expire 接口时，过期快照照样参与判定，规则形同虚设。
+  expireStaleSnapshots();
   const snaps = listSnapshots(taskId).filter((s) => s.expired === 0);
   const before = snaps.find((s) => s.phase === 'before');
   const after = snaps.find((s) => s.phase === 'after');
@@ -531,6 +560,31 @@ function toMs(iso: string | null): number | null {
   if (!iso) return null;
   const t = Date.parse(iso);
   return Number.isFinite(t) ? t : null;
+}
+
+/**
+ * 任务的「目标文本」—— 本回合最早那条消息的内容（即用户提问）。
+ *
+ * 数据回流与案例检索都靠**目标文本的相似度**配对和召回。此前直接用 `taskId`
+ * （形如 `turn:xxx`）当目标文本，两条任务的"目标"永远不可能相似，偏好对配不出来、
+ * 案例检索也召不回 —— 功能看着在跑，实际全空。所以必须取真实文本。
+ *
+ * 取不到时退回 taskId：宁可退化，也不能让调用方拿到空串去参与相似度计算。
+ */
+export function taskGoalText(taskId: string, maxChars = 300): string {
+  const scope = resolveTaskScope(taskId);
+  if (!scope) return taskId;
+  const row = getDb()
+    .prepare(
+      `SELECT content FROM messages
+       WHERE chat_jid = ? AND timestamp >= ? AND timestamp < ?
+         AND content IS NOT NULL AND content != ''
+       ORDER BY timestamp ASC LIMIT 1`,
+    )
+    .get(scope.chatJid, iso(scope.startMs), iso(scope.endMs)) as { content: string } | undefined;
+  const text = row?.content?.trim();
+  if (!text) return taskId;
+  return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
 }
 
 /**

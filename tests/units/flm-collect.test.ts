@@ -323,6 +323,48 @@ describe('FLM F1 · 系统来源派生（AC-F1.2）', () => {
     expect(call?.rawPayload.nodeOk).toBe(2);
   });
 
+  // 回归（2026-10-10）：failedCall 原先用的是本文件里手写的第二份判据
+  // （`status === 'error' || status === 'failed'`），与 flm-evaluate 的 isFail 不一致，
+  // 而且这两个值上游**从不写**。上游 chat-trace-persist.ts 给 tool-call 的终态只有
+  // `permissionDenied ? 'denied' : 'success'`。所以线上永远派不出"工具失败"这件事。
+  //
+  // 本用例刻意让**节点全绿**，把失败事件逼到只能由工具调用驱动 —— 否则失败的节点
+  // 会把断言喂饱，用例就测不出工具调用那一路到底通不通。状态值用 denied 而非
+  // error/failed，理由同上：喂生产端产不出的值，等于测试替生产代码补接线。
+  test('工具调用被拒（denied）也必须派生出失败事件，不能只认节点失败', () => {
+    const chat = 'web:flm-denied-probe';
+    const base = Date.parse('2026-10-09T12:00:00.000Z');
+    const db = getDb();
+    db.prepare('DELETE FROM chat_trace_nodes WHERE chat_jid = ?').run(chat);
+    db.prepare('DELETE FROM trace_tool_calls WHERE chat_jid = ?').run(chat);
+    db.prepare(
+      `INSERT OR REPLACE INTO chat_trace_nodes
+         (id, chat_jid, session_id, node_type, title, status, tokens, started_at, ended_at)
+       VALUES (1, ?, NULL, 'tool', 'Bash', 'done', 10, ?, ?)`,
+    ).run(chat, iso(base), iso(base + 1000));
+    db.prepare(
+      `INSERT INTO trace_tool_calls (chat_jid, tool_use_id, tool_name, status, started_at, ended_at, output_json)
+       VALUES (?, 'tc-denied', 'Bash', 'denied', ?, ?, ?)`,
+    ).run(chat, iso(base), iso(base + 1000), '{"error":"permission denied"}');
+
+    const scope = {
+      taskId: 'turn:denied-probe',
+      chatJid: chat,
+      traceId: null,
+      sessionId: null,
+      startMs: base,
+      endMs: base + 60_000,
+    };
+    const drafts = deriveSystemDrafts(scope, { ...DEFAULT_CONFIG, sampleRate: 100 });
+    const err = drafts.find((d) => d.type === 'system_error');
+    expect(err).toBeTruthy();
+    expect(err?.rawPayload.nodeFailed).toBe(0); // 节点全绿 —— 事件确由工具调用驱动
+    expect(err?.rawPayload.callFailed).toBe(1);
+
+    db.prepare('DELETE FROM chat_trace_nodes WHERE chat_jid = ?').run(chat);
+    db.prepare('DELETE FROM trace_tool_calls WHERE chat_jid = ?').run(chat);
+  });
+
   test('采样率确定性：同一任务多次采到同样结果', () => {
     const scope = resolveTaskScope(`turn:${USER_MSG}`)!;
     const cfg = { ...DEFAULT_CONFIG, sampleRate: 50 };

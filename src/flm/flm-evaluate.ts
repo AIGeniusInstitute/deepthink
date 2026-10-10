@@ -68,13 +68,26 @@ export interface EvalContext {
 
 /** 成功状态。取值来自实盘数据（见 docs/task_state）：nodes 用 done，tool_calls 用 success。 */
 const OK_STATUS = new Set(['done', 'success', 'ok', 'completed', 'succeeded']);
-/** 失败状态。 */
-const FAIL_STATUS = new Set(['failed', 'error', 'timeout', 'aborted']);
+/**
+ * 失败状态。**必须覆盖上游写入方真正会写的值**。
+ *
+ * `denied` 是 `src/chat-trace-persist.ts` 里 tool-call 落库的唯一非成功终态
+ * （`status: event.permissionDenied ? 'denied' : 'success'`）—— 权限被拒的执行
+ * 是一次没拿到结果的行为，算异常。此前这里漏了它，等于上游写出来的失败态
+ * 没有任何一个能被本模块认出来。
+ *
+ * 注意：上游 tool-call **没有** error/failed 分支，工具返回错误载荷（如
+ * `{"status":"error"}`）时 status 仍是 success。所以这几个值在当前实盘数据上
+ * 命中率为 0，保留是为了兼容 nodes 表（确有 failed 行）与将来的上游修复。
+ * 详见 docs/issues/2026-10-10-flm-toolcall-failure-signal-never-detected.md。
+ */
+const FAIL_STATUS = new Set(['failed', 'error', 'timeout', 'aborted', 'denied']);
 
-function isOk(status: string | null | undefined): boolean {
+/** 导出给 flm-collect 复用 —— "什么算失败" 只允许有一处定义。 */
+export function isOk(status: string | null | undefined): boolean {
   return status != null && OK_STATUS.has(status);
 }
-function isFail(status: string | null | undefined): boolean {
+export function isFail(status: string | null | undefined): boolean {
   return status != null && FAIL_STATUS.has(status);
 }
 

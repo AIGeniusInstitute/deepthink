@@ -394,7 +394,8 @@ test-smoke: ## 最小回归测试集（CI 门禁，< 60s）
 	  tests/units/flm-closedloop.test.ts \
 	  tests/units/flm-collect.test.ts \
 	  tests/units/flm-routes.test.ts \
-	  tests/units/flm-strategy-routes.test.ts
+	  tests/units/flm-strategy-routes.test.ts \
+	  tests/units/flm-console-routes.test.ts
 
 format: ## 格式化代码
 	$(PKG) run format
