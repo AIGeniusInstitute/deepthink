@@ -203,6 +203,8 @@ PRD 要求「案例检索 Top5 命中率 ≥ 80%（用标注命中集合实测�
 
 ```
 docs/test_report/feedback-learning-module/
+├── FLM-验收报告.html     # 带截图验收报告（单文件，32 张截图 base64 内嵌，离线可读）
+├── build-report.py      # 该 HTML 的生成脚本（README.md + results.json + screenshots/ → HTML）
 ├── README.md            # 本报告
 ├── results.json         # 32 条用例的机器可读结果（含 timestamp / details / 截图名）
 └── screenshots/         # 32 张用例通过截图（01- ~ 32-）
@@ -222,3 +224,11 @@ scripts/e2e/flm-acceptance.cjs   # 验收脚本（32 条用例 + 并发锁）
 ---
 
 *报告生成方式：用例明细表由 `results.json` 逐字回填（见 §3），非人工转录；缺陷与加固记录来自 `docs/issues/` 与脚本内注释。*
+
+**HTML 产物**：`FLM-验收报告.html` 由 `build-report.py` 从 `README.md` + `results.json` + `screenshots/` 合成：
+
+```bash
+python3 build-report.py . FLM-验收报告.html
+```
+
+该文件自带全部 32 张截图（base64 内嵌），无外部依赖，可直接双击离线打开。渲染校验（headless Chrome）：32 个用例卡片、32 张图片全部加载成功、0 张损坏、0 个控制台错误。

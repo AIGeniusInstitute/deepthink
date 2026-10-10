@@ -120,4 +120,5 @@ validation / eval）须补进此集」）。
 - [x] Playwright 验收脚本 `scripts/e2e/flm-acceptance.cjs`（TC-02 ~ TC-33，共 32 条）
 - [x] UI 验收执行 —— **32 / 32 通过**，脚本 MD5 `92fc3a0942319db191b7ee16a06094f9` 跑前跑后一致
 - [x] 带截图测试报告 `docs/test_report/feedback-learning-module/`（32 张截图）
+- [x] 带截图测试报告 **HTML 产物** `docs/test_report/feedback-learning-module/FLM-验收报告.html`（8.4 MB 单文件，32 张截图 base64 内嵌；headless Chrome 渲染校验：32 卡片 / 32 图全部加载、0 损坏、0 控制台错误）
 - [x] 合并 `feature/feedback-learning-module` → `main` 并 push（`fedd342`，fast-forward，atomgit / github 均已更新）
