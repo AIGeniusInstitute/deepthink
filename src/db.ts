@@ -54,7 +54,7 @@ import { getDefaultPermissions, normalizePermissions } from './permissions.js';
  * initDatabase(); consumers (and tests) should import this rather than
  * hard-coding the literal — bump it whenever a migration is added.
  */
-export const SCHEMA_VERSION = '71';
+export const SCHEMA_VERSION = '72';
 
 let db: InstanceType<typeof Database>;
 let vecExtensionLoaded = false;
@@ -2975,6 +2975,46 @@ export function initDatabase(): void {
     ensureColumn('group_seats', 'updated_at', 'TEXT');
   } catch (err) {
     logger.warn({ err }, 'group_seats / group_messages migration v67 failed (non-blocking)');
+  }
+
+  // v72: Agent Runtime Monitor — 开放平台 AaaS 的运行记录表。
+  //
+  // 在此之前，`POST /v1/agents/:id/chat/completions` 每次调用只在 usage_records
+  // 落一行**计费**数据，没有 status / error / 请求响应摘要，因此开放平台的
+  // Agent 服务是唯一一个"完全不可监控"的 agent 运行路径。本表补齐运行记录；
+  // 轨迹 span 复用既有 trace_steps（trace_id = 本表 id，chat_jid/graph_run_id 留空，
+  // 以免污染 chat trace 与 FLM 的既有消费方）。
+  //
+  // 幂等：CREATE TABLE IF NOT EXISTS，重复启动安全。
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS open_platform_runs (
+        id            TEXT PRIMARY KEY,
+        agent_id      TEXT NOT NULL,
+        user_id       TEXT NOT NULL,
+        key_id        TEXT,
+        channel       TEXT NOT NULL DEFAULT 'api',
+        model         TEXT NOT NULL DEFAULT 'agent',
+        status        TEXT NOT NULL DEFAULT 'running'
+          CHECK(status IN ('pending','running','completed','failed')),
+        started_at    TEXT NOT NULL,
+        ended_at      TEXT,
+        duration_ms   INTEGER NOT NULL DEFAULT 0,
+        input_tokens  INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd      REAL NOT NULL DEFAULT 0,
+        num_turns     INTEGER NOT NULL DEFAULT 0,
+        error         TEXT,
+        request_summary  TEXT,
+        response_summary TEXT,
+        trace_id      TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_opr_started ON open_platform_runs(started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_opr_agent ON open_platform_runs(agent_id, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_opr_user ON open_platform_runs(user_id, started_at DESC);
+    `);
+  } catch (err) {
+    logger.warn({ err }, 'open_platform_runs migration v72 failed (non-blocking)');
   }
 
   db.prepare(

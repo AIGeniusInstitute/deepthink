@@ -165,11 +165,11 @@ openPlatformDebugRoutes.post('/agent', async (c) => {
   }
 
   if (body.stream) {
-    return sseResponse(streamAgent(agentId, user.id, text));
+    return sseResponse(streamAgent(agentId, user.id, text, { channel: 'debug-sse' }));
   }
 
   try {
-    const { text: result } = await runAgent(agentId, user.id, text);
+    const { text: result } = await runAgent(agentId, user.id, text, { channel: 'debug' });
     return c.json({
       id: `chatcmpl-${Date.now()}`,
       object: 'chat.completion',

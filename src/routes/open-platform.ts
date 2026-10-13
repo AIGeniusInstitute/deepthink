@@ -254,7 +254,9 @@ openPlatformRoutes.post('/agents/:agentId/chat/completions', async (c) => {
   }
 
   if (body.stream) {
-    const stream = toSseStream(streamAgent(agentId, auth.userId, userText));
+    const stream = toSseStream(
+      streamAgent(agentId, auth.userId, userText, { channel: 'sse', keyId: auth.keyId }),
+    );
     return new Response(stream, {
       status: 200,
       headers: {
@@ -269,7 +271,10 @@ openPlatformRoutes.post('/agents/:agentId/chat/completions', async (c) => {
   try {
     const policy = getAgentDefValidationPolicy(agentId);
     const validated = await applyResultValidation<{ id: string; object: string; created: number; model: string; choices: unknown[]; usage: Record<string, number> }>(c, policy, async () => {
-      const { text } = await runAgent(agentId, auth.userId, userText);
+      const { text } = await runAgent(agentId, auth.userId, userText, {
+        channel: 'api',
+        keyId: auth.keyId,
+      });
       const payload = {
         id: `chatcmpl-${Date.now()}`,
         object: 'chat.completion',

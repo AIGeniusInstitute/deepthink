@@ -26,6 +26,7 @@ import {
 import { loadUserMcpServers } from '../mcp-utils.js';
 import { logger } from '../logger.js';
 import { billOpenPlatformUsage } from './billing.js';
+import { createRunRecorder, type RunMeta } from './run-recorder.js';
 
 /**
  * Agent 单次运行的时长上限。用平台统一的 `containerTimeout`（默认 30 分钟，
@@ -241,6 +242,7 @@ export async function runAgent(
   agentId: string,
   userId: string,
   userText: string,
+  meta?: RunMeta,
 ): Promise<{ text: string }> {
   const resolved = resolveAgent(agentId, userId);
   if ('error' in resolved) {
@@ -251,16 +253,37 @@ export async function runAgent(
   const timeoutMs = agentTimeoutMs();
   const { options, abortController, timer } = buildQueryOptions(resolved.agent, timeoutMs);
   const startedAt = Date.now();
+  // 运行记录在 resolveAgent 通过之后才建：404 / 403 是无效请求，不该在监控里
+  // 留下"运行"。（见 PRD AC-F5.4）
+  const rec = createRunRecorder({
+    agentId,
+    userId,
+    keyId: meta?.keyId ?? null,
+    channel: meta?.channel ?? 'api',
+    model: resolved.agent.model || '',
+    userText,
+  });
+  rec.onCreate();
 
   let result = '';
+  // 非 success 的 result（SDK 内部报错）不会抛异常，只会让循环正常结束。
+  // 记下来是为了把状态标成 failed —— 否则一次失败的运行会被监控显示成成功。
+  let resultError: string | null = null;
   try {
     const conversation = query({ prompt: userText, options: options as any });
     for await (const event of conversation) {
-      if (event.type === 'result' && event.subtype === 'success') {
-        result = (event as any).result ?? '';
-        billAgentResult(userId, agentId, resolved.agent.model || '', event as any);
+      rec.onSdkEvent(event);
+      if (event.type === 'result') {
+        rec.onResult(event);
+        if (event.subtype === 'success') {
+          result = (event as any).result ?? '';
+          billAgentResult(userId, agentId, resolved.agent.model || '', event as any);
+        } else {
+          resultError = (event as any).result || `agent result subtype=${event.subtype}`;
+        }
       }
     }
+    rec.finish(resultError ? 'failed' : 'completed', resultError ? new Error(resultError) : undefined, result.trim());
     return { text: result.trim() };
   } catch (err) {
     const upstream = (err as Error)?.message || String(err);
@@ -271,6 +294,7 @@ export async function runAgent(
       logger.warn({ agentId, timeoutMs, elapsedMs }, 'runAgent timed out');
       const e: any = new Error(`Agent execution timed out after ${Math.round(elapsedMs / 1000)}s`);
       e.status = 504;
+      rec.finish('failed', e);
       throw e;
     }
     logger.warn({ agentId, elapsedMs, err: upstream.slice(0, 200) }, 'runAgent failed');
@@ -278,6 +302,7 @@ export async function runAgent(
     // 只剩一句无信息量的话，排查必须重新复现（见 docs/issues/2026-10-09-...）。
     const e: any = new Error(`Agent execution failed: ${upstream}`.slice(0, 300));
     e.status = 500;
+    rec.finish('failed', e);
     throw e;
   } finally {
     clearTimeout(timer);
@@ -293,6 +318,7 @@ export async function* streamAgent(
   agentId: string,
   userId: string,
   userText: string,
+  meta?: RunMeta,
 ): AsyncGenerator<string> {
   const resolved = resolveAgent(agentId, userId);
   if ('error' in resolved) {
@@ -303,6 +329,16 @@ export async function* streamAgent(
   const timeoutMs = agentTimeoutMs();
   const { options, abortController, timer } = buildQueryOptions(resolved.agent, timeoutMs);
   const startedAt = Date.now();
+  const rec = createRunRecorder({
+    agentId,
+    userId,
+    keyId: meta?.keyId ?? null,
+    channel: meta?.channel ?? 'sse',
+    model: resolved.agent.model || '',
+    userText,
+  });
+  rec.onCreate();
+  let resultError: string | null = null;
 
   const id = `chatcmpl-${Date.now()}`;
   const created = Math.floor(Date.now() / 1000);
@@ -321,6 +357,7 @@ export async function* streamAgent(
   try {
     const conversation = query({ prompt: userText, options: options as any });
     for await (const event of conversation) {
+      rec.onSdkEvent(event);
       if (event.type === 'stream_event') {
         const evt = (event as any).event;
         const parent = (event as any).parent_tool_use_id;
@@ -334,16 +371,22 @@ export async function* streamAgent(
             yield emit({ content: text }, null);
           }
         }
-      } else if (event.type === 'result' && event.subtype === 'success') {
-        billAgentResult(userId, agentId, resolved.agent.model || '', event as any);
-        // 终块
-        yield emit({}, 'stop');
+      } else if (event.type === 'result') {
+        rec.onResult(event);
+        if (event.subtype === 'success') {
+          billAgentResult(userId, agentId, resolved.agent.model || '', event as any);
+          // 终块
+          yield emit({}, 'stop');
+        } else {
+          resultError = (event as any).result || `agent result subtype=${event.subtype}`;
+        }
       }
     }
     if (!started) {
       yield emit({ role: 'assistant' }, null);
       yield emit({}, 'stop');
     }
+    rec.finish(resultError ? 'failed' : 'completed', resultError ? new Error(resultError) : undefined);
   } catch (err) {
     const upstream = (err as Error)?.message || String(err);
     const elapsedMs = Date.now() - startedAt;
@@ -352,16 +395,18 @@ export async function* streamAgent(
       { agentId, elapsedMs, ...(timedOut ? { timeoutMs } : { err: upstream.slice(0, 200) }) },
       timedOut ? 'streamAgent timed out' : 'streamAgent failed',
     );
+    const message = timedOut
+      ? `Agent execution timed out after ${Math.round(elapsedMs / 1000)}s`
+      : `Agent execution failed: ${upstream}`.slice(0, 300);
+    rec.finish('failed', new Error(message));
     yield JSON.stringify({
-      error: {
-        message: timedOut
-          ? `Agent execution timed out after ${Math.round(elapsedMs / 1000)}s`
-          : `Agent execution failed: ${upstream}`.slice(0, 300),
-        type: 'agent_error',
-      },
+      error: { message, type: 'agent_error' },
     });
   } finally {
     clearTimeout(timer);
     abortController.abort();
+    // 兜底收尾：客户端断开 SSE 时生成器被 .return()，既不进 catch 也不进循环尾部，
+    // 不给这条运行落终态的话它会永远挂在 running（生产库里已有 5 条这样的对话运行）。
+    if (!rec.isFinished()) rec.finish('failed', new Error('stream closed before completion'));
   }
 }

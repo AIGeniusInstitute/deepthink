@@ -1,0 +1,44 @@
+npm notice run deepthink@1.0.0 npx
+npm notice run 'tsx' probe-t5-billing.mts
+Agent 定义：2334ee10-2523-49d1-b09b-ab983071baa5 / owner=1aafbcf0-d0fb-4359-a97e-7e63bda1bb27 / enabled=1
+调用前 open-platform 计费行数 = 3
+[2026-10-13 16:37:44.314] [32mINFO[39m (94019): [36msqlite-vec extension loaded — vector index enabled[39m
+    [35mversion[39m: "v0.1.9"
+调用完成 wall=5538ms status=undefined turns=undefined
+
+=== open_platform_runs ===
+{
+  "id": "3df5053d-c2fa-4b90-a1ab-8966beb432b7",
+  "user_id": "1aafbcf0-d0fb-4359-a97e-7e63bda1bb27",
+  "agent_id": "2334ee10-2523-49d1-b09b-ab983071baa5",
+  "status": "completed",
+  "input_tokens": 24271,
+  "output_tokens": 91,
+  "cost_usd": 0.12363,
+  "num_turns": 1,
+  "duration_ms": 5533,
+  "started_at": "2026-10-13T08:37:44.612Z",
+  "ended_at": "2026-10-13T08:37:50.145Z"
+}
+
+=== usage_records ===
+{
+  "user_id": "1aafbcf0-d0fb-4359-a97e-7e63bda1bb27",
+  "agent_id": "2334ee10-2523-49d1-b09b-ab983071baa5",
+  "input_tokens": 24271,
+  "output_tokens": 91,
+  "cost_usd": 0.12363,
+  "duration_ms": 2328,
+  "num_turns": 1,
+  "created_at": "2026-10-13T08:37:49.974Z"
+}
+
+=== 对账 ===
+  ✅ input_tokens: 运行记录=24271 账本=24271
+  ✅ output_tokens: 运行记录=91 账本=91
+  ✅ cost_usd: 运行记录=0.12363 账本=0.12363
+  ✅ num_turns: 运行记录=1 账本=1
+  ✅ duration_ms: 墙钟=5533 ≥ SDK=2328（口径不同，不做相等断言）
+  ✅ 墙钟自洽: ended_at - started_at = 5533ms vs duration_ms = 5533ms
+
+✅ 四个同源字段完全一致，duration_ms 差异符合已知口径差异；status=completed

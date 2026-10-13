@@ -1,10 +1,11 @@
-import { MessageCircle, Puzzle, User, BookOpen, Bot, Server, KeyRound, Users, Briefcase, FolderOpen, FlaskConical, UserPlus, Sparkles } from 'lucide-react';
+import { MessageCircle, Puzzle, User, BookOpen, Bot, Server, KeyRound, Users, Briefcase, FolderOpen, FlaskConical, UserPlus, Sparkles, Activity } from 'lucide-react';
 
 export const baseNavItems = [
   { path: '/chat', icon: MessageCircle, label: '工作台' },
   { path: '/disk', icon: FolderOpen, label: '网盘' },
   { path: '/agent-groups', icon: UserPlus, label: 'Agent群组' },
   { path: '/agents', icon: Bot, label: 'Agent' },
+  { path: '/runtime-monitor', icon: Activity, label: '运行监控' },
   { path: '/eval-center', icon: FlaskConical, label: '评测中心' },
   { path: '/feedback-learning', icon: Sparkles, label: '自进化' },
   { path: '/skills', icon: Puzzle, label: 'Skill' },

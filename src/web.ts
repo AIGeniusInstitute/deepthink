@@ -86,6 +86,7 @@ import paasAdminRoutes from './routes/paas-admin.js';
 import paasEmbeddingRoutes from './routes/paas-embedding.js';
 import paasShareRoutes from './routes/paas-share.js';
 import chatTraceRoutes from './routes/chat-trace.js';
+import runtimeMonitorRoutes from './routes/runtime-monitor.js';
 import flmRoutes from './routes/flm.js';
 import harnessRoutes from './routes/harness.js';
 import supervisorRoutes from './routes/supervisor.js';
@@ -341,6 +342,7 @@ app.route('/api/autonomy', autonomyRoutes);
 app.route('/api/groups', agentRoutes); // Agent routes under /api/groups/:jid/agents
 app.route('/api/groups', workspaceConfigRoutes); // Workspace config under /api/groups/:jid/workspace-config
 app.route('/api/groups', chatTraceRoutes); // Chat trace DAG under /api/groups/:jid/trace/*
+app.route('/api/runtime-monitor', runtimeMonitorRoutes); // Agent 运行监控（统一所有来源的运行视图）
 app.route('/api/flm', flmRoutes); // Feedback & Learning Module under /api/flm/*
 app.route('/api', monitorRoutes);
 app.route('/api/usage', usageRoutes);

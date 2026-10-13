@@ -51,6 +51,7 @@ const AgentGroupsListPage = lazy(() => import('./pages/AgentGroupsListPage').the
 const AgentGroupChatPage = lazy(() => import('./pages/AgentGroupChatPage').then(m => ({ default: m.AgentGroupChatPage })));
 const EvalCenterPage = lazy(() => import('./pages/EvalCenterPage').then(m => ({ default: m.EvalCenterPage })));
 const FeedbackLearningPage = lazy(() => import('./pages/FeedbackLearningPage').then(m => ({ default: m.FeedbackLearningPage })));
+const RuntimeMonitorPage = lazy(() => import('./pages/RuntimeMonitorPage').then(m => ({ default: m.RuntimeMonitorPage })));
 
 export function App() {
   const Router = shouldUseHashRouter() ? HashRouter : BrowserRouter;
@@ -109,6 +110,7 @@ export function App() {
           <Route path="/open-platform" element={<OpenPlatformPage />} />
           <Route path="/supervisor" element={<Suspense fallback={<PageLoader />}><SupervisorPage /></Suspense>} />
           <Route path="/harness" element={<Suspense fallback={<PageLoader />}><HarnessPage /></Suspense>} />
+          <Route path="/runtime-monitor" element={<Suspense fallback={<PageLoader />}><RuntimeMonitorPage /></Suspense>} />
           <Route path="/monitor" element={<Navigate to="/settings?tab=monitor" replace />} />
           <Route path="/usage" element={<Navigate to="/settings?tab=usage" replace />} />
           <Route path="/billing" element={<Suspense fallback={<PageLoader />}><BillingPage /></Suspense>} />

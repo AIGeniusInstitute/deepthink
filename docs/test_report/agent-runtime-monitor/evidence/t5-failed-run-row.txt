@@ -1,0 +1,22 @@
+npm notice run deepthink@1.0.0 npx
+npm notice run 'tsx' probe-t5-failpath.mts
+Agent 定义：a71a5846-7dec-4794-be54-10a855295547 model=no-such-model-xyz-000
+[2026-10-13 16:37:57.208] [32mINFO[39m (94724): [36msqlite-vec extension loaded — vector index enabled[39m
+    [35mversion[39m: "v0.1.9"
+调用抛错：Agent execution failed: Claude Code returned an error result: Failed to authenticate. API Error: 403 当前分组不支持模型「no-such-model-xyz-000」。
+
+行数 7 → 8（差 1）
+{
+  "id": "3d9c0b00-3b51-45b9-a06e-0258043043b8",
+  "status": "failed",
+  "error": "Agent execution failed: Claude Code returned an error result: Failed to authenticate. API Error: 403 当前分组不支持模型「no-such-model-xyz-000」。",
+  "ended_at": "2026-10-13T08:37:59.054Z",
+  "duration_ms": 1570,
+  "num_turns": 1
+}
+
+✅ 失败路径落 failed 行且 error/ended_at 非空
+[2026-10-13 16:37:59.054] [33mWARN[39m (94724): [36mrunAgent failed[39m
+    [35magentId[39m: "a71a5846-7dec-4794-be54-10a855295547"
+    [35melapsedMs[39m: 1570
+    err: "Claude Code returned an error result: Failed to authenticate. API Error: 403 当前分组不支持模型「no-such-model-xyz-000」。"

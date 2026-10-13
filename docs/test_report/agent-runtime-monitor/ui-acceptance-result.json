@@ -1,0 +1,114 @@
+{
+  "total": 18,
+  "passed": 18,
+  "results": [
+    {
+      "id": "UC-01",
+      "name": "管理员登录",
+      "ok": true,
+      "detail": "已登录，落地在 /chat"
+    },
+    {
+      "id": "UC-02",
+      "name": "打开运行监控页，KPI 卡片有数字",
+      "ok": true,
+      "detail": "20 次运行；运行中 1 共 20 次运行 疑似卡住 1 running 超 30 分钟 成功 17 失败 2 成功率 89.5% Token 150k 总成本 $0.78 按 token 单价估算 P95 耗时 49m47s 19 个样本"
+    },
+    {
+      "id": "UC-03",
+      "name": "趋势图渲染出柱子",
+      "ok": true,
+      "detail": "6 根柱子"
+    },
+    {
+      "id": "UC-04",
+      "name": "来源分布 8 个来源全在（含当前为空的）",
+      "ok": true,
+      "detail": "对话 / IM Agent12 图编排0 开放平台 AaaS82 失败 Loop Engineering0 监督者0 定时任务0 沙箱执行0 Harness 评测0"
+    },
+    {
+      "id": "UC-05",
+      "name": "工作区/Agent 分布按 Agent 展示开放平台运行",
+      "ok": true,
+      "detail": "9 行；含 MedDRA 转 WHODrug"
+    },
+    {
+      "id": "UC-06",
+      "name": "运行列表有数据行",
+      "ok": true,
+      "detail": "20 行"
+    },
+    {
+      "id": "UC-07",
+      "name": "点击来源 chip 后只剩该来源",
+      "ok": true,
+      "detail": "8 行，全部为开放平台"
+    },
+    {
+      "id": "UC-08",
+      "name": "点击运行行打开详情抽屉并显示轨迹",
+      "ok": true,
+      "detail": "1 条轨迹；含\"工作区\"=true"
+    },
+    {
+      "id": "UC-09",
+      "name": "Esc 关闭详情抽屉",
+      "ok": true,
+      "detail": "抽屉已关闭"
+    },
+    {
+      "id": "UC-10",
+      "name": "时间窗口 7 天 → 30 天，运行总数随之变大",
+      "ok": true,
+      "detail": "7d=20 → 30d=98"
+    },
+    {
+      "id": "UC-11",
+      "name": "「只看疑似卡住」能筛出卡住的运行",
+      "ok": true,
+      "detail": "1/20 行，均标记为疑似卡住"
+    },
+    {
+      "id": "UC-12",
+      "name": "暂停自动刷新按钮可切换状态",
+      "ok": true,
+      "detail": "自动刷新中 → 已暂停"
+    },
+    {
+      "id": "UC-13",
+      "name": "运行列表展示耗时/状态/工作区",
+      "ok": true,
+      "detail": "表头=状态|来源|标题|工作区|归属|耗时|Token|成本|开始时间| 首行=失败|开放平台|AaaS|ping|Agent|execution|failed:|Claude|Code|returned|an|error|result:|Failed|to|authenticate.|API|Error:|403|当"
+    },
+    {
+      "id": "UC-14",
+      "name": "浏览器控制台无 JS 报错",
+      "ok": true,
+      "detail": "无报错"
+    },
+    {
+      "id": "UC-15",
+      "name": "工作区/Agent 分布的展示名重复时可用 title 区分",
+      "ok": true,
+      "detail": "9 行，key 全部就位；重名 2 组已可区分（T5 对账探针 Agent/T5 失败路径探针 Agent）"
+    },
+    {
+      "id": "UC-16",
+      "name": "自动轮询可见时生效、隐藏时停手、切回立即补一次",
+      "ok": true,
+      "detail": "可见 13s=2 个请求；隐藏 13s=0 个；切回 2.5s=2 个"
+    },
+    {
+      "id": "UC-17",
+      "name": "点选空来源：空列表 + 空状态提示，不报错",
+      "ok": true,
+      "detail": "沙箱执行=0 行，Harness 评测=0 行，监督者=0 行；无 5xx"
+    },
+    {
+      "id": "UC-18",
+      "name": "左侧导航可点进运行监控，直达不 404",
+      "ok": true,
+      "detail": "导航入口存在，点击后 URL=/runtime-monitor；直达刷新亦正常"
+    }
+  ]
+}

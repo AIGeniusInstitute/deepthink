@@ -1,0 +1,18 @@
+=== AC-F7.1 未登录 → 401 ===
+  /sources                     401
+  /overview                    401
+  /runs?limit=1                401
+  /runs/chat:web:main%23701    401
+
+=== AC-F7.2 admin 看到全量 ===
+  admin total = 20
+
+=== AC-F7.3 member 只看到自己的（应为 admin 的真子集） ===
+  member total = 5
+  member 可见 owner: ['1aafbcf0-d0fb-4359-a97e-7e63bda1bb27']
+  member 可见 source: ['open-platform']
+
+=== AC-F7.4 同一条 runId：admin 200 / member 404 ===
+  admin   -> 200
+  member  -> 404
+  （member 拿到 404 而不是 403 —— 403 会泄露「这个 runId 存在」）
