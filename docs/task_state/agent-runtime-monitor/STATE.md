@@ -169,7 +169,7 @@ UI 验收（**18/18**）均已通过，证据（18 张截图 + 4 份探针输出
 - [x] 生产 `:9999` 用同一验收脚本复测全绿（见 §7.2），截图 `08-production-collapsed.png` /
       `09-production-expanded.png`
 - [x] 停掉隔离验收实例 `:9997`（`lsof -ti:9997 -sTCP:LISTEN | xargs kill`）
-- [ ] push 到 main
+- [x] push 到 main（atomgit + github 两个 remote）
 
 ### 7.4 登记（未改，见 issue §3.1）
 
