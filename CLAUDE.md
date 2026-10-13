@@ -202,6 +202,12 @@ StreamEvent 类型以 `shared/stream-event.ts` 为单一真相源，构建时通
 - `src/channel-prefixes.ts`（后端）
 - `container/agent-runner/src/channel-prefixes.ts`（agent-runner）
 
+`shared/web-search.ts` 是**第四个**同步源，同步到两处副本：
+- `src/web-search.ts`（后端——设置页连通性自检用）
+- `container/agent-runner/src/web-search.ts`（agent-runner——`web_search` 工具真正执行搜索的地方）
+
+宿主侧自检与容器侧实际调用**必须共用同一份实现**，否则会出现「自检通过、真调用失败」这种无法定位的分裂。该文件**不 import 任何东西**（三端模块布局不同，零依赖是它能被逐字复制的前提），因此新增搜索后端时不要引 SDK。
+
 **通用规则**：`shared/` 下任何一个文件都是**单向同步源**，它在 `src/`、`web/src/`、`container/agent-runner/src/` 下的同名副本会在 `make build` / `make sync-types` 时被**无条件覆盖**。改副本 = 白改。改完源头跑 `make sync-types`；要校验一致性必须**直接跑** `./scripts/check-stream-event-sync.sh`（见上节警告：经由 `make typecheck` 校验无效）。
 
 ### 3.3 IPC 通信
@@ -349,6 +355,7 @@ data/
   config/feishu-provider.json              # 飞书配置
   config/claude-custom-env.json            # 自定义环境变量
   config/container-env/{folder}.json       # 群组级环境变量覆盖
+  config/web-search.json                   # 联网搜索后端选择与凭据（明文 JSON，0600）
   config/user-im/{userId}/feishu.json      # 用户级飞书 IM 配置（AES-256-GCM 加密）
   config/user-im/{userId}/telegram.json    # 用户级 Telegram IM 配置（AES-256-GCM 加密）
   config/user-im/{userId}/qq.json          # 用户级 QQ IM 配置（AES-256-GCM 加密）
@@ -376,10 +383,11 @@ shared/                       # 跨项目共享「单向真相源」，只改这
   stream-event.ts             # StreamEvent 类型（同步到 src/、web/src/、agent-runner/src/）
   image-detector.ts           # 图片 MIME 检测（同步到 src/、agent-runner/src/）
   channel-prefixes.ts         # IM 渠道前缀映射（同步到 src/、agent-runner/src/）
+  web-search.ts               # 可插拔联网搜索后端（同步到 src/、agent-runner/src/）
 
 scripts/                      # 构建辅助脚本
-  sync-stream-event.sh        # 将 shared/ 下的三个真相源同步到各子项目（make sync-types / make build）
-  check-stream-event-sync.sh  # 校验三个副本是否一致（CI 直接调用；经 make typecheck 调用无效，见 §3.2）
+  sync-stream-event.sh        # 将 shared/ 下的四个真相源同步到各子项目（make sync-types / make build）
+  check-stream-event-sync.sh  # 校验各副本是否一致（CI 直接调用；经 make typecheck 调用无效，见 §3.2）
   copy-runtime-assets.cjs     # 把 tsc 不会 emit 的运行时资产搬进 dist/（npm run build 的一环，见 §5）
   check-agent-runner-prompts.sh  # 校验 agent-runner 源码引用的 prompt 文件真实存在（make typecheck 时调用；否则要到容器启动 readFileSync 才 ENOENT）
 ```
@@ -549,7 +557,7 @@ WebSocket：`/ws`（协议详见 [`docs/API.md`](docs/API.md) 的 WebSocket 章�
 - **Git commit message 使用简体中文**，格式：`类型: 简要描述`（如 `修复: 侧边栏下拉菜单无法点击`）
 - **Issue / PR 规范**见下方 §10.2
 - 系统路径不可通过文件 API 操作：`logs/`、`CLAUDE.md`、`.claude/`、`conversations/`
-- `shared/` 下的文件（`stream-event.ts`、`image-detector.ts`、`channel-prefixes.ts`）都是**单向真相源**，只改源头，改完跑 `make sync-types`（`make build` 自动触发）。**不要编辑 `src/`、`web/src/`、`container/agent-runner/src/` 下的同步副本**——它们会被无条件覆盖。漂移门禁在 CI（`./scripts/check-stream-event-sync.sh`），**不要用 `make typecheck` 自查**（前置依赖会先 sync 掉漂移，见 §3.2）
+- `shared/` 下的文件（`stream-event.ts`、`image-detector.ts`、`channel-prefixes.ts`、`web-search.ts`）都是**单向真相源**，只改源头，改完跑 `make sync-types`（`make build` 自动触发）。**不要编辑 `src/`、`web/src/`、`container/agent-runner/src/` 下的同步副本**——它们会被无条件覆盖。漂移门禁在 CI（`./scripts/check-stream-event-sync.sh`），**不要用 `make typecheck` 自查**（前置依赖会先 sync 掉漂移，见 §3.2）
 - Claude SDK / CLI 和容器内置的第三方工具始终使用最新版本：
   - `@anthropic-ai/claude-agent-sdk` 在 `agent-runner/package.json` 用 `"*"` + 无 lock file + `CACHEBUST` 触发每次 `npm install` 重跑
   - `feishu-cli` 在 `container/Dockerfile` 通过 `github.com/riba2534/feishu-cli/releases/latest` 的 **302 redirect Location header** 提取 tag 动态下载（不走 `api.github.com` 规避 rate limit），binary 和 skills 共享同一 `$VERSION` 确保一致

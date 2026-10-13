@@ -41,6 +41,8 @@
 - `GET|PUT /api/config/telegram` · `POST /api/config/telegram/test`（**deprecated**，使用 `/api/config/user-im/telegram` 代替）
 - `GET|PUT /api/config/appearance` · `GET /api/config/appearance/public`（外观配置，public 端点无需认证）
 - `GET|PUT /api/config/system` — 系统运行参数（容器超时、并发限制、`autoCompactWindow` 等），需要 `manage_system_config` 权限
+- `GET|PUT /api/config/web-search` — 联网搜索后端（智谱 / Tavily / 博查 / Serper / Bing 抓取），GET 返回各后端凭据（`apiKey` 一律掩码为 `'<masked>'`）与 `providersMeta`，PUT 省略 `apiKey` 字段表示保留已存 key
+- `POST /api/config/web-search/test` — 搜索后端连通性自检，接受 `{provider?, apiKey?, baseUrl?}` 覆盖（可测未保存的凭据），失败 400 / 无结果 200
 - `GET /api/config/user-im/status`（所有渠道连接状态，含 QQ）
 - `GET|PUT /api/config/user-im/feishu`（用户级飞书 IM 配置，GET 返回 `connected` 字段）
 - `GET|PUT /api/config/user-im/telegram`（用户级 Telegram IM 配置，GET 返回 `connected`、`effectiveProxyUrl`、`proxySource`，PUT 支持 `proxyUrl`/`clearProxyUrl`）
