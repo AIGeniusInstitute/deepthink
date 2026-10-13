@@ -126,5 +126,6 @@ UI 验收（**18/18**）均已通过，证据（18 张截图 + 4 份探针输出
 - [x] `make test`：2067 passed / 14 skipped，唯一失败为**既有已知抖动**（`tests/feishu-card.test.ts`，单独重跑 94/94 全过）
 - [x] `make test-smoke` 全绿（21 文件 / 470 用例）
 - [x] 真实浏览器 UI 验收 18/18
-- [ ] 合并 `worktree-feat-agent-runtime-monitor` → `main`
-- [ ] push 到 main
+- [x] 合并 `worktree-feat-agent-runtime-monitor` → `main`（fast-forward 到 `7b3dad9`）
+- [x] push 到 main（`f58aa28..7b3dad9`，atomgit + github 两个 remote 均已推送）
+- [x] 隔离验收实例已停止（`lsof -ti:9997 -sTCP:LISTEN | xargs kill`）
