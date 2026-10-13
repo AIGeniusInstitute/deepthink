@@ -61,6 +61,7 @@ DeepThink，开源企业级自主 Agent 超级智能体自进化平台，是从 
 - **AgentNet 网盘** *(v1.4.0)* —— 面向 Agent 与用户的企业级文件盘：目录树、上传 / 下载 / 移动 / 删除 / 搜索、带恢复的回收站，以及文件版本历史
 - **评测中心（Eval Center）** *(v1.4.0)* —— 独立 PostgreSQL 上的独立评测产品：项目 → 数据集 → 版本 → 测试用例 → 评分标准 → 评测运行，支持确定性断言与 LLM-as-Judge 评分、Golden 标注，以及针对基线版本的 embedding 漂移检测
 - **反馈与学习自进化模块（FLM）** *(v1.6.0)* —— 把一次任务的真实结果回流到下一次行为：用户评价（👍/👎 + 原因标签 + 纠错文本）、系统日志与环境快照统一归一化为同一个 `FeedbackEvent`；三层评价引擎（结果层 / 过程层 / 质量层）把每次失败归因到六个环节之一并附证据片段；正负样本经验记忆支持向量检索；策略版本经回归门禁、按比例灰度放量、劣化自动回滚；纠错反馈生成的知识候选须审核后才入库。一个开关即可让整个模块降级为「无反馈执行」，用户无感
+- **Agent 运行监控（Agent Runtime Monitor）** *(v1.7.0)* —— 把 8 条各自写自己的表、各开自己的读接口的 Agent 运行链路（对话 / IM、图编排、开放平台 AaaS、Loop Engineering、监督者、定时任务、沙箱、Harness 评测）归一为同一个「运行」抽象，且各来源先按自己的词表归一状态、才允许参与跨源统计。`/runtime-monitor` 监控台给出 8 张 KPI 卡（含「疑似卡住」高亮）、空桶补 0 不塌陷的趋势、来源与工作区 / Agent 分布、可筛选的跨来源运行列表，以及可展开到完整内容的单次运行轨迹时间线。此前只落一行计费用量、没有状态 / 错误 / 轨迹的开放平台 AaaS，现在也写入真实运行记录——埋点严格旁路，写库失败绝不影响调用方
 - **多用户隔离** —— Per-user 工作区、Per-user IM 通道、RBAC 权限体系、邀请码注册、审计日志，每个用户拥有独立的执行环境
 - **八端消息统一路由** —— 飞书（流式卡片 + Reaction）、Telegram Bot API、QQ Bot API v2、钉钉 Stream、微信 iLink、Discord Gateway、WhatsApp（Baileys）和 Web 界面——统一路由
 - **多引擎 & 多提供商** —— 可插拔的代码 Agent 引擎（Claude Code / AtomCode / Codex / OpenCode）和多个 Claude API 提供商，三种负载均衡策略（round-robin / weighted / failover），自动健康检测与恢复
@@ -289,6 +290,23 @@ DeepThink 既可作为单节点运行，也可作为水平扩缩的 Kubernetes �
 - **可降级** —— 一个开关（`flm_config.enabled`）即可停止全部采集与评价，Agent 按「无反馈」继续运行；所有调用点均做异常隔离，FLM 任何路径都不会阻断消息收发
 
 入口：导航「自进化」→ `/feedback-learning` 控制台；聊天页助手消息气泡上的 👍/👎 组件。Schema v71 新增 12 张 `flm_*` 表，模块默认开启。
+
+### Agent 运行监控（Agent Runtime Monitor）*(v1.7.0)*
+
+平台能跑的东西已经很多——对话、图编排、Loop Engineering、监督者、定时任务、沙箱、Harness 评测、开放平台 Agent——但它们各写各的表、各开各的读接口，**没有一个地方能回答「现在有什么在跑、跑得怎么样、最近趋势如何」**。开放平台 AaaS 最极端：每次调用只落一行计费用量，没有状态、没有错误、没有轨迹，即便对外交付的「Agent 服务」也没有运行历史。
+
+本模块把这一切收敛成同一个**「运行」**抽象。
+
+- **8 个来源，一种形状** —— 对话 / IM（`chat_trace_nodes`）、图编排（`graph_runs`）、开放平台 AaaS（`open_platform_runs`，新增）、Loop Engineering（`loop_runs`）、监督者（`supervisor_sessions`）、定时任务（`task_run_logs`）、沙箱（`sandbox_executions`）、Harness 评测（`harness_eval_runs`）全部归一为同一个 `RunSummary`，携带统一的 `runId`、状态、耗时、tokens、成本、归属人，以及解析后的工作区 / Agent 可读名
+- **状态词表逐源不同** —— `done`、`completed`、`success` 不是同一个词，因此每个来源先声明自己的映射（归一到 `running / success / failed / cancelled / pending`）才允许参与跨源统计；同时保留 `rawStatus`，原值始终可追溯
+- **疑似卡住识别** —— `running` 且已跑超 30 分钟的运行被标为「疑似卡住」并高亮；面板正是靠它照出了 5 条自 2026-10-10 起一直停在 `running` 的对话轮次
+- **`/runtime-monitor` 监控台** —— 8 张 KPI 卡（运行中 / 疑似卡住 / 成功 / 失败 / 成功率 / Token / 总成本 / P95 耗时）、**空桶补 0 不塌陷**的趋势桶、来源与工作区 / Agent 分布、可筛选可分页的跨来源运行列表，以及展示单次运行完整轨迹时间线的详情抽屉
+- **轨迹可完整展开** —— 轨迹入参 / 出参默认按行数钳制，每条运行配一个「展开完整轨迹 / 收起」开关；展开态以 `runId` 为键，切换运行天然复位、不需要 effect，无入参出参的原子运行不渲染死按钮
+- **AaaS 运行记录严格旁路** —— `runAgent()` 与 `streamAgent()` 两条链路都写入运行记录：状态流转、`trace_id`、与计费账本同源的 tokens / 成本 / 轮数、错误文本与摘要。每次写库都包在 try/catch 内，失败只记 warning、**绝不影响调用方**；`resolveAgent` 之前被拒的请求（404 / 403）刻意不留痕，因为它们没有运行过
+- **权限 fail-closed** —— admin 可见全部；member 只可见自己有权访问的工作区（实测为真子集）。访问他人的 `runId` 返回 **404 而非 403**，避免泄露「这条运行存在」
+- **实时但不给后台页签加负担** —— 5s 轮询，`document.hidden` 时暂停、切回前台立即补一次（实测：可见 13s = 2 次请求，隐藏 13s = 0 次）
+
+入口：导航「运行监控」→ `/runtime-monitor`。Schema v72 新增 `open_platform_runs` 表。归一化**只发生在读侧**——既有写入路径零改动，监控模块不可用不影响任何其他功能。
 
 ### AgentNet 网盘 *(v1.4.0)*
 
