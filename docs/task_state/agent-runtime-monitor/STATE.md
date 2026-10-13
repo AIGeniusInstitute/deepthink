@@ -153,17 +153,30 @@ UI 验收（**18/18**）均已通过，证据（18 张截图 + 4 份探针输出
 
 | 项 | 结果 |
 |---|---|
-| 真实浏览器验收 | **12/12 通过**（[`iteration-2-trace-expand/`](../../test_report/agent-runtime-monitor/iteration-2-trace-expand/EVIDENCE.md)，7 张截图） |
-| 旧代码同数据复跑（patch 掉改动重建） | 前 5 步同样通过（现象复现：12/20 条有裁切、1595 个元素被裁、隐藏 192080px），第 6 步**红在「没有展开按钮」** |
+| 真实浏览器验收（隔离快照） | **12/12 通过**（[`iteration-2-trace-expand/`](../../test_report/agent-runtime-monitor/iteration-2-trace-expand/EVIDENCE.md)，9 张截图） |
+| 旧代码同数据复跑（patch 掉改动重建） | 前 5 步同样通过（现象复现：扫 20 条中 12 条有裁切、1595 个元素被裁、隐藏 192080px），第 6 步**红在「没有展开按钮」** |
+| **部署后在用户实际访问的 `localhost:9999` 复测** | 同一脚本再跑一遍**同样全绿**（生产扫 12 条全部有裁切）；仅 `定时任务/沙箱/评测` 分支因生产窗口内 0 条而 SKIP，该分支由隔离快照种子数据验证 |
 | 展开后 | 6669 个元素全部 `line-clamp: none`，溢出 0；1595 个原被裁元素可视高度全部变大 |
 | 内容完整性 | 6669 个非空字段与后端 payload **逐字一致**（最长 406 字符） |
 | 可逆 / 换运行复位 / 死按钮 | 全部通过 |
 | `make typecheck` / `make test-smoke` / 漂移门禁 / `make test` | 全绿（同 §6，唯一失败仍是 `feishu-card` 已知抖动） |
 
-### 7.3 登记（未改，见 issue §3.1）
+### 7.3 合并与部署
+
+- [x] 合并 `worktree-feat-agent-runtime-monitor` → `main`（fast-forward `03fc6c1..c7b8cfe`）
+- [x] `make start-prod PORT=9999` 重启生产实例（自动停旧实例 → 编译 → 构建前端 → watchdog 守护）
+      旧 watchdog `58956`/node `58959` → 新 watchdog `28117`/node `28121`，`/api/health` 200
+- [x] 生产 `:9999` 用同一验收脚本复测全绿（见 §7.2），截图 `08-production-collapsed.png` /
+      `09-production-expanded.png`
+- [x] 停掉隔离验收实例 `:9997`（`lsof -ti:9997 -sTCP:LISTEN | xargs kill`）
+- [ ] push 到 main
+
+### 7.4 登记（未改，见 issue §3.1）
 
 - 对话 `thinking` 步写入侧上限 **500**（`trace-node-allocator.ts:316,324`，生产 119 行中 108 行已触顶），
   `turn` 步 **400**（`agent-runner/src/index.ts:2413`）—— 这些步展开后仍只能看到库里的那 500/400 字符。
 - 读侧 `queries.ts:367-368` 的 `truncate(...,500)` 实测 0/23878 行触顶，属"有损但不生效"，未动。
 - 生产 `open_platform_runs` 当前 **0 行**，页面上可见的 8 条 AaaS 运行均为探针产物、只在隔离快照里。
 - 移动端视口未实测。
+- 验收脚本里 "N/20" 的分母曾写死为扫描上限，在生产只有 12 行时会虚报成 12/20。
+  已改为运行时量出的「扫描 N 条，其中 M 条」，生产实为 **12/12**。

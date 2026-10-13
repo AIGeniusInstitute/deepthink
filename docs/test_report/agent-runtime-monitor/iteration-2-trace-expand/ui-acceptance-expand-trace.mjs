@@ -151,17 +151,19 @@ try {
       }
       await closePanel();
     }
-    return found;
+    // 连扫描条数一起返回：日志里写死 "/20" 会在运行列表不足 20 行时虚报分母
+    // （生产 7 天窗口只有 12 行，实际是 12/12，写成 12/20 就失真了）。
+    return { found, scanned: total };
   }
 
   // ── 取「被裁掉的最长字段」那条运行作为样本，而不是第一条碰上的 ─────────────
   let target = null;
   await step('遍历运行列表，定位被视觉裁切的轨迹（复现「截断省略」）', async () => {
-    const found = await scanClipped(20);
+    const { found, scanned } = await scanClipped(20);
     assert(found.length > 0, '遍历运行列表后未找到「文本被视觉裁掉」的轨迹，无法验收');
     target = found.reduce((a, b) => (b.maxLen > a.maxLen ? b : a));
     const worst = found.reduce((a, b) => (b.hidden > a.hidden ? b : a));
-    return `${found.length}/20 条运行存在视觉裁切；取最长字段（${target.maxLen} 字符）那条；最大隐藏量 ${worst.hidden}px`;
+    return `扫描 ${scanned} 条运行，其中 ${found.length} 条存在视觉裁切；取最长字段（${target.maxLen} 字符）那条；最大隐藏量 ${worst.hidden}px`;
   });
 
   assert(target, '未定位到目标运行');
