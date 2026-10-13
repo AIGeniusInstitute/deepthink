@@ -4,6 +4,8 @@
 > 技术方案：[`docs/tech_solution/agent-runtime-monitor/`](../../tech_solution/agent-runtime-monitor/)
 > 执行状态：[`docs/task_state/agent-runtime-monitor/STATE.md`](../../task_state/agent-runtime-monitor/STATE.md)
 > 分支：`worktree-feat-agent-runtime-monitor`　测试日期：2026-10-13
+> 迭代 2（运行轨迹「展开完整轨迹」）：[`iteration-2-trace-expand/EVIDENCE.md`](./iteration-2-trace-expand/EVIDENCE.md)
+> 　对应 issue：[`docs/issues/2026-10-13-runtime-monitor-trace-truncated.md`](../../issues/2026-10-13-runtime-monitor-trace-truncated.md)
 
 ## 0. 结论
 

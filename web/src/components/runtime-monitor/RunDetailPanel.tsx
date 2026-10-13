@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { X, Loader2, AlertCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Loader2, AlertCircle, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useRuntimeMonitorStore, type TraceItem } from '../../stores/runtime-monitor';
@@ -20,7 +20,17 @@ function barWidth(item: TraceItem, totalMs: number | null): string {
   return `${Math.max(2, Math.min(100, (d / totalMs) * 100))}%`;
 }
 
-function TraceRow({ item, totalMs }: { item: TraceItem; totalMs: number | null }) {
+function TraceRow({
+  item,
+  totalMs,
+  expanded,
+}: {
+  item: TraceItem;
+  totalMs: number | null;
+  /** 展开态下不再钳制行数，入参/出参照原样铺开。 */
+  expanded: boolean;
+}) {
+  const clamp = expanded ? '' : ' line-clamp-3';
   return (
     <div className="py-2 border-b border-border last:border-0" data-testid="trace-row">
       <div className="flex items-center gap-2 min-w-0">
@@ -49,13 +59,19 @@ function TraceRow({ item, totalMs }: { item: TraceItem; totalMs: number | null }
         />
       </div>
       {item.inputSummary && (
-        <div className="mt-1 ml-4.5 text-xs text-muted-foreground whitespace-pre-wrap break-words line-clamp-3">
+        <div
+          data-testid="trace-input"
+          className={`mt-1 ml-4.5 text-xs text-muted-foreground whitespace-pre-wrap break-words${clamp}`}
+        >
           <span className="text-muted-foreground/70">入参 </span>
           {item.inputSummary}
         </div>
       )}
       {item.outputSummary && (
-        <div className="mt-0.5 ml-4.5 text-xs text-muted-foreground whitespace-pre-wrap break-words line-clamp-3">
+        <div
+          data-testid="trace-output"
+          className={`mt-0.5 ml-4.5 text-xs text-muted-foreground whitespace-pre-wrap break-words${clamp}`}
+        >
           <span className="text-muted-foreground/70">出参 </span>
           {item.outputSummary}
         </div>
@@ -78,6 +94,10 @@ export function RunDetailPanel() {
   const loading = useRuntimeMonitorStore((s) => s.detailLoading);
   const clearDetail = useRuntimeMonitorStore((s) => s.clearDetail);
 
+  // 记的是「哪条运行被展开了」而不是一个裸 boolean：换一条运行天然回到紧凑视图，
+  // 不需要额外的 effect 去重置（也就不会有一帧残留的展开态）。
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') clearDetail();
@@ -91,6 +111,10 @@ export function RunDetailPanel() {
 
   const run = detail?.run;
   const badge = run ? resolveStatusBadge(run.status, run.stale) : null;
+  const expanded = detail !== null && expandedRunId === detail.run.runId;
+  // task / sandbox / harness-eval 是原子运行记录，入参出参都为空 —— 展开它们不会有
+  // 任何变化，索性不给一个点了没反应的按钮。
+  const expandable = detail !== null && detail.trace.some((t) => t.inputSummary || t.outputSummary);
 
   return (
     <div
@@ -150,12 +174,28 @@ export function RunDetailPanel() {
             )}
 
             <div>
-              <h3 className="text-sm font-semibold text-foreground mb-1">
+              <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
                 运行轨迹
                 {detail.trace.length > 0 && (
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  <span className="text-xs font-normal text-muted-foreground">
                     {detail.trace.length} 步
                   </span>
+                )}
+                {expandable && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto"
+                    data-testid="trace-expand-toggle"
+                    onClick={() => setExpandedRunId(expanded ? null : detail.run.runId)}
+                  >
+                    {expanded ? (
+                      <ChevronsDownUp className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronsUpDown className="w-3.5 h-3.5" />
+                    )}
+                    {expanded ? '收起' : '展开完整轨迹'}
+                  </Button>
                 )}
               </h3>
               {detail.trace.length === 0 ? (
@@ -165,7 +205,12 @@ export function RunDetailPanel() {
               ) : (
                 <div data-testid="trace-list">
                   {detail.trace.map((item) => (
-                    <TraceRow key={item.spanId} item={item} totalMs={run.durationMs} />
+                    <TraceRow
+                      key={item.spanId}
+                      item={item}
+                      totalMs={run.durationMs}
+                      expanded={expanded}
+                    />
                   ))}
                 </div>
               )}

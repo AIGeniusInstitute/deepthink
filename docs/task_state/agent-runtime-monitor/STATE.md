@@ -129,3 +129,41 @@ UI 验收（**18/18**）均已通过，证据（18 张截图 + 4 份探针输出
 - [x] 合并 `worktree-feat-agent-runtime-monitor` → `main`（fast-forward 到 `7b3dad9`）
 - [x] push 到 main（`f58aa28..7b3dad9`，atomgit + github 两个 remote 均已推送）
 - [x] 隔离验收实例已停止（`lsof -ti:9997 -sTCP:LISTEN | xargs kill`）
+
+---
+
+## 7. 迭代 2 —— 运行轨迹「展开完整轨迹」（2026-10-13，交付后用户反馈）
+
+> 用户反馈：`/runtime-monitor` 运行详情 → 运行轨迹**有截断省略**，需要能展开看完整数据。
+> 走 **Issue 修复任务工作流程**（不是新需求），issue 文档：
+> [`docs/issues/2026-10-13-runtime-monitor-trace-truncated.md`](../../issues/2026-10-13-runtime-monitor-trace-truncated.md)
+
+### 7.1 改动
+
+`web/src/components/runtime-monitor/RunDetailPanel.tsx` **单文件，+53 / -8**。
+
+- 轨迹行的 `line-clamp-3` 改为按 `expanded` 条件施加；
+- 轨迹区标题栏加一个 `展开完整轨迹 / 收起` 按钮（`data-testid="trace-expand-toggle"`）；
+- 展开态记的是 `expandedRunId`（不是裸 boolean）—— 换一条运行天然复位，不需要额外 effect；
+- `task / sandbox / harness-eval` 等无入参出参的原子运行**不渲染按钮**，避免死按钮。
+
+**只改展示层**：后端 / 数据库 / 写入路径零改动。截断的根因是 CSS，数据本身没丢。
+
+### 7.2 验证（同数据 A/B）
+
+| 项 | 结果 |
+|---|---|
+| 真实浏览器验收 | **12/12 通过**（[`iteration-2-trace-expand/`](../../test_report/agent-runtime-monitor/iteration-2-trace-expand/EVIDENCE.md)，7 张截图） |
+| 旧代码同数据复跑（patch 掉改动重建） | 前 5 步同样通过（现象复现：12/20 条有裁切、1595 个元素被裁、隐藏 192080px），第 6 步**红在「没有展开按钮」** |
+| 展开后 | 6669 个元素全部 `line-clamp: none`，溢出 0；1595 个原被裁元素可视高度全部变大 |
+| 内容完整性 | 6669 个非空字段与后端 payload **逐字一致**（最长 406 字符） |
+| 可逆 / 换运行复位 / 死按钮 | 全部通过 |
+| `make typecheck` / `make test-smoke` / 漂移门禁 / `make test` | 全绿（同 §6，唯一失败仍是 `feishu-card` 已知抖动） |
+
+### 7.3 登记（未改，见 issue §3.1）
+
+- 对话 `thinking` 步写入侧上限 **500**（`trace-node-allocator.ts:316,324`，生产 119 行中 108 行已触顶），
+  `turn` 步 **400**（`agent-runner/src/index.ts:2413`）—— 这些步展开后仍只能看到库里的那 500/400 字符。
+- 读侧 `queries.ts:367-368` 的 `truncate(...,500)` 实测 0/23878 行触顶，属"有损但不生效"，未动。
+- 生产 `open_platform_runs` 当前 **0 行**，页面上可见的 8 条 AaaS 运行均为探针产物、只在隔离快照里。
+- 移动端视口未实测。
