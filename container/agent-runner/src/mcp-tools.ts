@@ -16,6 +16,8 @@ import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
 import { formatIsoLocal } from './utils.js';
 import { randomUUID } from 'crypto';
+import { isWebSearchProviderId, runWebSearch } from './web-search.js';
+import type { WebSearchCredentials, WebSearchProviderId } from './web-search.js';
 
 /** Context required by MCP tools. Passed at construction time. */
 export interface McpContext {
@@ -2515,9 +2517,11 @@ Use this when the user describes a reusable capability that should be persisted 
     // 内置 WebSearch/WebFetch 在中国国内不可用（US-only 搜索后端 / 抓取失败）。
     // 这里用 SDK tool() 注册两个进程内 MCP 工具，配合 index.ts 的 toolAliases
     // 把模型 emit 的 WebSearch/WebFetch 路由到本实现。详见 docs/tech_solution。
+    // 搜索后端可选（zhipu / tavily / bocha / serper / bing），由宿主注入的
+    // WEB_SEARCH_PROVIDER 决定；实现见 shared/web-search.ts。
     tool(
       'web_search',
-      'Search the web (China-accessible, via Zhipu paas v4 web_search API). Returns titles/content/links/publish_date/media as JSON. Compatible with built-in WebSearch signature.',
+      'Search the web and return titles/content/links/publish_date/media as JSON. Compatible with built-in WebSearch signature.',
       {
         query: z.string().describe('The search query (any topic, zh/en ok)'),
         count: z
@@ -2534,68 +2538,12 @@ Use this when the user describes a reusable capability that should be persisted 
           .describe('Exclude results whose link domain matches one of these'),
       },
       async (args) => {
-        const apiKey = (process.env.ZHIPU_API_KEY || '').trim();
-        if (!apiKey) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({ status: 'error', query: args.query, results: [], error: 'missing ZHIPU_API_KEY' }),
-            }],
-          };
+        const { provider, credentials } = resolveWebSearchProvider();
+        const response = await runWebSearch(provider, args, credentials);
+        if (response.status === 'error') {
+          console.error(`[mcp-tools] web_search failed: provider=${response.provider} error=${response.error}`);
         }
-        const base = (process.env.ZHIPU_WEB_SEARCH_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4').replace(/\/$/, '');
-        const count = args.count ?? 5;
-        const t0 = Date.now();
-        try {
-          const resp = await fetch(`${base}/web_search`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              search_query: args.query,
-              search_engine: 'search_std',
-              count,
-              content_size: 'medium',
-            }),
-            signal: AbortSignal.timeout(15_000),
-          });
-          if (!resp.ok) {
-            const snippet = await resp.text().catch(() => '');
-            return {
-              content: [{
-                type: 'text' as const,
-                text: JSON.stringify({ status: 'error', query: args.query, results: [], error: `http_${resp.status}: ${snippet.slice(0, 200)}`, latency_ms: Date.now() - t0 }),
-              }],
-            };
-          }
-          const data = (await resp.json()) as Record<string, unknown>;
-          const raw = data.search_result ?? data.data ?? [];
-          const items: Record<string, string>[] = Array.isArray(raw) ? (raw as Record<string, string>[]) : [];
-          let normalized = items.slice(0, count).map((r) => ({
-            title: r.title || '',
-            content: r.content || r.snippet || '',
-            link: r.link || r.url || '',
-            publish_date: r.publish_date || r.date || '',
-            media: r.media || r.source || '',
-          }));
-          normalized = filterByDomain(normalized, args.allowed_domains, args.blocked_domains);
-          const status = normalized.length ? 'ok' : 'empty';
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({ status, query: args.query, results: normalized, latency_ms: Date.now() - t0, error: null }),
-            }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({ status: 'error', query: args.query, results: [], error: err instanceof Error ? `${err.name}: ${err.message}` : String(err), latency_ms: Date.now() - t0 }),
-            }],
-          };
-        }
+        return { content: [{ type: 'text' as const, text: JSON.stringify(response) }] };
       },
     ),
 
@@ -2621,32 +2569,26 @@ Use this when the user describes a reusable capability that should be persisted 
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-function domainOf(url: string): string {
-  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
-}
-
-/** 按 allowed_domains / blocked_domains 过滤结果（基于 link 域名）。 */
-function filterByDomain<T extends { link: string }>(
-  items: T[],
-  allowed?: string[],
-  blocked?: string[],
-): T[] {
-  let out = items;
-  if (allowed && allowed.length) {
-    const allow = new Set(allowed.map((d) => d.replace(/^www\./, '').toLowerCase()));
-    out = out.filter((it) => {
-      const d = domainOf(it.link).toLowerCase();
-      return allow.has(d) || [...allow].some((a) => d.endsWith(a));
-    });
-  }
-  if (blocked && blocked.length) {
-    const block = new Set(blocked.map((d) => d.replace(/^www\./, '').toLowerCase()));
-    out = out.filter((it) => {
-      const d = domainOf(it.link).toLowerCase();
-      return !block.has(d) && ![...block].some((b) => d.endsWith(b));
-    });
-  }
-  return out;
+/**
+ * 本次容器被配置使用哪个搜索后端，以及对应凭据。
+ * 由宿主 `src/container-runner.ts` 注入；`ZHIPU_*` 是可插拔改造前的旧契约，
+ * 对纯智谱部署仍然有效（未设 WEB_SEARCH_PROVIDER 时默认回落到智谱）。
+ */
+function resolveWebSearchProvider(): { provider: WebSearchProviderId; credentials: WebSearchCredentials } {
+  const requested = (process.env.WEB_SEARCH_PROVIDER || '').trim();
+  const provider: WebSearchProviderId = isWebSearchProviderId(requested) ? requested : 'zhipu';
+  const legacy = provider === 'zhipu';
+  return {
+    provider,
+    credentials: {
+      apiKey:
+        (process.env.WEB_SEARCH_API_KEY || '').trim() ||
+        (legacy ? (process.env.ZHIPU_API_KEY || '').trim() : ''),
+      baseUrl:
+        (process.env.WEB_SEARCH_BASE_URL || '').trim() ||
+        (legacy ? (process.env.ZHIPU_WEB_SEARCH_BASE_URL || '').trim() : ''),
+    },
+  };
 }
 
 /** 从 Content-Type 与 HTML meta 嗅探字符集；默认 utf-8。Node 22 支持 gb18030/gbk。 */

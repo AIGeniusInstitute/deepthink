@@ -31,6 +31,7 @@ import { OpencodeEngineSection } from '../components/settings/OpencodeEngineSect
 import { PiEngineSection } from '../components/settings/PiEngineSection';
 import { AutonomySection } from '../components/settings/AutonomySection';
 import { EmbeddingSettingsSection } from '../components/settings/EmbeddingSettingsSection';
+import { WebSearchSettingsSection } from '../components/settings/WebSearchSettingsSection';
 import { TeamPage } from './TeamPage';
 import { CollaborationPage } from './CollaborationPage';
 import { WorkflowEditorPage } from './WorkflowEditorPage';
@@ -45,8 +46,8 @@ import { LoopsPage } from './LoopsPage';
 import BillingPage from './BillingPage';
 import type { SettingsTab } from '../components/settings/types';
 
-const VALID_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'about', 'bindings', 'usage', 'monitor', 'language', 'atomcode', 'codex', 'opencode', 'pi', 'embedding', 'autonomy', 'team', 'collaborations', 'opc', 'workflows', 'marketplace', 'engines', 'sandbox', 'tasks', 'loops', 'supervisor', 'harness', 'billing'];
-const SYSTEM_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'atomcode', 'codex', 'opencode', 'pi', 'autonomy', 'embedding'];
+const VALID_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'about', 'bindings', 'usage', 'monitor', 'language', 'atomcode', 'codex', 'opencode', 'pi', 'embedding', 'web-search', 'autonomy', 'team', 'collaborations', 'opc', 'workflows', 'marketplace', 'engines', 'sandbox', 'tasks', 'loops', 'supervisor', 'harness', 'billing'];
+const SYSTEM_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'atomcode', 'codex', 'opencode', 'pi', 'autonomy', 'embedding', 'web-search'];
 const FULLPAGE_TABS: SettingsTab[] = ['groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'bindings', 'usage', 'monitor', 'team', 'collaborations', 'opc', 'workflows', 'marketplace', 'engines', 'sandbox', 'tasks', 'loops', 'supervisor', 'harness', 'billing'];
 
 export function SettingsPage() {
@@ -102,6 +103,7 @@ export function SettingsPage() {
       tabs.push({ key: 'pi', label: 'pi' });
       tabs.push({ key: 'autonomy', label: '自主性' });
       tabs.push({ key: 'embedding', label: 'Embedding' });
+      tabs.push({ key: 'web-search', label: '联网搜索' });
     }
     tabs.push({ key: 'groups', label: '会话' });
     tabs.push({ key: 'memory', label: '记忆' });
@@ -171,6 +173,7 @@ export function SettingsPage() {
     pi: 'pi 引擎',
     autonomy: '自主性中枢',
     embedding: 'Embedding 配置',
+    'web-search': '联网搜索',
     team: '团队',
     collaborations: '协作',
     opc: 'OPC',
@@ -297,6 +300,7 @@ export function SettingsPage() {
                   {activeTab === 'pi' && <PiEngineSection />}
                   {activeTab === 'autonomy' && <AutonomySection />}
                   {activeTab === 'embedding' && <EmbeddingSettingsSection />}
+                  {activeTab === 'web-search' && <WebSearchSettingsSection />}
                 </CardContent>
               </Card>
             </div>

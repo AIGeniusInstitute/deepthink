@@ -38,6 +38,7 @@ import {
   getPiConfig,
 } from './runtime-config.js';
 import type { SelectedMounts } from './web-context.js';
+import { resolveWebSearchEnv } from './web-search-config.js';
 
 import { providerPool } from './provider-pool.js';
 import {
@@ -185,18 +186,30 @@ const REQUIRED_SETTINGS_ENV: Record<string, string> = {
 
 /**
  * Resolve Zhipu web_search API key for the agent-runner container.
- * Priority: host env ZHIPU_API_KEY > parsed ~/zhipu_web_search/.env (task-designated project).
- * Returns undefined if neither source yields a key — non-fatal (web_search tool returns a clear error).
+ * Priority: host env ZHIPU_API_KEY > ZHIPU_WEB_SEARCH_ENV > ~/zhipu_web_search/.env.
+ * Returns undefined if no source yields a key — non-fatal (web_search falls back
+ * to the keyless provider).
+ *
+ * The homedir candidate is what makes this work off the original Linux dev box:
+ * the path used to be hardcoded to /home/me/, so on any other machine the
+ * fallback silently missed and web_search returned `missing_api_key` forever.
  */
-function resolveZhipuApiKey(): string | undefined {
+export function resolveZhipuApiKey(): string | undefined {
   if (process.env.ZHIPU_API_KEY) return process.env.ZHIPU_API_KEY.trim();
-  const envPath = process.env.ZHIPU_WEB_SEARCH_ENV || '/home/me/zhipu_web_search/.env';
-  try {
-    const txt = fs.readFileSync(envPath, 'utf8');
-    const m = txt.match(/^ZHIPU_API_KEY\s*=\s*(\S+)/m);
-    if (m) return m[1].trim();
-  } catch {
-    /* file absent / unreadable — skip silently */
+  const candidates = [
+    process.env.ZHIPU_WEB_SEARCH_ENV,
+    '/home/me/zhipu_web_search/.env',
+    path.join(os.homedir(), 'zhipu_web_search', '.env'),
+  ];
+  for (const envPath of candidates) {
+    if (!envPath) continue;
+    try {
+      const txt = fs.readFileSync(envPath, 'utf8');
+      const m = txt.match(/^ZHIPU_API_KEY\s*=\s*(\S+)/m);
+      if (m) return m[1].trim();
+    } catch {
+      /* file absent / unreadable — try the next candidate */
+    }
   }
   return undefined;
 }
@@ -881,12 +894,15 @@ export function buildVolumeMounts(
     containerOverride,
     resolvedProvider?.customEnv,
   );
-  // WebSearch 重写：注入智谱 web_search API Key 到 agent-runner 容器。
-  // 优先 host env ZHIPU_API_KEY；其次解析 ~/zhipu_web_search/.env（任务指定的项目）。
-  // 取不到不阻断启动，web_search 调用时返回明确 error。路径可用 ZHIPU_WEB_SEARCH_ENV 覆盖。
+  // WebSearch 重写：注入 web_search 后端与凭据到 agent-runner 容器。
+  // 后端由设置页的 data/config/web-search.json 决定；未配置时回落到旧的
+  // ZHIPU_API_KEY 发现逻辑，再回落到无 key 的 bing（保证 web_search 始终可用）。
   const zhipuApiKey = resolveZhipuApiKey();
   if (zhipuApiKey) {
     envLines.push(`ZHIPU_API_KEY=${zhipuApiKey}`);
+  }
+  for (const [key, value] of Object.entries(resolveWebSearchEnv(zhipuApiKey).env)) {
+    envLines.push(`${key}=${value}`);
   }
   // SystemSettings.autoCompactWindow > 0 时注入到容器，让 agent-runner 通过 query() settings 传给 SDK
   const sysSettings = getSystemSettings();
@@ -2310,11 +2326,14 @@ export async function runHostAgent(
     }
     // 让 SDK 捕获 CLI 的 stderr 输出，便于排查启动失败
     hostEnv['DEBUG_CLAUDE_AGENT_SDK'] = '1';
-    // WebSearch 重写：host 模式同样注入智谱 web_search API Key（与 docker 路径对称）。
+    // WebSearch 重写：host 模式同样注入 web_search 后端与凭据（与 docker 路径对称）。
     // 优先复用 host 进程既有 ZHIPU_API_KEY；否则从 ~/zhipu_web_search/.env 解析。
     if (!hostEnv['ZHIPU_API_KEY']) {
       const zhipuApiKey = resolveZhipuApiKey();
       if (zhipuApiKey) hostEnv['ZHIPU_API_KEY'] = zhipuApiKey;
+    }
+    for (const [key, value] of Object.entries(resolveWebSearchEnv(hostEnv['ZHIPU_API_KEY']).env)) {
+      hostEnv[key] = value;
     }
     // Claude Code 2.1.114+ 禁止 root 使用 --dangerously-skip-permissions，
     // IS_SANDBOX=1 告知 CLI 当前运行在受控环境中以绕过此限制。

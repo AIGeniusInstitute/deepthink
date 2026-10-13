@@ -51,6 +51,7 @@ const systemItems: NavItem[] = [
   { key: 'pi', label: 'pi 引擎', icon: <Server className="w-4 h-4" />, group: 'system' },
   { key: 'autonomy', label: '自主性中枢', icon: <Activity className="w-4 h-4" />, group: 'system' },
   { key: 'embedding', label: 'Embedding 配置', icon: <Cpu className="w-4 h-4" />, group: 'system' },
+  { key: 'web-search', label: '联网搜索', icon: <Globe className="w-4 h-4" />, group: 'system' },
 ];
 
 const accountItems: NavItem[] = [

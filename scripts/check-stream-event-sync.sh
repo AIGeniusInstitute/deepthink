@@ -40,6 +40,11 @@ check_sync "$ROOT/shared/channel-prefixes.ts" \
   "$ROOT/src/channel-prefixes.ts" \
   "$ROOT/container/agent-runner/src/channel-prefixes.ts"
 
+# Web search providers
+check_sync "$ROOT/shared/web-search.ts" \
+  "$ROOT/src/web-search.ts" \
+  "$ROOT/container/agent-runner/src/web-search.ts"
+
 if [ "$FAIL" -eq 0 ]; then
   echo "All shared type copies are in sync."
 else

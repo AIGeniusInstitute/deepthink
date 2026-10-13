@@ -63,6 +63,7 @@ import authRoutes from './routes/auth.js';
 import groupRoutes from './routes/groups.js';
 import memoryRoutes from './routes/memory.js';
 import configRoutes, { injectConfigDeps } from './routes/config.js';
+import webSearchRoutes from './routes/web-search.js';
 import tasksRoutes from './routes/tasks.js';
 import loopsRoutes from './routes/loops.js';
 import { graphRoutes } from './routes/graph.js';
@@ -316,6 +317,7 @@ app.route('/api/auth', authRoutes);
 app.route('/api/groups', groupRoutes);
 app.route('/api/groups', fileRoutes); // File routes also under /api/groups
 app.route('/api/memory', memoryRoutes);
+app.route('/api/config/web-search', webSearchRoutes);
 app.route('/api/config', configRoutes);
 app.route('/api/tasks', tasksRoutes);
 app.route('/api/loops', loopsRoutes);
