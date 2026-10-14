@@ -199,3 +199,66 @@ docker run --rm --network host alpine:3.20 sh -c '
 3. **`302` 不等于镜像可用**。USTC 的 `/golang/` 只是把请求 302 回 `dl.google.com`，坏节点问题原样继承；判定镜像源必须**下载完整文件 + 校验完整性**。
 4. **容器解析走 Docker Desktop 的 DNS 代理（`192.168.65.7`），与宿主机解析器不是一回事**。二分"宿主机行、容器不行"这类问题时，先在容器里 `nslookup` 对比宿主机 `dig`，这是最省时间的一步。
 5. **巡检建议**：CI 加一个轻量 job，在容器内验证**所有** `GO_DOWNLOAD_BASES` 候选源（`wget` 完整下载 + `gzip -t`），只要求"至少一个可用"告警，而不是逐个要求可用——国内镜像偶发 404、官方源偶发坏节点都属正常波动，多源策略下不应阻塞构建。
+
+## 9. 验证记录（修复后实测）
+
+### 9.1 镜像层（`./container/build.sh`，arm64）
+
+```text
+#15 [stage-0 11/19] RUN set -e && ...  GO_DOWNLOAD_BASES=aliyun nju dl.google.com ...
+#15 0.896 Downloading go1.21.13.linux-arm64.tar.gz from https://mirrors.aliyun.com/golang
+#15 18.76 Cloning feishu-cli source from gitcode.com
+#15 51.60 feishu-cli version dev (built unknown)      ← 自检通过
+#15 DONE 52.5s
+...
+#23 [stage-0 19/19] DONE 0.2s
+#24 naming to docker.io/library/deepthink-agent:latest
+Build complete!
+```
+
+第一个候选源（阿里云）即命中，未回退到后两个源；原来必挂的那一层现在 52.5s 通过。
+
+### 9.2 产物落位（对镜像内的独立校验，不是只看构建日志）
+
+```bash
+$ docker run --rm --entrypoint feishu-cli deepthink-agent:latest --version
+feishu-cli version dev (built unknown)
+
+$ docker run --rm --entrypoint ls deepthink-agent:latest /opt/builtin-skills/
+feishu-cli-data  feishu-cli-docs  feishu-cli-mail  feishu-cli-meetings  feishu-cli-messaging  feishu-cli-platform
+
+$ docker run --rm --entrypoint sh deepthink-agent:latest -c 'ls -d /usr/local/go'
+not present (cleaned)          ← Go 工具链按设计未留在主镜像
+```
+
+### 9.3 端到端：用户原始命令
+
+```bash
+$ ./scripts/rebuild-restart.sh 9999
+🐳 检测到容器源码变更，正在重建 Docker 镜像...
+Build complete!
+✅ 沙箱镜像无需重建
+🔨 检测到后端源码变更，重新编译后端... / 前端... / agent-runner...
+🚀 后台守护启动（端口 9999，nohup 脱离终端 + watchdog 自动重启）
+✅ 已后台启动 (watchdog pid 74372, node pid 74374)
+   /health OK（1*2s）
+   /ready OK（1*2s）
+ ✅ DeepThink 已重新编译、构建并部署
+   Web UI  ：http://localhost:9999
+```
+
+独立复核（不依赖脚本自身的 ✅ 输出）：
+
+```bash
+$ curl -s http://127.0.0.1:9999/health
+{"status":"ok","timestamp":1791947428757}
+$ curl -s http://127.0.0.1:9999/ready
+{"status":"ready","timestamp":1791947428772}
+$ lsof -ti:9999 -sTCP:LISTEN | head -1; cat logs/deepthink-9999.pid
+74374
+74374                      ← 监听进程 = 本次启动的 pidfile，确认不是残留实例
+$ ps -p 74374 -o command=
+node dist/index.js
+```
+
+结论：**真正修复**。构建层通过、产物落进镜像、端到端命令跑通、健康检查与实例身份均经独立复核。
