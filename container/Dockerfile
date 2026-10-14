@@ -177,8 +177,12 @@ RUN pip install --index-url "${PIP_INDEX_URL}" "headroom-ai[code,mcp]~=0.27.0" \
 # gitcode.com/AIGeniusInstitute/feishu-cli 是 DeepThink 组织维护的源码镜像
 # (国内 TCP-OK, ~0.5s), 但只镜像了 main 分支源码, 无 release 预编译二进制 /
 # 无版本 tag. 因此改为源码自编译方案, 全程不碰 github.com 与任何 ghproxy 镜像:
-#   1. Go 工具链: 从 dl.google.com 下载官方二进制 (国内稳定可达), 编译后清理,
-#      不留在主镜像;
+#   1. Go 工具链: 按序尝试 GO_DOWNLOAD_BASES (默认 阿里云镜像 → 南京大学镜像 →
+#      dl.google.com 官方源) 下载官方二进制, 编译后清理, 不留在主镜像.
+#      为什么不再单押 dl.google.com: 国内解析 dl.google.com 会轮询到多个 GGC
+#      节点, 其中部分节点 443 完全不响应, 且同一 DNS 会长时间把结果钉在坏节点
+#      上, 于是 curl --retry 全部打在同一个坏 IP 上, 构建必挂 (2026-10-14 事故,
+#      见 docs/issues/2026-10-14-docker-go-toolchain-dead-ggc-node.md);
 #   2. 源码: git clone --depth 1 gitcode 仓库 (拿源码 + skills/);
 #   3. 模块依赖: GOPROXY=https://goproxy.cn (国内可达, 已验证可拉 cobra / lark
 #      SDK 等 22 个依赖) 拉取;
@@ -189,13 +193,25 @@ RUN pip install --index-url "${PIP_INDEX_URL}" "headroom-ai[code,mcp]~=0.27.0" \
 ARG GITHUB_MIRROR=https://gh-proxy.com/
 ARG TARGETARCH
 ARG GO_VERSION=1.21.13
+# 空格分隔的候选下载源, 按序尝试, 第一个成功即止 (均指向官方 go${VERSION}.linux-*.tar.gz).
+# 境外/CI 可只留官方源: --build-arg GO_DOWNLOAD_BASES=https://dl.google.com/go
+ARG GO_DOWNLOAD_BASES="https://mirrors.aliyun.com/golang https://mirror.nju.edu.cn/golang https://dl.google.com/go"
 RUN set -e && \
     ARCH="${TARGETARCH:-$(dpkg --print-architecture)}" && \
     GO_TARBALL="go${GO_VERSION}.linux-${ARCH}.tar.gz" && \
-    echo "Downloading Go ${GO_VERSION} (${ARCH}) from dl.google.com" && \
-    curl -fsSL --connect-timeout 30 --max-time 180 --retry 3 --retry-delay 5 \
-      "https://dl.google.com/go/${GO_TARBALL}" \
-      | tar -xz -C /usr/local && \
+    GO_TGZ="/tmp/${GO_TARBALL}" && \
+    FETCHED=0 && \
+    for BASE in ${GO_DOWNLOAD_BASES}; do \
+      echo "Downloading ${GO_TARBALL} from ${BASE}"; \
+      if curl -fsSL --connect-timeout 20 --max-time 300 --retry 2 --retry-delay 3 \
+           "${BASE}/${GO_TARBALL}" -o "${GO_TGZ}" && gzip -t "${GO_TGZ}"; then \
+        FETCHED=1; break; \
+      fi; \
+      echo "  -> ${BASE} failed, trying next source"; \
+    done && \
+    [ "${FETCHED}" = "1" ] || { echo "ERROR: all Go download sources failed: ${GO_DOWNLOAD_BASES}" >&2; exit 1; } && \
+    tar -xzf "${GO_TGZ}" -C /usr/local && \
+    rm -f "${GO_TGZ}" && \
     export GOROOT=/usr/local/go && \
     export GOPATH=/tmp/gopath && \
     export PATH="${GOROOT}/bin:${PATH}" && \
