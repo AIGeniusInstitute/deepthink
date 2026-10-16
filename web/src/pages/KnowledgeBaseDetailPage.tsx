@@ -34,14 +34,15 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof FileText }> = [
   { id: 'chat', label: '问答', icon: MessageSquare },
 ];
 
-/** 非终态即仍需轮询。 */
-const PENDING_STATUSES = new Set(['pending', 'parsing', 'chunking', 'embedding']);
+/** 非终态即仍需轮询。`ocr` 也在其中 —— 扫描件识别要几十分钟，列表必须持续刷新。 */
+const PENDING_STATUSES = new Set(['pending', 'parsing', 'ocr', 'chunking', 'embedding']);
 
 const STATUS_STYLE: Record<string, string> = {
   ready: 'bg-emerald-100 text-emerald-700',
   failed: 'bg-red-100 text-red-700',
   pending: 'bg-slate-100 text-slate-600',
   parsing: 'bg-blue-100 text-blue-700',
+  ocr: 'bg-amber-100 text-amber-700',
   chunking: 'bg-blue-100 text-blue-700',
   embedding: 'bg-indigo-100 text-indigo-700',
 };
@@ -51,8 +52,15 @@ const STATUS_LABEL: Record<string, string> = {
   failed: '失败',
   pending: '排队中',
   parsing: '解析中',
+  ocr: 'OCR 识别中',
   chunking: '分块中',
   embedding: '向量化中',
+};
+
+/** parser_type 是内部标识，界面上换成用户看得懂的说法。 */
+const PARSER_LABEL: Record<string, string> = {
+  pdf_ocr: 'PDF·OCR',
+  url: '网页',
 };
 
 export function KnowledgeBaseDetailPage() {
@@ -137,7 +145,11 @@ export function KnowledgeBaseDetailPage() {
   const handleUpload = async (file: File) => {
     const res = await uploadDocument(id, file, chunkCfg());
     if (res.ok) {
-      toast.success('已上传，正在后台解析与分块');
+      toast.success(
+        res.ocr
+          ? '已上传。这是扫描件，正在后台 OCR 识别，耗时取决于页数，可在列表中查看进度'
+          : '已上传，正在后台解析与分块',
+      );
       await refreshDocs();
     } else {
       toast.error(res.error ?? '上传失败');
@@ -329,9 +341,19 @@ export function KnowledgeBaseDetailPage() {
                             </span>
                             {d.parser_type && (
                               <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 shrink-0">
-                                {d.parser_type}
+                                {PARSER_LABEL[d.parser_type] ?? d.parser_type}
                               </span>
                             )}
+                            {/* OCR 是分钟级操作，只给一个转圈用户无法判断是卡死还是在跑，
+                                所以把 parse_stage 里的 `ocr 12/287` 直接摊开显示。 */}
+                            {status === 'ocr' && d.parse_stage ? (
+                              <span
+                                data-testid="kb-doc-ocr-progress"
+                                className="text-xs text-amber-700 shrink-0"
+                              >
+                                {d.parse_stage}
+                              </span>
+                            ) : null}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {(d.size_bytes / 1024).toFixed(1)} KB · 分块 {d.chunk_count ?? 0} ·

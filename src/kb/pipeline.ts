@@ -34,6 +34,8 @@ import { embedChunksForDocument, getEmbeddingConfig, syncVecDimensionFromConfig 
 export type ParseStatus =
   | 'pending'
   | 'parsing'
+  /** 扫描件：正文由 OCR 产生，可能持续几十分钟，进度写在 `parse_stage`（形如 `ocr 12/287`）。 */
+  | 'ocr'
   | 'chunking'
   | 'embedding'
   | 'ready'

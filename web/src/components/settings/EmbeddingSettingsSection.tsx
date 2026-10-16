@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '../../stores/auth';
 import { getErrorMessage } from './types';
+import { LocalModelPanel } from './LocalModelPanel';
 
 interface EmbeddingConfigAdmin {
   baseUrl: string;
@@ -136,11 +137,16 @@ export function EmbeddingSettingsSection() {
 
   return (
     <div className="space-y-6">
+      {/* 放在最前面：绝大多数管理员没有现成的 Embedding API Key，
+          本机模型的路径最短，且启用后下面这些字段就不需要手工填了。 */}
+      <LocalModelPanel onEmbeddingChanged={() => void load()} />
+
       <div>
         <h2 className="text-lg font-semibold">Embedding 配置</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          知识库向量检索依赖外部 Embedding API（OpenAI 兼容协议）。配置后，文档上传时自动生成向量；
+          知识库向量检索依赖 Embedding API（OpenAI 兼容协议）。配置后，文档上传时自动生成向量；
           未配置时仅启用 FTS5 全文检索。后端使用 sqlite-vec 扩展做 KNN 查询。
+          也可以直接使用上面的本机内置模型，无需填写下面的字段。
         </p>
       </div>
 

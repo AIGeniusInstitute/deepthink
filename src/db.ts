@@ -11633,6 +11633,70 @@ export function addKbDocument(
   };
 }
 
+/**
+ * 插入一份「正文待定」的文档 —— 目前唯一的场景是扫描件：OCR 要跑几十分钟，
+ * 不能在 HTTP 请求里等，所以先建行拿到 docId，正文稍后由 `replaceKbDocumentContent` 补齐。
+ *
+ * `content_hash` 用 `pending:<uuid>` 而不是空串的 hash：空串的 hash 是常量，
+ * 两份同时待 OCR 的扫描件会被 `addKbDocument` 的去重逻辑判成同一份文档，
+ * 第二份直接返回 409。真正的去重推迟到正文落库时（那时才有真实 hash 可比）。
+ */
+export function addPendingKbDocument(
+  kbId: string,
+  userId: string,
+  filename: string,
+): KbDocumentRow {
+  const id = crypto.randomUUID();
+  const now = isoNow();
+  db.prepare(
+    `INSERT INTO kb_documents (id, kb_id, user_id, filename, content, content_hash, size_bytes, created_at, parse_status, parse_stage)
+     VALUES (?, ?, ?, ?, '', ?, 0, ?, 'ocr', 'ocr')`,
+  ).run(id, kbId, userId, filename, `pending:${id}`, now);
+  db.prepare(
+    'UPDATE knowledge_bases SET doc_count = (SELECT COUNT(*) FROM kb_documents WHERE kb_id = ?), updated_at = ? WHERE id = ?',
+  ).run(kbId, now, kbId);
+  return {
+    id,
+    kb_id: kbId,
+    user_id: userId,
+    filename,
+    content: '',
+    content_hash: `pending:${id}`,
+    size_bytes: 0,
+    created_at: now,
+  };
+}
+
+/**
+ * 用补齐的正文覆写文档内容，并重算 hash / size。
+ *
+ * 只在正文由异步流程产生时使用（OCR）。`kb_documents_fts` 上有 UPDATE 触发器，
+ * 所以这里改完 content，全文索引会自动跟上，不需要额外 rebuild。
+ *
+ * 返回 `duplicateOf` 表示补上正文后才发现与同库另一份文档内容相同 —— 上传时的
+ * 去重比的是占位 hash，比不出这个。调用方负责决定怎么处置这份文档。
+ */
+export function replaceKbDocumentContent(
+  docId: string,
+  content: string,
+): { duplicateOf: string | null } {
+  const row = db.prepare('SELECT kb_id FROM kb_documents WHERE id = ?').get(docId) as
+    | { kb_id: string }
+    | undefined;
+  if (!row) return { duplicateOf: null };
+
+  const hash = crypto.createHash('sha256').update(content).digest('hex');
+  const existing = db
+    .prepare('SELECT id FROM kb_documents WHERE kb_id = ? AND content_hash = ? AND id != ?')
+    .get(row.kb_id, hash, docId) as { id: string } | undefined;
+  if (existing) return { duplicateOf: existing.id };
+
+  db.prepare(
+    'UPDATE kb_documents SET content = ?, content_hash = ?, size_bytes = ? WHERE id = ?',
+  ).run(content, hash, Buffer.byteLength(content, 'utf8'), docId);
+  return { duplicateOf: null };
+}
+
 export function deleteKbDocument(
   docId: string,
   userId: string,

@@ -80,6 +80,19 @@ export function sniffTextFromBuffer(buf: Buffer): ParserType | null {
 }
 
 /**
+ * 扫描件（无文字层）专用错误类型。
+ *
+ * 上传路径需要区分「PDF 坏了」和「PDF 是扫描件」：前者该报错给用户，后者该转去
+ * OCR。用异常类型而不是匹配错误文案，否则改一个字的提示语就会悄悄让 OCR 回退失效。
+ */
+export class PdfHasNoTextLayerError extends Error {
+  constructor() {
+    super('PDF has no extractable text (possibly a scanned image)');
+    this.name = 'PdfHasNoTextLayerError';
+  }
+}
+
+/**
  * `pdf-parse` v2 是**具名类导出**（`export { PDFParse }`），没有默认导出 ——
  * v1 那套 `pdf(buffer)` 的函数式调用在 v2 下会退化成调用命名空间对象，报
  * `pdfParse is not a function`。用法是 `new PDFParse({data})` + `getText()`，
@@ -96,7 +109,7 @@ export async function parsePdf(buf: Buffer): Promise<string> {
   try {
     const result = await parser.getText({ pageJoiner: '' });
     const text = (result?.text ?? '').trim();
-    if (!text) throw new Error('PDF has no extractable text (possibly a scanned image)');
+    if (!text) throw new PdfHasNoTextLayerError();
     return text;
   } finally {
     await parser.destroy().catch(() => {});

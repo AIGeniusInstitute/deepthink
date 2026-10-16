@@ -7,7 +7,7 @@
  * document rather than holding the upload request open.
  */
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { Variables } from '../web-context.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -19,6 +19,7 @@ import {
   deleteKnowledgeBase,
   listKbDocuments,
   addKbDocument,
+  addPendingKbDocument,
   deleteKbDocument,
   getKbDocument,
   getKbChunk,
@@ -84,6 +85,7 @@ import {
   parseJson,
   fetchUrlContent,
   SUPPORTED_PARSERS,
+  PdfHasNoTextLayerError,
 } from '../document-parser.js';
 import {
   startIngestAsync,
@@ -91,6 +93,9 @@ import {
   cancelIngest,
   isIngesting,
 } from '../kb/pipeline.js';
+import { startOcrIngestAsync, PARSER_TYPE_PDF_OCR } from '../kb/ocr-ingest.js';
+import { getOcrConfig, ocrBaseUrl } from '../ocr.js';
+import { isModelInstalled, probeLocalModelService } from '../local-model.js';
 import { chunkText } from '../kb/chunker.js';
 import { searchChunks, type Citation, type SearchHit } from '../kb/search.js';
 import {
@@ -587,10 +592,21 @@ paasKbRoute.post('/:id/documents', async (c) => {
       400,
     );
   }
+  const chunkConfig = readChunkConfig(formData);
+  // 父子分块按库显式开启；未传时保持既有的单层分块行为。
+  const parentChild = isTruthyFormFlag(formData.get('parent_child'));
+
   let content: string;
   try {
     content = await parseByType(parserType, file.name, buf);
   } catch (err) {
+    // 扫描件走的是一条独立通道：OCR 要跑几十分钟，不能在这个请求里等。
+    if (err instanceof PdfHasNoTextLayerError) {
+      return await startScannedPdfUpload(c, id, user.id, file.name, buf, {
+        chunkConfig,
+        parentChild,
+      });
+    }
     logger.warn({ err, filename: file.name, parserType }, 'Document parse failed');
     return c.json(
       { error: err instanceof Error ? err.message : 'Failed to parse document' },
@@ -600,10 +616,6 @@ paasKbRoute.post('/:id/documents', async (c) => {
   if (!content.trim()) {
     return c.json({ error: 'Parsed document is empty' }, 400);
   }
-
-  const chunkConfig = readChunkConfig(formData);
-  // 父子分块按库显式开启；未传时保持既有的单层分块行为。
-  const parentChild = isTruthyFormFlag(formData.get('parent_child'));
 
   try {
     const result = addKbDocument(id, user.id, file.name, content);
@@ -627,6 +639,75 @@ paasKbRoute.post('/:id/documents', async (c) => {
     return c.json({ error: 'Failed to add document' }, 500);
   }
 });
+
+/**
+ * 扫描件通道：建一份「正文待定」的文档行，把 OCR 丢到后台，立刻返回 201。
+ *
+ * 这里**先检查 OCR 是否真的能跑**再建行。理由：OCR 失败要几十分钟后才暴露，
+ * 而失败原因是「模型没装」这种上传前就已知的事 —— 让用户等半小时再看到
+ * "识别失败"，不如当场告诉他去设置里启用。代价是扫描件上传多一次 3 秒内的探测。
+ */
+async function startScannedPdfUpload(
+  c: Context<{ Variables: Variables }>,
+  kbId: string,
+  userId: string,
+  filename: string,
+  buf: Buffer,
+  options: { chunkConfig: ReturnType<typeof readChunkConfig>; parentChild: boolean },
+): Promise<Response> {
+  const ocrCfg = getOcrConfig();
+  if (!ocrCfg.enabled) {
+    return c.json(
+      {
+        error:
+          '该 PDF 没有文字层（扫描件），需要 OCR，但 OCR 当前未启用。请在「设置 → 本机模型服务」中启用扫描件 OCR 后重新上传。',
+        code: 'ocr_disabled',
+      },
+      400,
+    );
+  }
+
+  // 只在本机服务模式下探测；管理员显式配置了远端 OCR 服务时，探测本机 Ollama
+  // 没有意义（那台服务可能是另一套）。
+  if (!ocrCfg.baseUrl) {
+    const service = await probeLocalModelService();
+    if (!service.available) {
+      return c.json(
+        {
+          error: `该 PDF 没有文字层（扫描件），需要 OCR，但本机模型服务不可用（${service.baseUrl}）：${service.error ?? '未启动'}。请在「设置 → 本机模型服务」中一键启用。`,
+          code: 'local_model_unavailable',
+        },
+        400,
+      );
+    }
+    if (!isModelInstalled(service.models, ocrCfg.model)) {
+      return c.json(
+        {
+          error: `该 PDF 没有文字层（扫描件），需要 OCR，但视觉模型 ${ocrCfg.model} 尚未下载。请在「设置 → 本机模型服务」中下载后再上传。`,
+          code: 'ocr_model_missing',
+        },
+        400,
+      );
+    }
+  }
+
+  const row = addPendingKbDocument(kbId, userId, filename);
+  setDocumentParserType(row.id, PARSER_TYPE_PDF_OCR);
+  startOcrIngestAsync(row.id, buf, {
+    chunkConfig: options.chunkConfig,
+    parentChild: options.parentChild,
+  });
+  return c.json(
+    {
+      document: {
+        ...serializeDocMeta({ ...row, parser_type: PARSER_TYPE_PDF_OCR, parse_status: 'ocr' }),
+        ocr: true,
+      },
+      ocr: { model: ocrCfg.model, baseUrl: ocrBaseUrl(ocrCfg) },
+    },
+    201,
+  );
+}
 
 async function parseByType(parserType: string, filename: string, buf: Buffer): Promise<string> {
   switch (parserType) {

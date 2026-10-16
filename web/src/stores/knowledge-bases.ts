@@ -182,7 +182,11 @@ interface KbState {
   deleteFaqEntries: (kbId: string, ids: string[]) => Promise<number>;
   listDocuments: (kbId: string) => Promise<KbDocumentMeta[]>;
   getDocument: (docId: string) => Promise<KbDocumentMeta | null>;
-  uploadDocument: (kbId: string, file: File, cfg?: ChunkConfigInput) => Promise<{ ok: boolean; error?: string }>;
+  uploadDocument: (
+    kbId: string,
+    file: File,
+    cfg?: ChunkConfigInput,
+  ) => Promise<{ ok: boolean; error?: string; ocr?: boolean }>;
   uploadFromUrl: (kbId: string, url: string) => Promise<{ ok: boolean; error?: string }>;
   removeDocument: (kbId: string, docId: string) => Promise<boolean>;
   reparseDocument: (docId: string, cfg?: ChunkConfigInput) => Promise<boolean>;
@@ -347,13 +351,18 @@ export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
     if (cfg?.chunk_overlap !== undefined) fd.append('chunk_overlap', String(cfg.chunk_overlap));
     if (cfg?.parent_child) fd.append('parent_child', '1');
     try {
-      await apiFetch<{ document: KbDocumentMeta }>(`${KB_API}/${kbId}/documents`, {
-        method: 'POST',
-        body: fd,
-        // 上传本身只做解析；切块与向量化在后台流水线里跑，所以不需要长超时。
-        timeoutMs: 120_000,
-      });
-      return { ok: true };
+      const res = await apiFetch<{ document: KbDocumentMeta; ocr?: boolean }>(
+        `${KB_API}/${kbId}/documents`,
+        {
+          method: 'POST',
+          body: fd,
+          // 上传本身只做解析；切块、向量化、扫描件 OCR 都在后台跑，所以不需要长超时。
+          timeoutMs: 120_000,
+        },
+      );
+      // 服务端识别出这是无文字层的扫描件并已转后台 OCR —— 界面提示要跟着变，
+      // 否则用户看到"正在解析"会以为几秒钟就该好。
+      return { ok: true, ocr: res?.ocr === true };
     } catch (e: any) {
       return { ok: false, error: e?.message ?? '上传失败' };
     }
