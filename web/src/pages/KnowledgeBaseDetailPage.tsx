@@ -78,6 +78,7 @@ export function KnowledgeBaseDetailPage() {
   const [strategy, setStrategy] = useState<'auto' | 'heading' | 'heuristic' | 'recursive'>('auto');
   const [chunkSize, setChunkSize] = useState(512);
   const [chunkOverlap, setChunkOverlap] = useState(80);
+  const [parentChild, setParentChild] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const kb = list.find((k) => k.id === id);
@@ -129,6 +130,7 @@ export function KnowledgeBaseDetailPage() {
     strategy,
     chunk_size: chunkSize,
     chunk_overlap: chunkOverlap,
+    parent_child: parentChild,
   });
 
   const handleUpload = async (file: File) => {
@@ -250,6 +252,17 @@ export function KnowledgeBaseDetailPage() {
                   />
                 </label>
 
+                <label className="flex items-center gap-1.5 text-xs select-none cursor-pointer pb-1.5">
+                  <input
+                    type="checkbox"
+                    data-testid="kb-parent-child"
+                    className="size-4 accent-teal-600"
+                    checked={parentChild}
+                    onChange={(e) => setParentChild(e.target.checked)}
+                  />
+                  父子分块
+                </label>
+
                 <div className="flex-1" />
 
                 <Button size="sm" variant="outline" onClick={() => setShowUrl(true)}>
@@ -280,6 +293,8 @@ export function KnowledgeBaseDetailPage() {
               <div className="text-xs text-muted-foreground">
                 支持 .md / .txt / .pdf / .docx / .html / .csv / .json / URL，单文件 ≤ 20MB。
                 上传后先解析，再按上述配置切块并向量化，整个过程在后台进行。
+                勾选「父子分块」会先按小节切出父块、再在父块内切子块，检索单元是子块、
+                命中后可用父块补足上下文（父块本身不参与向量化）。
               </div>
 
               {docs.length === 0 ? (

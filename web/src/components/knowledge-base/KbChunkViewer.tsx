@@ -101,6 +101,24 @@ export function KbChunkViewer({ docId }: { docId: string }) {
                     {c.heading_path}
                   </span>
                 )}
+                {c.chunk_type === 'parent_text' && (
+                  <span
+                    data-testid="kb-chunk-type"
+                    className="px-1.5 py-0.5 rounded bg-violet-100 text-violet-700"
+                    title="父块是回溯用的容器，不参与向量化、不出现在检索结果里"
+                  >
+                    父块
+                  </span>
+                )}
+                {c.chunk_type === 'text' && c.parent_chunk_id && (
+                  <span
+                    data-testid="kb-chunk-type"
+                    className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-700"
+                    title="子块：检索单元，命中可用父块补足上下文"
+                  >
+                    子块
+                  </span>
+                )}
                 {c.embedded ? (
                   <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">已向量化</span>
                 ) : (

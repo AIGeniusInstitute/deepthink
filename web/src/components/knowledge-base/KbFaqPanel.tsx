@@ -43,7 +43,8 @@ const EMPTY_DRAFT: Draft = {
  * FAQ 库与文档库是两条互不相通的入库路径（FAQ 库不接受文件上传），所以这里不是
  * 文档列表的变体，而是独立的一屏。三条语义在前端可见：
  *   - 负向问题不参与索引，只在命中后否决——所以它能和相似问题并列填写，但语义相反；
- *   - 任何改动都会让该条目的向量失效，需要重新向量化才可检索；
+ *   - 新建/编辑会在服务端立刻重建该条目的向量，保存后即可检索（切换索引方式
+ *     则会一次性作废全库向量，那是另一个入口的事）；
  *   - `separate` 模式下相似问题各占一条向量，`combined` 模式下合并成一条。
  */
 export function KbFaqPanel({ kb }: { kb: KnowledgeBase }) {
@@ -100,7 +101,7 @@ export function KbFaqPanel({ kb }: { kb: KnowledgeBase }) {
       toast.error(res.error ?? '保存失败');
       return;
     }
-    toast.success(draft.id ? '已保存，需重新向量化才能检索到新内容' : '条目已创建');
+    toast.success(draft.id ? '已保存并重新向量化' : '条目已创建并向量化');
     setDraft(null);
     await refresh();
   };
@@ -313,7 +314,11 @@ export function KbFaqPanel({ kb }: { kb: KnowledgeBase }) {
             <div className="space-y-1">
               {hits.length === 0 && <div className="text-xs text-muted-foreground">没有命中。</div>}
               {hits.map((h) => (
-                <div key={h.id} className="rounded border p-2 text-xs whitespace-pre-wrap">
+                <div
+                  key={h.id}
+                  data-testid="kb-faq-probe-hit"
+                  className="rounded border p-2 text-xs whitespace-pre-wrap"
+                >
                   <span className="text-muted-foreground">{h.score.toFixed(3)}</span> {h.text}
                 </div>
               ))}

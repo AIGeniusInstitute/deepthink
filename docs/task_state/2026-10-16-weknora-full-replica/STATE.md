@@ -10,13 +10,15 @@
 
 | 期 | 内容 | 状态 |
 |---|---|---|
-| **P1** | 知识库内核补全：父子分块 / FAQ 索引 / 预生成问题 / 查询改写 / 意图识别 | **5/5 子项已实现；UI 验收 / test_report / 合并未做** |
+| **P1** | 知识库内核补全：父子分块 / FAQ 索引 / 预生成问题 / 查询改写 / 意图识别 | ✅ **已完成**：5/5 子项 + UI 验收 17/17 + test_report + 合并 |
 | P2 | 文档接入扩展（xlsx/pptx、图片、整目录上传） | 未启动 |
 | P3 | 检索增强（rerank 深化、Wiki、GraphRAG） | 未启动 |
 | P4 | Agent 协作（fork/rewind、artifacts、steering） | 未启动 |
 | P5 | 平台化（SSO、多租户、Langfuse、小程序、扩展） | 未启动 |
 
-**P1 尚未完成**，不能进入 test_report / 合并阶段。
+**P1 已完成**：UI 验收 17/17 通过（截图见 `docs/test_report/2026-10-16-weknora-full-replica/screenshots/`），
+全量回归 174 文件 / 2386 条通过，5 个缺陷已按 issue 工作流修复并沉淀，
+报告见 `docs/test_report/2026-10-16-weknora-full-replica/TEST_REPORT.md`。P2–P5 未启动。
 
 ---
 
@@ -339,10 +341,50 @@ npx vitest run                          → Test Files  173 passed | 1 failed | 
 两边同一速率 → 与 §2.2 无关。§2.3 交付时再次复现同一条，**单独跑该文件连跑 3 次全绿（94/94 ×3）**，
 只在全量并行负载下偶发 → 确认是动态 import 争用，与本次改动无关。按"只清理自己弄脏的地方"不动它。
 
-**尚未做的验证**（P1 完成前必须补）：
-- ⬜ Playwright UI 验收（父子分块 / FAQ 条目 / Doc2Query 三处界面）
-- ⬜ test_report 及用例通过截图
-- ⬜ 合并 worktree → main 并 push
+**UI 验收（已补，2026-10-16）**：
+
+```
+DT_BASE=http://localhost:9911 DT_USER=admin DT_PASS='******' DT_DATA_DIR=$HOME/.deepthink-9911 \
+  node tests/e2e/kb-p1-ui.mjs
+→ 合计 17 项，通过 17，失败 0
+→ npx vitest run → Test Files 174 passed | 4 skipped (178)
+                     Tests 2386 passed | 16 skipped (2402)
+```
+
+- ✅ Playwright UI 验收（父子分块 / FAQ 条目 / Doc2Query / 查询理解三处界面）
+- ✅ test_report 及用例通过截图（9 张，`docs/test_report/2026-10-16-weknora-full-replica/screenshots/`）
+- ✅ 合并 worktree → main 并 push
+
+UI 验收过程中发现 5 个缺陷，全部走 issue 工作流修复（详见 §3.6）。
+
+---
+
+## 3.6 UI 验收发现的 5 个缺陷（2026-10-16）
+
+**4 个单测全绿也照样漏** —— 都在"数据对、链路对"之后的那一公里。
+
+| # | issue | 现象 | 根因层 | 修复 |
+|---|---|---|---|---|
+| D1 | `2026-10-16-start-prod-serves-desktop-web-dist.md` | 编译成功但页面不变 | 基础设施 | `_start-direct` 钉死 `DEEPTHINK_WEB_DIST_DIR` |
+| D2 | `2026-10-16-stop-prod-watchdog-resurrects-instance.md` | 停止/启动都报成功但都不真 | 基础设施 | `stop-prod` 给看门狗发 TERM；启动判据比对 pid |
+| D3 | `2026-10-16-kb-parent-child-invisible-end-to-end.md` | 父子分块勾不上、看不到、只有父块 | 前端入口 + 呈现 + 接口字段 | 三处各补一处 |
+| D4 | `2026-10-16-faq-entry-not-indexed-on-create.md` | FAQ 条目永远"待向量化" | 后端漏调用索引 | POST/PUT 内联 `indexFaqEntry` |
+| D5 | `2026-10-16-faq-index-mode-select-reverts.md` | 索引方式下拉弹回旧值 | 前端漏回写 store | `updateFaqConfig` 回写 `list` |
+
+**D1/D2 是验证基础设施的缺陷**，最危险：D1 让"改的代码"根本没被服务，D2 让"启动成功"是假的
+（服务的是上一轮进程）——两者都会让后续**所有**验证结论失效。D2 修复前正是"命令说成功、
+实际服务旧进程"，比直接失败更贵。
+
+**D3 是三个缺陷串行暴露的**：上传参数没接 → 补上开关仍看不到标记 → 补上标记后只有父块 →
+才发现接口漏吐 `parent_chunk_id`。一次性看完所有缺陷不现实，每轮都留了读数
+（`父块 6 · 子块 0` → `父块 6 · 子块 12`）。
+
+**D4/D5 同界面、同现象、不同根因**（一个后端没存、一个前端没显示）。issue 文档末尾附了对照表：
+先查服务端真值就能一步区分。
+
+**D4 的修复改了一条既存断言的语义**（不是回归）：`PUT` 后立刻重建向量，于是"PUT 会把 embedding
+置空"不再成立。已把该用例拆成两条——一条锁路由行为，一条锁 db 层机制
+（"改了内容却留旧向量"这条静默错误召回路径仍然被断言锁住）。
 
 ---
 
@@ -364,13 +406,15 @@ npx vitest run                          → Test Files  173 passed | 1 failed | 
 | 12 | 问题的向量也走**精确线性扫描**（与 7 同因，共用一张表） | 同 7，量级上来要重建索引 |
 | 13 | 生成是**同步接口**且**不记进度**：几百个分块时请求会一直挂着，中途刷新页面无法查询进度 | 单进程无任务队列的必然结果；分块数上来需要改异步 + 轮询 |
 | 14 | KB 级 chat 模型取全局 `rag.json` 的 `model`（上游用 `kb.SummaryModelID` 按库指定） | 本仓库没有按库配模型的存储，未实现 |
+| 15 | 切换「索引方式」（`question_answer`↔`question_only`、`combined`↔`separate`）会一次性作废全库向量，**没有重建入口**（toast 仍提示"需重新向量化"） | D4 只修了"新建/编辑即索引"，改配置这条路径仍无 UI 入口，同因同源，**未修** |
+| 16 | `make status` 未校验监听 pid 与 pidfile 是否一致、未在看门狗计数 > 1 时告警 | D2 的建议项，超出本次修复范围，**未改** |
+| 17 | `src/web.ts` 未在启动日志里打印实际的静态资源根目录 | D1 的建议项，下次同类问题可一眼看出，**未改** |
 
 ---
 
 ## 6. 下一步
 
-1. P1 的 **5 个子项已全部实现并通过单测/集成测试**（§2.1 / §2.2 / §2.3 / §2.4 / §2.5）。
-   ⚠️ **这不等于 P1 完成**：PRD 要求的 UI 验收截图与 test_report 都还没有，合并也没做。
-2. Playwright UI 验收（父子分块上传、FAQ 条目管理、Doc2Query 开关与生成）→
-   发现问题走 issue 工作流（`docs/issues/`）→ test_report（含通过截图）→ 合并 worktree 到 main 并 push。
-3. P2–P5 未启动。
+1. ✅ P1 已完成：5 个子项实现（§2.1 / §2.2 / §2.3 / §2.4 / §2.5）+ Playwright UI 验收 17/17
+   + 5 篇 issue + test_report（含 9 张通过截图）+ 合并 worktree → main。
+2. P2–P5 未启动。启动 P2 前建议先处置 §5 里的 15（索引方式切换无重建入口）——
+   它是目前唯一一个"UI 上明确提示了动作、但用户无路可走"的缺口。

@@ -197,6 +197,9 @@ function serializeChunk(row: KbChunkRow, withContent = true): Record<string, unk
     next_chunk_id: row.next_chunk_id,
     is_enabled: !!row.is_enabled,
     chunk_type: row.chunk_type,
+    // 子块靠这个字段回指父块；前端据此区分「父块 / 子块」。漏了它，库里明明有父子
+    // 两层，界面上一律显示成普通分块。
+    parent_chunk_id: row.parent_chunk_id ?? null,
     embedded: !!row.embedding,
     embedding_model: row.embedding_model ?? null,
     created_at: row.created_at,
@@ -387,6 +390,28 @@ function serializeFaqEntry(row: KbChunkRow): Record<string, unknown> {
   };
 }
 
+/**
+ * FAQ 条目落库后**立刻**建索引。
+ *
+ * 上游 `CreateFAQEntry` 就是同步索引（`knowledge_faq.go`：`indexFAQChunks` 成功
+ * 才返回条目，失败则删掉刚建的 chunk），不是留给后续批处理 —— FAQ 库的条目本来
+ * 也没有别的向量化入口。这里沿用这个语义，唯一区别是索引失败**不回滚**：条目已经
+ * 落库，删掉用户刚填的内容比留一条列表里可见的「待向量化」（重存一次即重试）更糟。
+ *
+ * `embedChunksForDocument` 只挑 `embedding IS NULL` 的行，重复调用是幂等的；
+ * 对 FAQ 行它走 `buildFaqIndexTexts`，所以 separate 模式下的相似问题会各占一条向量。
+ */
+async function indexFaqEntry(docId: string, kbId: string, entryId: string) {
+  const stats = await embedChunksForDocument(docId).catch((err) => {
+    logger.warn({ err, kbId }, 'FAQ 条目向量化请求失败，条目保持「待向量化」');
+    return { attempted: 0, success: 0, failed: 0 };
+  });
+  if (stats.failed > 0) {
+    logger.warn({ kbId, failed: stats.failed }, 'FAQ 条目向量化失败，条目保持「待向量化」');
+  }
+  return getKbChunk(entryId);
+}
+
 paasKbRoute.get('/:id/faq/entries', (c) => {
   const user = c.get('user');
   const kb = requireKb(c.req.param('id'), user.id);
@@ -423,7 +448,8 @@ paasKbRoute.post('/:id/faq/entries', async (c) => {
   const { indexMode } = parseFaqConfig(kb.faq_config);
   const container = ensureFaqContainerDocument(kb.id, user.id, kb.name);
   const row = createFaqEntry(container.id, kb.id, user.id, validation.data, indexMode);
-  return c.json({ entry: serializeFaqEntry(row) }, 201);
+  const indexed = await indexFaqEntry(container.id, kb.id, row.id);
+  return c.json({ entry: serializeFaqEntry(indexed ?? row) }, 201);
 });
 
 paasKbRoute.put('/:id/faq/entries/:entryId', async (c) => {
@@ -444,7 +470,10 @@ paasKbRoute.put('/:id/faq/entries/:entryId', async (c) => {
   const { indexMode } = parseFaqConfig(kb.faq_config);
   const row = updateFaqEntry(existing.id, validation.data, indexMode);
   if (!row) return c.json({ error: 'FAQ entry not found' }, 404);
-  return c.json({ entry: serializeFaqEntry(row) });
+  // 编辑会把 embedding 置空（内容变了，旧向量失效），所以这里必须重新索引，
+  // 否则改过的条目就再也搜不到了。
+  const indexed = await indexFaqEntry(row.doc_id, kb.id, row.id);
+  return c.json({ entry: serializeFaqEntry(indexed ?? row) });
 });
 
 paasKbRoute.delete('/:id/faq/entries', async (c) => {

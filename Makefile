@@ -194,7 +194,11 @@ _start-direct: ## (内部) 裸跑模式（无 pm2 或未注册）；START_DIRECT
 	@$(MAKE) _build-web-if-stale
 	@$(MAKE) _build-ar-if-stale
 	@$(MAKE) _ensure-native-abi
-	@if [ "$(START_DIRECT_DAEMON)" = "1" ]; then \
+	@# 静态资源钉死在本仓库的 web/dist：DEEPTHINK_WEB_DIST_DIR 本是桌面版给后端指定
+	@# 「内嵌 web-dist」用的，从桌面版内嵌终端里跑 make 会继承它，于是上面刚编译出来的
+	@# web/dist 被静默忽略、页面一直停在桌面版内置的旧前端。必须显式覆盖。
+	@export DEEPTHINK_WEB_DIST_DIR="$(CURDIR)/web/dist"; \
+	if [ "$(START_DIRECT_DAEMON)" = "1" ]; then \
 	  mkdir -p "$$(dirname "$$PROD_LOG")"; \
 	  : > "$$PROD_LOG"; \
 	  rm -f "$$PROD_STOP_FLAG"; \
@@ -206,12 +210,16 @@ _start-direct: ## (内部) 裸跑模式（无 pm2 或未注册）；START_DIRECT
 	    if ! kill -0 $$wdpid 2>/dev/null; then break; fi; \
 	    sleep 1; i=$$((i+1)); \
 	  done; \
-	  if lsof -ti:$(PORT) -sTCP:LISTEN >/dev/null 2>&1; then \
-	    echo "✅ 已后台启动 (watchdog pid $$wdpid, node pid $$(cat "$$PROD_PIDFILE" 2>/dev/null))"; \
+	  listen_pid=$$(lsof -ti:$(PORT) -sTCP:LISTEN 2>/dev/null | head -1); \
+	  want_pid=$$(cat "$$PROD_PIDFILE" 2>/dev/null); \
+	  if [ -n "$$listen_pid" ] && [ "$$listen_pid" = "$$want_pid" ]; then \
+	    echo "✅ 已后台启动 (watchdog pid $$wdpid, node pid $$want_pid)"; \
 	    echo "   日志: tail -f $$PROD_LOG"; \
 	    echo "   停止: make stop-prod PORT=$(PORT)"; \
 	  else \
-	    echo "❌ 启动失败，查看日志: $$PROD_LOG"; tail -20 "$$PROD_LOG" 2>/dev/null; rm -f "$$PROD_PIDFILE"; exit 1; \
+	    echo "❌ 启动失败：端口 $(PORT) 被 pid $$listen_pid 占着，本实例的 node 是 pid $$want_pid"; \
+	    echo "   多半是上一轮遗留的看门狗抢占了端口（先 make stop-prod PORT=$(PORT)，再确认 pgrep -fl deepthink-watchdog 已清空）"; \
+	    tail -20 "$$PROD_LOG" 2>/dev/null; rm -f "$$PROD_PIDFILE"; exit 1; \
 	  fi; \
 	else \
 	  echo "🟢 Node 模式：运行编译后的 dist/index.js（端口 $(PORT)，本项目不使用 bun，WebSocket 需要 node）"; \
@@ -328,6 +336,14 @@ stop-prod: ## 停止指定端口的隔离实例（PORT 必填，写停止标记�
 	@if [ "$(origin PORT)" != "command line" ]; then echo "❌ 用法: make stop-prod PORT=9999"; exit 1; fi
 	@mkdir -p "$(CURDIR)/logs"
 	@touch "$(CURDIR)/logs/deepthink-$(PORT).stop"
+	@# 看门狗要直接发信号停掉，不能只留停止标记：标记是一个**共享文件**，同一端口上
+	@# 若有两个看门狗（旧的在标记轮询窗口内没退干净，start-prod 又拉起了一个），先醒
+	@# 来的那个会把标记删掉，另一个就当「node 意外退出」把实例重新拉起来 —— 现象是
+	@# make stop-prod 报成功、几秒后端口又被占，而 start-prod 只检查「端口有人在听」，
+	@# 于是新实例静默绑定失败却报启动成功。看门狗自己的 TERM trap 会杀掉子进程再退出。
+	@for wd in $$(pgrep -f "deepthink-watchdog\.sh $(PORT) " 2>/dev/null); do \
+	  echo "🛑 停止看门狗 (pid $$wd)"; kill -TERM $$wd 2>/dev/null || true; \
+	done
 	@$(MAKE) --no-print-directory _stop-port PORT=$(PORT)
 
 status: ## 查看服务运行状态

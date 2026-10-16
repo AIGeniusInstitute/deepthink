@@ -118,6 +118,9 @@ export interface KbChunk {
   content_revision?: number;
   /** Doc2Query 为该分块预生成的问题（只进向量索引，不是分块正文的一部分）。 */
   generated_questions?: string[];
+  /** `text`（检索单元）| `parent_text`（回溯容器，不参与向量化）| `faq`。 */
+  chunk_type?: string | null;
+  parent_chunk_id?: string | null;
 }
 
 export interface KbCitation {
@@ -152,6 +155,11 @@ export interface ChunkConfigInput {
   strategy?: 'auto' | 'heading' | 'heuristic' | 'recursive';
   chunk_size?: number;
   chunk_overlap?: number;
+  /**
+   * 父子分块：父块作为回溯容器参与向量化之外的链路，子块才是检索单元。
+   * 表单标记，后端读 `parent_child`。
+   */
+  parent_child?: boolean;
 }
 
 interface KbState {
@@ -252,7 +260,12 @@ export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
           ...(config.questionIndexMode ? { question_index_mode: config.questionIndexMode } : {}),
         },
       });
-      return res.knowledge_base;
+      // 必须回写 list：FAQ 面板的索引方式下拉是直接读 `kb.faqConfig` 的受控组件，
+      // 不更新 store 的话组件一重渲染（比如刷完条目列表）就会退回旧值 —— 服务端已经
+      // 改好了，界面却显示成没改，用户没法判断到底存的哪个。
+      const kb = res.knowledge_base;
+      if (kb) set((s) => ({ list: s.list.map((k) => (k.id === kbId ? kb : k)) }));
+      return kb;
     } catch {
       return null;
     }
@@ -332,6 +345,7 @@ export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
     if (cfg?.strategy) fd.append('strategy', cfg.strategy);
     if (cfg?.chunk_size) fd.append('chunk_size', String(cfg.chunk_size));
     if (cfg?.chunk_overlap !== undefined) fd.append('chunk_overlap', String(cfg.chunk_overlap));
+    if (cfg?.parent_child) fd.append('parent_child', '1');
     try {
       await apiFetch<{ document: KbDocumentMeta }>(`${KB_API}/${kbId}/documents`, {
         method: 'POST',

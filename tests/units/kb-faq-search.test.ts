@@ -43,7 +43,7 @@ vi.mock('../../src/middleware/auth.js', () => ({
   },
 }));
 
-const { initDatabase, getKbChunk, getKbChunksByIds } = await import('../../src/db.js');
+const { initDatabase, getKbChunk, getKbChunksByIds, updateFaqEntry } = await import('../../src/db.js');
 const { searchChunks } = await import('../../src/kb/search.js');
 const { saveEmbeddingConfig } = await import('../../src/embedding.js');
 const { default: kbRoutes } = await import('../../src/routes/paas-knowledge-bases.js');
@@ -244,13 +244,35 @@ describe('FAQ 条目的存储形态', () => {
     expect(((await restore.json()) as any).entry.version).toBe(3);
   });
 
-  // 语义上必要：旧向量对应的是旧文本，留着就是错的召回。上游同样是
-  // "改了内容就重新嵌入"，所以这里锁定"更新即失效"。
-  test('更新会让旧向量失效，重新嵌入后才重新可检索', async () => {
-    const before = getKbChunk(entryId)!;
-    expect(before.embedding).toBeNull();
-    expect(before.content).toContain(`Q: ${STANDARD}`);
+  // 语义上必要：旧向量对应的是旧文本，留着就是错的召回。上游 `UpdateFAQEntry`
+  // 的做法是"改完立刻重建"（`indexFAQChunks` 先把旧向量删掉再按新内容写回去），
+  // 所以 PUT 返回时条目就该带着**新内容**的向量，而不是留一个待向量化的空档。
+  test('更新即重建向量，PUT 返回时条目已是新内容的向量', async () => {
+    const row = getKbChunk(entryId)!;
+    expect(row.embedding).toBeTruthy();
+    expect(row.content).toContain(`Q: ${STANDARD}`);
+  });
 
+  // 失效机制本身仍然在 db 层：`updateFaqEntry` 先把 embedding 置空，重建交给调用方。
+  // 单独验它，是因为「改了内容却留着旧向量」是一条静默的错误召回路径 —— 如果哪天
+  // 这个置空被删掉，接口层的重建成功会掩盖它。
+  test('db 层：改内容会把 embedding 置空，旧向量不会残留', async () => {
+    const meta = JSON.parse(getKbChunk(entryId)!.metadata!) as { version: number };
+    updateFaqEntry(
+      entryId,
+      {
+        standard_question: STANDARD,
+        similar_questions: [SIMILAR_A, SIMILAR_B],
+        negative_questions: ['向量数据库怎么安装'],
+        answers: [ANSWER],
+      },
+      'question_answer',
+    );
+    const after = getKbChunk(entryId)!;
+    expect(after.embedding).toBeNull();
+    expect((JSON.parse(after.metadata!) as { version: number }).version).toBe(meta.version + 1);
+
+    // 恢复：重新嵌入，免得影响后面的检索用例
     const res = await req('POST', `${BASE}/${faqKbId}/embed-all`, {});
     expect(res.status).toBe(200);
     expect(getKbChunk(entryId)!.embedding).toBeTruthy();
