@@ -39,6 +39,11 @@ export interface ChunkSearchOptions {
    * this behind `conversation.enable_query_expansion`, unset by default.
    */
   enableQueryExpansion?: boolean;
+  /**
+   * The user's own wording when `query` is a rewritten form of it. Seeded into the
+   * expansion dedup set so a variant cannot echo it back.
+   */
+  originalQuery?: string;
   /** Collect per-stage diagnostics for the retrieval lab. */
   debug?: boolean;
 }
@@ -205,7 +210,7 @@ export async function searchChunks(
     requestedMode !== 'vector' &&
     hits.length < limit
   ) {
-    expansionVariants = expandQueries(options.query);
+    expansionVariants = expandQueries(options.query, { originalQuery: options.originalQuery });
     if (expansionVariants.length > 0) {
       const seen = new Set(hits.map((h) => h.chunkId));
       // Expansion variants only add keyword recall, so this pass is keyword-only —

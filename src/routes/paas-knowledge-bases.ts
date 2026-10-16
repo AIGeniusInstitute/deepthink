@@ -66,7 +66,12 @@ import {
 } from '../kb/pipeline.js';
 import { chunkText } from '../kb/chunker.js';
 import { searchChunks, type Citation, type SearchHit } from '../kb/search.js';
-import { answerQuestionStream, resolveQueryExpansion, type RagStreamEvent } from '../kb/rag.js';
+import {
+  answerQuestionStream,
+  resolveQueryExpansion,
+  resolveQueryUnderstanding,
+  type RagStreamEvent,
+} from '../kb/rag.js';
 import {
   embedText,
   getEmbeddingConfig,
@@ -784,6 +789,8 @@ const ChatSchema = z.object({
   min_score: z.number().min(0).max(1).optional(),
   rerank: z.boolean().optional(),
   enable_query_expansion: z.boolean().optional(),
+  enable_query_understanding: z.boolean().optional(),
+  language: z.string().max(35).optional(),
   stream: z.boolean().optional(),
 });
 
@@ -824,6 +831,8 @@ paasKbRoute.post('/chat', async (c) => {
     useRerank: data.rerank,
     minScore: data.min_score,
     enableQueryExpansion: resolveQueryExpansion(data.enable_query_expansion),
+    enableQueryUnderstanding: resolveQueryUnderstanding(data.enable_query_understanding),
+    language: data.language,
   };
 
   if (data.stream === false) {

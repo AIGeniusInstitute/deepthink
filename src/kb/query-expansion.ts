@@ -196,6 +196,12 @@ export function removeQuestionWords(text: string): string {
 export interface ExpandOptions {
   /** Cap on variants. Defaults to `MAX_EXPANSIONS`. */
   max?: number;
+  /**
+   * The user's original question, when `query` is a rewritten form of it. Seeded
+   * into the seen-set alongside `query` so a variant cannot duplicate either —
+   * upstream does the same with `chatManage.Query` next to `chatManage.RewriteQuery`.
+   */
+  originalQuery?: string;
 }
 
 /**
@@ -207,11 +213,9 @@ export interface ExpandOptions {
  *   4. the query with its leading question word removed
  *
  * The variant list is deduplicated case-insensitively and seeded with the query
- * itself, so no variant echoes the input. WeKnora also seeds its seen-set with
- * `chatManage.Query` because that call site expands `RewriteQuery`, which may
- * differ. There is no query-rewriting stage in this codebase yet, so the two are
- * the same string; when rewriting lands, the original query must be seeded here
- * too or a variant could duplicate it.
+ * itself, so no variant echoes the input. Pass `originalQuery` when `query` is a
+ * rewritten form of the user's question: WeKnora seeds its seen-set with both
+ * `chatManage.RewriteQuery` and `chatManage.Query` for the same reason.
  */
 export function expandQueries(query: string, options: ExpandOptions = {}): string[] {
   const trimmed = query.trim();
@@ -219,6 +223,8 @@ export function expandQueries(query: string, options: ExpandOptions = {}): strin
 
   const max = options.max ?? MAX_EXPANSIONS;
   const seen = new Set<string>([trimmed.toLowerCase()]);
+  const original = options.originalQuery?.trim();
+  if (original) seen.add(original.toLowerCase());
   const expansions: string[] = [];
 
   const addIfNew = (raw: string): void => {

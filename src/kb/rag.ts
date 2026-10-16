@@ -15,6 +15,13 @@ import { DATA_DIR } from '../config.js';
 import { getEmbeddingConfig, embedText } from '../embedding.js';
 import { getKnowledgeBase } from '../db.js';
 import { searchChunks, buildCitations, type SearchHit, type Citation, type SearchMode } from './search.js';
+import {
+  understandQuery,
+  needsRetrieval,
+  intentSystemPrompt,
+  type QueryIntent,
+  type UnderstandHistoryTurn,
+} from './query-understand.js';
 
 const RAG_CONFIG_PATH = path.join(DATA_DIR, 'config', 'rag.json');
 const REQUEST_TIMEOUT_MS = 120_000;
@@ -33,6 +40,11 @@ export interface RagConfig {
    * an operator turns it on. A per-request flag overrides this.
    */
   enableQueryExpansion?: boolean;
+  /**
+   * Global default for the rewrite + intent call. Mirrors WeKnora's
+   * `conversation.enable_rewrite`, likewise off unless an operator turns it on.
+   */
+  enableQueryUnderstanding?: boolean;
 }
 
 export interface ResolvedRagConfig {
@@ -66,6 +78,7 @@ export function getRagConfig(): RagConfig | null {
       temperature: parsed.temperature,
       maxTokens: parsed.maxTokens,
       enableQueryExpansion: parsed.enableQueryExpansion,
+      enableQueryUnderstanding: parsed.enableQueryUnderstanding,
     };
     cachedMtime = stat.mtimeMs;
     return cached;
@@ -82,6 +95,15 @@ export function getRagConfig(): RagConfig | null {
 export function resolveQueryExpansion(requested?: boolean): boolean {
   if (requested !== undefined) return requested;
   return getRagConfig()?.enableQueryExpansion ?? false;
+}
+
+/**
+ * Resolve the rewrite + intent switch: explicit request flag wins, else the
+ * rag.json default, else off.
+ */
+export function resolveQueryUnderstanding(requested?: boolean): boolean {
+  if (requested !== undefined) return requested;
+  return getRagConfig()?.enableQueryUnderstanding ?? false;
 }
 
 export function saveRagConfig(config: RagConfig): void {
@@ -137,6 +159,14 @@ export interface RagRequest {
   minScore?: number;
   /** Retry a short retrieval with locally rewritten query variants (keyword arm only). */
   enableQueryExpansion?: boolean;
+  /**
+   * Run the rewrite + intent-classification call before retrieval. Off by default
+   * for the same reason upstream's is: it costs a model call on every turn.
+   * When off, or when the call fails, the raw question is used and retrieval runs.
+   */
+  enableQueryUnderstanding?: boolean;
+  /** BCP-47-ish language tag handed to the rewriter as a default, not a rule. */
+  language?: string;
 }
 
 export interface RagResult {
@@ -145,6 +175,12 @@ export interface RagResult {
   hits: SearchHit[];
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
   fallback: boolean;
+  /** Present only when query understanding ran. */
+  understanding?: {
+    rewrite_query: string;
+    intent: QueryIntent | '';
+    retrieval_skipped: boolean;
+  };
 }
 
 /** Assemble the numbered context block the model cites by index. */
@@ -164,46 +200,109 @@ export function buildContext(hits: SearchHit[]): string {
   return parts.join('\n\n---\n\n');
 }
 
-/** Retrieve the evidence for a question. Shared by the streaming and batch paths. */
-export async function retrieveForQuestion(
-  req: RagRequest,
-): Promise<{ hits: SearchHit[]; citations: Citation[] }> {
-  const embedding = await embedText(req.question);
+export interface RetrievalOutcome {
+  hits: SearchHit[];
+  citations: Citation[];
+  /** null when query understanding did not run (disabled, unconfigured, or failed). */
+  understanding: { rewriteQuery: string; intent: QueryIntent | ''; retrievalSkipped: boolean } | null;
+}
+
+/**
+ * Retrieve the evidence for a question. Shared by the streaming and batch paths.
+ *
+ * When query understanding runs and classifies the turn as not needing retrieval
+ * (greeting, chitchat, follow-up, summarize, web-search-unavailable), the search
+ * is skipped outright and `retrievalSkipped` says so — the caller must then answer
+ * from the model rather than reporting "nothing found", which is the whole point
+ * of classifying intent.
+ *
+ * Every failure of the understanding call leaves this function behaving exactly as
+ * it did before that call existed: raw question, normal retrieval.
+ */
+export async function retrieveForQuestion(req: RagRequest): Promise<RetrievalOutcome> {
+  const understanding = await understandQuery({
+    question: req.question,
+    history: req.history as UnderstandHistoryTurn[] | undefined,
+    language: req.language,
+    config: resolveRagConfig(),
+    disabled: !req.enableQueryUnderstanding,
+  });
+
+  const intent = understanding?.intent ?? '';
+  // An empty rewrite falls back to the raw question, matching upstream's
+  // `chatManage.RewriteQuery = chatManage.Query` default.
+  const query = understanding?.rewriteQuery?.trim() || req.question;
+
+  if (understanding && !needsRetrieval(intent)) {
+    return {
+      hits: [],
+      citations: [],
+      understanding: { rewriteQuery: query, intent, retrievalSkipped: true },
+    };
+  }
+
+  const embedding = await embedText(query);
   const { hits } = await searchChunks({
     kbIds: req.kbIds,
-    query: req.question,
+    query,
     limit: req.topK ?? 5,
     mode: req.mode ?? 'hybrid',
     queryEmbedding: embedding,
     useRerank: req.useRerank,
     minScore: req.minScore,
     enableQueryExpansion: req.enableQueryExpansion,
+    // Seed the expansion dedup set with the user's own wording so a variant
+    // cannot echo it back when `query` is a rewrite.
+    originalQuery: req.question,
   });
-  return { hits, citations: buildCitations(hits) };
+  return {
+    hits,
+    citations: buildCitations(hits),
+    understanding: understanding
+      ? { rewriteQuery: query, intent, retrievalSkipped: false }
+      : null,
+  };
 }
 
 function buildMessages(
   req: RagRequest,
   context: string,
+  /** Set when retrieval was skipped: swaps the RAG prompt for the intent's own. */
+  intentPrompt: string | null = null,
 ): Array<{ role: string; content: string }> {
   const messages: Array<{ role: string; content: string }> = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: intentPrompt ?? SYSTEM_PROMPT },
   ];
   for (const turn of req.history ?? []) {
     messages.push({ role: turn.role, content: turn.content });
   }
   messages.push({
     role: 'user',
-    content: `参考资料：\n\n${context}\n\n---\n\n问题：${req.question}`,
+    // Without an intent prompt the model must cite the numbered context; with one
+    // there is no context to cite, so the question goes in unadorned.
+    content: intentPrompt ? req.question : `参考资料：\n\n${context}\n\n---\n\n问题：${req.question}`,
   });
   return messages;
 }
 
 /** Non-streaming answer. Returns the fallback text when nothing was retrieved. */
 export async function answerQuestion(req: RagRequest): Promise<RagResult> {
-  const { hits, citations } = await retrieveForQuestion(req);
-  if (hits.length === 0) {
-    return { answer: FALLBACK_ANSWER, citations: [], hits: [], fallback: true };
+  const { hits, citations, understanding } = await retrieveForQuestion(req);
+  const skipped = understanding?.retrievalSkipped === true;
+  const intentPrompt = skipped
+    ? intentSystemPrompt(understanding!.intent, { language: req.language })
+    : null;
+  const understandingOut = understanding
+    ? {
+        rewrite_query: understanding.rewriteQuery,
+        intent: understanding.intent,
+        retrieval_skipped: understanding.retrievalSkipped,
+      }
+    : undefined;
+
+  // "Nothing found" is only a fallback when a search was actually supposed to run.
+  if (hits.length === 0 && !intentPrompt) {
+    return { answer: FALLBACK_ANSWER, citations: [], hits: [], fallback: true, understanding: understandingOut };
   }
   const config = resolveRagConfig();
   if (!config) {
@@ -212,6 +311,7 @@ export async function answerQuestion(req: RagRequest): Promise<RagResult> {
       citations,
       hits,
       fallback: true,
+      understanding: understandingOut,
     };
   }
 
@@ -224,7 +324,7 @@ export async function answerQuestion(req: RagRequest): Promise<RagResult> {
       },
       body: JSON.stringify({
         model: config.model,
-        messages: buildMessages(req, buildContext(hits)),
+        messages: buildMessages(req, buildContext(hits), intentPrompt),
         temperature: config.temperature,
         max_tokens: config.maxTokens,
         stream: false,
@@ -234,7 +334,7 @@ export async function answerQuestion(req: RagRequest): Promise<RagResult> {
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       logger.warn({ status: res.status, detail: detail.slice(0, 200) }, 'RAG chat call failed');
-      return { answer: FALLBACK_ANSWER, citations, hits, fallback: true };
+      return { answer: FALLBACK_ANSWER, citations, hits, fallback: true, understanding: understandingOut };
     }
     const json = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
@@ -242,12 +342,12 @@ export async function answerQuestion(req: RagRequest): Promise<RagResult> {
     };
     const answer = json.choices?.[0]?.message?.content?.trim();
     if (!answer) {
-      return { answer: FALLBACK_ANSWER, citations, hits, fallback: true };
+      return { answer: FALLBACK_ANSWER, citations, hits, fallback: true, understanding: understandingOut };
     }
-    return { answer, citations, hits, usage: json.usage, fallback: false };
+    return { answer, citations, hits, usage: json.usage, fallback: false, understanding: understandingOut };
   } catch (err) {
     logger.warn({ err }, 'RAG chat call threw');
-    return { answer: FALLBACK_ANSWER, citations, hits, fallback: true };
+    return { answer: FALLBACK_ANSWER, citations, hits, fallback: true, understanding: understandingOut };
   }
 }
 
@@ -266,10 +366,14 @@ export async function* answerQuestionStream(
 ): AsyncGenerator<RagStreamEvent> {
   let hits: SearchHit[] = [];
   let citations: Citation[] = [];
+  let intentPrompt: string | null = null;
   try {
     const retrieved = await retrieveForQuestion(req);
     hits = retrieved.hits;
     citations = retrieved.citations;
+    if (retrieved.understanding?.retrievalSkipped) {
+      intentPrompt = intentSystemPrompt(retrieved.understanding.intent, { language: req.language });
+    }
   } catch (err) {
     yield { type: 'error', message: err instanceof Error ? err.message : String(err) };
     return;
@@ -277,7 +381,8 @@ export async function* answerQuestionStream(
 
   yield { type: 'citations', citations };
 
-  if (hits.length === 0) {
+  // Only a search that was supposed to run can come back empty-and-final.
+  if (hits.length === 0 && !intentPrompt) {
     yield { type: 'delta', text: FALLBACK_ANSWER };
     yield { type: 'done', answer: FALLBACK_ANSWER, fallback: true };
     return;
@@ -301,7 +406,7 @@ export async function* answerQuestionStream(
       },
       body: JSON.stringify({
         model: config.model,
-        messages: buildMessages(req, buildContext(hits)),
+        messages: buildMessages(req, buildContext(hits), intentPrompt),
         temperature: config.temperature,
         max_tokens: config.maxTokens,
         stream: true,

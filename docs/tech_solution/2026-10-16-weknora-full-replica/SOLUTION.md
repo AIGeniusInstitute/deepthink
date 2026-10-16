@@ -165,12 +165,45 @@ WeKnora 保护 LaTeX `$...$`、markdown 链接/图片、表格块、围栏代码
 
 `src/kb/query-expansion.ts`（纯函数，无 DB/网络/配置读取）+ `searchChunks` 内的触发块（在 rerank **之前**，让扩宽后的候选集能被重排）。开关：请求级 `enable_query_expansion` 覆盖 `rag.json` 的 `enableQueryExpansion`，两者都缺省为关。
 
-### 2.5 意图识别
+### 2.5 查询理解（改写 + 意图识别）
 
-- 7 类：`greeting` / `chitchat` / `follow_up` / `image_only` / `summarize` / `web_search` / `doc_only`。
-- LLM 参数：maxTokens 150（有图 2048）、temperature 0.3、Thinking false。
-- 结构化输出兜底正则：`"([a-z_]+)"\s*:\s*"((?:[^"\\]|\\.)*)("?)`。
-- 下游影响：`greeting` / `chitchat` **不走检索**；`web_search` 走 web 检索；`doc_only` 强制只做文档检索。
+> ⚠️ **本节的初稿有错，已按源码更正。** 初稿写"7 类意图"，实际是 **9 类**（漏了 `kb_search` 与 `clarification`，而这两个恰恰是**唯二**会触发检索的）。初稿还把"意图识别"与"查询改写"当成两件事——上游是**同一次 LLM 调用**同时产出两者，且改写的产物 `RewriteQuery` 正是 §2.4 扩展的输入。下游影响也写错了：不是"web_search 走 web 检索"，而是 web 检索未开启时该意图**直接不检索**。
+
+#### 2.5.1 源码事实
+
+| # | 事实 | 出处 |
+|---|---|---|
+| 1 | 9 类：`kb_search` `web_search` `greeting` `chitchat` `follow_up` `image_only` `doc_only` `summarize` `clarification` | `chat_manage.go:94-104` |
+| 2 | **只有 `kb_search`、`clarification` 和空意图需要查库**；空意图按"要检索"处理（安全侧） | `NeedsKBRetrieval()` `chat_manage.go:110-116` |
+| 3 | `web_search` 是否检索取决于 `WebSearchEnabled` 开关；关时改用"网络搜索不可用"提示词回答 | `NeedsRetrieval()` `:230-235` |
+| 4 | 未知标签 → **空意图**（= 要检索）。注释点名了历史事故：原样取用标签会让任何意外值变成"不检索"，答案在既没查库也没报错的情况下生成 | `NormalizeQueryIntent` `:238-252` |
+| 5 | 一次调用同时产出改写与意图；maxTokens 150（有图 2048）、temperature 0.3、Thinking false | `query_understand.go:110-136` |
+| 6 | 解析三层：严格 JSON → 取首个 `{` 到末个 `}` → 截断抢救正则 `"([a-z_]+)"\s*:\s*"((?:[^"\\]|\\.)*)("?)` | `:380-470` |
+| 7 | 字段别名：`rewrite_query`/`rewritten_query`/`query`/`question` | `parseStructuredQueryOutputJSON` |
+| 8 | **不检索时换 system 提示词**（`intent_prompts.yaml`），否则问候语会被 RAG 提示词要求答"资料中没有相关信息" | `applyIntentPromptOverride` `:531` |
+| 9 | 空改写回落到原查询（`RewriteQuery = Query`） | `:64` |
+
+#### 2.5.2 四条显式偏离
+
+**偏离 1（最大）：没有图片路径。** 上游跑三种输入组合（纯文本 / 文本+图 / 纯图），有图时切视觉模型、maxTokens 提到 2048 做 OCR 转写，提示词里有整个 Task 3。本仓库的知识库问答链路**不收附件**，所以整条图片路径去掉：Task 3 与 `image_description` 不请求也不解析。`<no_image_attached />` / `<no_document_attached />` 两个标记**保留**——它们正是上游"无附件"分支，也就是我们唯一会渲染的分支。
+
+后果要讲清楚：`image_only` / `doc_only` 仍留在意图表和 `normalizeQueryIntent` 里（模型被提示词明确禁止在无附件时选它们），但本仓库没有任何路径能产出这两个值。
+
+**偏离 2：截断字段一律丢弃。** 上游的抢救只对 `image_description` 保留被截断的半截文本；没有图片描述可救，被截断的字段就一律丢掉。半截的改写会把用户完整的问题换掉。
+
+**偏离 3：独立超时 30s**（上游用模型服务默认值）。这是个 150 token 的调用，挂住会把整个回合卡在检索开始之前。
+
+**偏离 4：模型 = RAG 的对话模型。** 上游有单独的 `rewriteModel`；本仓库 rag.json 只有一个对话模型，为 150 token 的调用再引入一套凭据存储不划算。
+
+**另有一处品牌替换**（不是行为偏离但需要讲明）：上游每个意图提示词开头是 "You are WeKnora, ... developed by Tencent"，本实现写作 DeepThink。照搬会在 DeepThink 里出现腾讯的产品名。已写成断言。
+
+#### 2.5.3 承重不变式
+
+**任何失败路径都返回 null，调用方行为与没有这个模块时逐字节一致。** 未配置模型、非 200、超时、抛异常、输出无法解析——全部退回"用原问题、正常检索"。查询理解是优化，不是闸门。这条有独立测试组守着。
+
+#### 2.5.4 落点
+
+`src/kb/query-understand.ts`（纯函数 + 一次 LLM 调用）+ `rag.ts` 的 `retrieveForQuestion`（意图为不检索时直接返回 `retrievalSkipped`，不发检索）+ `buildMessages`（换成意图专属 system 提示词，且不再注入"参考资料"）。开关：请求级 `enable_query_understanding` 覆盖 `rag.json` 的 `enableQueryUnderstanding`，默认关（对齐 `conversation.enable_rewrite`）。
 
 ---
 
