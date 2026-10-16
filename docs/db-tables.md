@@ -10,7 +10,7 @@
 
 建表语句有**两处**，改 schema 时别漏：
 
-- `src/db.ts`：90 张表（`CREATE TABLE IF NOT EXISTS`），另建 `kb_documents_fts` / `kb_documents_vec` 两张虚表
+- `src/db.ts`：`CREATE TABLE IF NOT EXISTS` 语句（⚠️ 本行原记作「90 张表」，已与实际不符——数量请以文件为准，不要引用此处的数字），另建虚表 `kb_documents_fts` / `kb_documents_vec` / `kb_chunks_fts` / `kb_chunks_vec`
 - `src/eval-center/eval-schema.sql`：评测中心独立的 16 张表（`eval_*` / `agent_trace` / `trace_span`），由 `eval-center/eval-db.ts` 加载
 
 > ⚠️ **`.sql` 不会被 `tsc` emit**，必须登记进 `scripts/copy-runtime-assets.cjs` 的 `ASSETS` 清单——详见 `CLAUDE.md` §5 的警告与
@@ -18,7 +18,7 @@
 
 ## 表族（90 张表）
 
-表按业务面分族：**核心会话**（`chats` / `messages` / `registered_groups` / `sessions` / `router_state`）、**群组协作**（`group_members` / `group_seats` / `group_messages` / `user_pinned_groups`）、**认证计费**（`users` / `user_sessions` / `invite_codes` / `auth_audit_log` / `billing_*` / `redeem_*`）、**图谱编排**（`graph_definitions` / `graph_runs` / `graph_node_runs` / `graph_node_run_locks`）、**Agent**（`agents` / `agent_definitions` / `agent_definition_versions` / `agent_mounts` / `agent_shares` / `agent_worker_links` / `agent_collaborators`）、**Skills 与知识库**（`skills` / `skill_versions` / `knowledge_bases` / `kb_documents` / `kb_documents_vec`）、**MCP**（`mcp_server_configs` / `mcp_registry_*`）、**可观测**（`trace_steps` / `trace_tool_calls` / `chat_trace_nodes` / `tool_call_audit_log` / `tool_call_idempotency`）、**用量计费**（`usage_records` / `usage_daily_summary` / `daily_usage` / `monthly_usage` / `model_pricing`）、**自主与 Harness**（`autonomy_*` / `loop_*` / `harness_*` / `supervisor_*`）、**业务面**（`opc_*` / `sw_*` / `sandbox_*` / `collaborations` / `marketplace_*` / `file_trash` / `file_versions` / `workspace_artifacts` / `workflow_builds` / `team_builds` / `provider_configs` / `api_keys`）。
+表按业务面分族：**核心会话**（`chats` / `messages` / `registered_groups` / `sessions` / `router_state`）、**群组协作**（`group_members` / `group_seats` / `group_messages` / `user_pinned_groups`）、**认证计费**（`users` / `user_sessions` / `invite_codes` / `auth_audit_log` / `billing_*` / `redeem_*`）、**图谱编排**（`graph_definitions` / `graph_runs` / `graph_node_runs` / `graph_node_run_locks`）、**Agent**（`agents` / `agent_definitions` / `agent_definition_versions` / `agent_mounts` / `agent_shares` / `agent_worker_links` / `agent_collaborators`）、**Skills 与知识库**（`skills` / `skill_versions` / `knowledge_bases` / `kb_documents` / `kb_documents_vec` / `kb_chunks` / `kb_chunk_revisions` / `kb_chunks_vec` / `kb_chunks_fts` / `kb_chat_messages`）、**MCP**（`mcp_server_configs` / `mcp_registry_*`）、**可观测**（`trace_steps` / `trace_tool_calls` / `chat_trace_nodes` / `tool_call_audit_log` / `tool_call_idempotency`）、**用量计费**（`usage_records` / `usage_daily_summary` / `daily_usage` / `monthly_usage` / `model_pricing`）、**自主与 Harness**（`autonomy_*` / `loop_*` / `harness_*` / `supervisor_*`）、**业务面**（`opc_*` / `sw_*` / `sandbox_*` / `collaborations` / `marketplace_*` / `file_trash` / `file_versions` / `workspace_artifacts` / `workflow_builds` / `team_builds` / `provider_configs` / `api_keys`）。
 
 ## 核心表
 

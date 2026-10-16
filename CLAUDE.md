@@ -404,6 +404,7 @@ scripts/                      # 构建辅助脚本
 | 群组 | `src/routes/groups.ts` |
 | 文件 | `src/routes/files.ts` |
 | 记忆 | `src/routes/memory.ts` |
+| 知识库 | `src/routes/paas-knowledge-bases.ts`（`/api/paas/knowledge-bases`） |
 | 配置（Claude / IM / 系统设置） | `src/routes/config.ts` |
 | 任务 | `src/routes/tasks.ts` |
 | 管理（用户 / 邀请码 / 审计） | `src/routes/admin.ts` |

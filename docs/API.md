@@ -32,6 +32,30 @@
 - `GET /api/memory/sources` · `GET /api/memory/search`（全文检索）
 - `GET|PUT /api/memory/file`
 
+## 知识库
+
+路由文件 `src/routes/paas-knowledge-bases.ts`，挂载于 `/api/paas/knowledge-bases`（`src/web.ts:336`）。
+
+流水线：文档先解析 → 按策略切分成**携带原文绝对字符偏移**的分块 → 逐块向量化；检索在**分块粒度**做（向量臂 + 关键词臂 RRF 融合）。不变式 `text.slice(chunk.start_at, chunk.end_at) === chunk.content`，这是引用能回源核验的前提。
+
+- `GET|POST /` · `GET|PATCH|DELETE /:id` — 知识库 CRUD
+- `POST /:id/chunker/preview` — 用给定分块配置预演切分，不落库
+- `GET|POST /:id/documents` — 文档列表 / 上传（multipart，单文件 ≤20MB；可选表单字段 `strategy` / `chunk_size` / `chunk_overlap`，省略则用默认 `heuristic` / 512 / 80）
+- `POST /:id/documents/url` — 从 URL 抓取正文入库（15s 超时，1MB 文本上限）
+- `GET /documents/:docId` — 单文档元数据（`parse_status` / `parse_stage` / `chunk_count` / `embedded_chunk_count` / `error_message` / `stages`）
+- `GET /documents/:docId/content?start&end` — 按字符区间取原文（引用回源核验、分块编辑预览用）
+- `GET /documents/:docId/chunks?full=1` — 分块列表，每块带 `start_at` / `end_at` / `heading_path`
+- `POST /documents/:docId/reparse` · `POST /documents/:docId/cancel` · `DELETE /:id/documents/:docId`
+- `GET|PUT|DELETE /chunks/:chunkId` — 单块读写删（改内容后该块向量失效，需重建）
+- `GET /chunks/:chunkId/revisions` · `POST /chunks/:chunkId/revert` — 修订历史与回滚
+- `POST /:id/documents/:docId/embed` · `POST /:id/embed-all` · `POST /:id/rebuild-index` — 向量化与索引重建（`dimension_changed` 为真说明嵌入维度变了，全部文档需重新嵌入）
+- `POST /:id/search` — 三模式检索，body `{query, mode, limit, minScore, useRerank, debug}`，`mode` ∈ `hybrid`（默认）| `keyword` | `vector`；`debug: true` 返回 `mode` / `effective_mode` / `pool_size` / 各臂候选数与 `timings_ms`
+- `POST /search/all` — 跨当前用户全部知识库检索
+- `POST /chat` — RAG 问答；stream 时走 SSE，`citations` 事件先于 `delta` 发出，末尾 `data: [DONE]`
+- `GET /chat/sessions/:sessionId/messages` · `DELETE /chat/sessions/:sessionId`
+
+**检索语义注意**：关键词臂是**子串/短语**语义（FTS5 `trigram` 分词器 + 词项 OR，`<3` 字符的词走 `instr()` 降级）。中文整句在纯 `keyword` 模式下不命中——它不是文档里的连续子串；默认的 `hybrid` 模式由向量臂覆盖这类查询。详见 [`docs/issues/2026-10-16-kb-chinese-keyword-search-dead.md`](issues/2026-10-16-kb-chinese-keyword-search-dead.md)。
+
 ## 配置
 
 - `GET|PUT /api/config/claude` · `PUT /api/config/claude/secrets`
