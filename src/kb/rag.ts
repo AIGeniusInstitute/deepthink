@@ -27,6 +27,12 @@ export interface RagConfig {
   apiKey?: string;
   temperature?: number;
   maxTokens?: number;
+  /**
+   * Global default for the query-expansion rescue pass. Mirrors WeKnora's
+   * `conversation.enable_query_expansion`, which is likewise unset (false) unless
+   * an operator turns it on. A per-request flag overrides this.
+   */
+  enableQueryExpansion?: boolean;
 }
 
 export interface ResolvedRagConfig {
@@ -59,6 +65,7 @@ export function getRagConfig(): RagConfig | null {
       apiKey: parsed.apiKey,
       temperature: parsed.temperature,
       maxTokens: parsed.maxTokens,
+      enableQueryExpansion: parsed.enableQueryExpansion,
     };
     cachedMtime = stat.mtimeMs;
     return cached;
@@ -66,6 +73,15 @@ export function getRagConfig(): RagConfig | null {
     cached = null;
     return null;
   }
+}
+
+/**
+ * Resolve the query-expansion switch: explicit request flag wins, else the
+ * rag.json default, else off.
+ */
+export function resolveQueryExpansion(requested?: boolean): boolean {
+  if (requested !== undefined) return requested;
+  return getRagConfig()?.enableQueryExpansion ?? false;
 }
 
 export function saveRagConfig(config: RagConfig): void {
@@ -119,6 +135,8 @@ export interface RagRequest {
   topK?: number;
   useRerank?: boolean;
   minScore?: number;
+  /** Retry a short retrieval with locally rewritten query variants (keyword arm only). */
+  enableQueryExpansion?: boolean;
 }
 
 export interface RagResult {
@@ -159,6 +177,7 @@ export async function retrieveForQuestion(
     queryEmbedding: embedding,
     useRerank: req.useRerank,
     minScore: req.minScore,
+    enableQueryExpansion: req.enableQueryExpansion,
   });
   return { hits, citations: buildCitations(hits) };
 }

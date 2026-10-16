@@ -10,7 +10,7 @@
 
 | 期 | 内容 | 状态 |
 |---|---|---|
-| **P1** | 知识库内核补全：父子分块 / FAQ 索引 / 预生成问题 / 查询改写 / 意图识别 | **进行中（1/5 子项完成）** |
+| **P1** | 知识库内核补全：父子分块 / FAQ 索引 / 预生成问题 / 查询改写 / 意图识别 | **进行中（2/5 子项完成）** |
 | P2 | 文档接入扩展（xlsx/pptx、图片、整目录上传） | 未启动 |
 | P3 | 检索增强（rerank 深化、Wiki、GraphRAG） | 未启动 |
 | P4 | Agent 协作（fork/rewind、artifacts、steering） | 未启动 |
@@ -25,10 +25,10 @@
 | 子项 | 方案章节 | 状态 | 提交 |
 |---|---|---|---|
 | 父子分块（parent-child） | §2.1 | ✅ 已实现并验证 | `87038ee`（分块器层）+ `4911658`（落库层） |
+| 查询改写 / 扩展 | §2.4 | ✅ 已实现并验证 | 见 §2.5 |
+| 意图识别 | §2.5 | ⬜ 未实现 | — |
 | FAQ 索引 | §2.2 | ⬜ 未实现 | — |
 | 预生成问题（Doc2Query） | §2.3 | ⬜ 未实现 | — |
-| 查询改写 / 扩展 | §2.4 | ⬜ 未实现 | — |
-| 意图识别 | §2.5 | ⬜ 未实现 | — |
 
 前置已完成：`21d3880` 知识库 URL 入库 SSRF 修复（PRD §2.9，属 issue 线，非本需求）。
 
@@ -77,6 +77,37 @@
 
 ---
 
+## 2.5 已完成：查询改写 / 扩展 §2.4
+
+### 交付内容
+
+- `src/kb/query-expansion.ts`（新增，纯函数：无 DB / 网络 / 配置读取）
+  `expandQueries()` 四条规则，`extractKeywords` / `extractPhrases` / `splitByDelimiters` / `removeQuestionWords`
+- `src/kb/search.ts` 触发块：召回不足（`hits.length < limit`）且非 vector 模式时，跑变体的**关键词臂**检索并去重追加，位置在 rerank **之前**
+- `src/kb/rag.ts`：`RagRequest.enableQueryExpansion` + `resolveQueryExpansion()`（请求级覆盖 rag.json 默认，默认关）
+- `src/routes/paas-knowledge-bases.ts`：`/search`、`/search/all`、`/chat` 三处接受 `enable_query_expansion`
+- 测试：`tests/units/kb-query-expansion.test.ts`（17 条）+ `tests/units/kb-query-expansion-search.test.ts`（8 条）
+
+### 源码核对（逐行读过上游，纠正了侦察摘要）
+
+侦察摘要有几处不准，已按源码更正：触发条件是**首位结果计数**而非分数（`search.go:141`）；`DisableKeywordsMatch` 为真时**一条检索都不发**；变体来源是 `RewriteQuery` 且 `seen` 同时预置原查询；并发是 `min(16, jobs)`；开关默认**关**（Go bool 零值）。已写入 SOLUTION.md §2.4.1。
+
+### 六条显式偏离（全部写进模块头注释 + 一条断言差异的测试）
+
+最大的一条：**本模块不做 jieba 分词**。WeKnora 的中文关键词变体依赖 jieba 词切分；本仓库关键词臂是 FTS5 trigram（`db.ts` 的 `KB_CHUNK_FTS_TOKENIZER`），刻意没有分词器。故汉字按**字**切分，把 jieba+停用词表的效果改在字符级实现（成立原因：上游中文停用词全是单字）。可观测效果同类，但变体字符串不同。
+
+由此引出的第 3 条偏离值得单独记：**若沿用上游的 `len(keywords) >= 2` 门槛，纯中文查询会一条变体都产不出**（无分词器时中文塌成单个 run）。这不是字符串差异而是能力丢失，故门槛放宽为「≥2 个关键词，或单个关键词且已与原查询不同」。
+
+其余：长度门槛按 rune 而非 Go 的 byte（中文一字 3 字节，上游门槛对中文实际宽松约 3 倍）；引号字符类补上被上游弄丢的智能引号（hexdump 证 0x22/0x27 各出现两次）；同步而非并发（better-sqlite3 是同步的）；无关键词阈值可缩放。
+
+### 验证
+
+- 配对负向对照：同一查询开扩展 → 有命中且 `expansion_added > 0`；关扩展 → 恰好 0 命中。证明命中确实来自扩展。
+- 前置条件用例先钉死「原始查询首轮召回为 0、变体是文档子串」，否则上面的用例会平凡通过。
+- **负向验证**：把触发条件改成 `false &&` 后，恰好那 2 条断言"扩展真的发生了"的用例失败，其余 6 条照过 → 用例非平凡。改动已还原并 `diff` 确认字节一致。
+
+---
+
 ## 3. 过程中的缺陷与修复
 
 ### 3.1 迁移顺序 bug（我引入，已修复）
@@ -109,12 +140,14 @@ e2e 中「父块不在向量表」最初是**平凡成立**的——测试环境
 ## 4. 验证证据
 
 ```
-make typecheck          → 通过（exit 0）
-npx vitest run          → Test Files  166 passed | 4 skipped (170)
-                          Tests  2214 passed | 16 skipped (2230)
+make typecheck          → 通过（无 error 行）
+npx vitest run          → Test Files  168 passed | 4 skipped (172)
+                          Tests  2239 passed | 16 skipped (2255)
                           0 failed
 npx vitest run tests/units/kb-*  → 全部通过（AC-8）
 ```
+
+（§2.1 交付时为 166 文件 / 2214 测试；§2.4 新增 2 个测试文件、25 条用例。）
 
 **尚未做的验证**（P1 完成前必须补）：
 - ⬜ Playwright UI 验收（上传开启 `parent_child` 的文档，看检索/引用是否正常）
@@ -136,6 +169,6 @@ npx vitest run tests/units/kb-*  → 全部通过（AC-8）
 
 ## 6. 下一步
 
-1. P1 §2.4 查询改写 / 扩展（纯本地无 LLM，风险最低）→ §2.5 意图识别 → §2.2 FAQ 索引 → §2.3 预生成问题
+1. P1 §2.5 意图识别 → §2.2 FAQ 索引 → §2.3 预生成问题
    （顺序依据 SOLUTION.md §4 风险表：先做无外部依赖、不改数据模型的两项）
 2. P1 全部子项完成后：Playwright UI 验收 → bugfix loop → test_report（含通过截图）→ 合并 main 并 push

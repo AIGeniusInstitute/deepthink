@@ -66,7 +66,7 @@ import {
 } from '../kb/pipeline.js';
 import { chunkText } from '../kb/chunker.js';
 import { searchChunks, type Citation, type SearchHit } from '../kb/search.js';
-import { answerQuestionStream, type RagStreamEvent } from '../kb/rag.js';
+import { answerQuestionStream, resolveQueryExpansion, type RagStreamEvent } from '../kb/rag.js';
 import {
   embedText,
   getEmbeddingConfig,
@@ -693,6 +693,7 @@ const SearchSchema = KbSearchSchema.extend({
   top_k: z.number().int().positive().max(200).optional(),
   min_score: z.number().min(0).max(1).optional(),
   rerank: z.boolean().optional(),
+  enable_query_expansion: z.boolean().optional(),
   debug: z.boolean().optional(),
 });
 
@@ -724,6 +725,7 @@ paasKbRoute.post('/:id/search', async (c) => {
     queryEmbedding: embedding,
     minScore: data.min_score,
     useRerank: data.rerank,
+    enableQueryExpansion: resolveQueryExpansion(data.enable_query_expansion),
     debug: data.debug,
   });
 
@@ -765,6 +767,7 @@ paasKbRoute.post('/search/all', async (c) => {
     queryEmbedding: embedding,
     minScore: data.min_score,
     useRerank: data.rerank,
+    enableQueryExpansion: resolveQueryExpansion(data.enable_query_expansion),
     debug: data.debug,
   });
   return c.json({ hits: hits.map(serializeHit), ...(debug ? { debug } : {}) });
@@ -780,6 +783,7 @@ const ChatSchema = z.object({
   mode: z.enum(['keyword', 'vector', 'hybrid']).optional(),
   min_score: z.number().min(0).max(1).optional(),
   rerank: z.boolean().optional(),
+  enable_query_expansion: z.boolean().optional(),
   stream: z.boolean().optional(),
 });
 
@@ -819,6 +823,7 @@ paasKbRoute.post('/chat', async (c) => {
     topK: data.top_k,
     useRerank: data.rerank,
     minScore: data.min_score,
+    enableQueryExpansion: resolveQueryExpansion(data.enable_query_expansion),
   };
 
   if (data.stream === false) {

@@ -17,6 +17,7 @@ import {
   isRerankConfigured,
   MAX_RERANK_CANDIDATES,
 } from './rerank.js';
+import { expandQueries, EXPANSION_CONCURRENCY_CAP } from './query-expansion.js';
 
 export type SearchMode = 'keyword' | 'vector' | 'hybrid';
 
@@ -32,6 +33,12 @@ export interface ChunkSearchOptions {
   minScore?: number;
   /** Apply the configured reranker to the fused head, when one is set up. */
   useRerank?: boolean;
+  /**
+   * When the first pass returns fewer hits than asked for, retry with locally
+   * rewritten query variants, keyword arm only. Off by default — WeKnora gates
+   * this behind `conversation.enable_query_expansion`, unset by default.
+   */
+  enableQueryExpansion?: boolean;
   /** Collect per-stage diagnostics for the retrieval lab. */
   debug?: boolean;
 }
@@ -59,6 +66,12 @@ export interface SearchDebug {
   keyword_candidates: number;
   fused_candidates: number;
   reranked: boolean;
+  /** Local query variants tried after a short first pass. Empty when not triggered. */
+  expansion_variants: string[];
+  /** Hits the expansion pass added on top of the first pass. */
+  expansion_added: number;
+  /** Concurrency cap WeKnora uses for this stage; reported for parity (see query-expansion.ts). */
+  expansion_concurrency_cap: number;
   timings_ms: { vector: number; keyword: number; fusion: number; rerank: number; total: number };
   fusion: FusionOptions;
 }
@@ -111,6 +124,9 @@ export async function searchChunks(
             keyword_candidates: 0,
             fused_candidates: 0,
             reranked: false,
+            expansion_variants: [],
+            expansion_added: 0,
+            expansion_concurrency_cap: EXPANSION_CONCURRENCY_CAP,
             timings_ms: { vector: 0, keyword: 0, fusion: 0, rerank: 0, total: 0 },
             fusion,
           }
@@ -177,6 +193,38 @@ export async function searchChunks(
   hits = hits.slice(0, limit);
   const fusionMs = Date.now() - tFuse;
 
+  // ── Query expansion: rescue a short first pass ──────────────────────────
+  //
+  // WeKnora's trigger is `EnableQueryExpansion && len(SearchResult) < max(1, EmbeddingTopK)`;
+  // since limit is always ≥ 1 here, `max(1, limit)` is just `limit`. `requestedMode === 'vector'`
+  // is this codebase's "keyword matching is off", which upstream also short-circuits on.
+  let expansionVariants: string[] = [];
+  let expansionAdded = 0;
+  if (
+    options.enableQueryExpansion &&
+    requestedMode !== 'vector' &&
+    hits.length < limit
+  ) {
+    expansionVariants = expandQueries(options.query);
+    if (expansionVariants.length > 0) {
+      const seen = new Set(hits.map((h) => h.chunkId));
+      // Expansion variants only add keyword recall, so this pass is keyword-only —
+      // no re-embedding and no second vector lookup. The existing hits are ahead of
+      // these and limit is applied after, so a variant can only fill the shortfall.
+      for (const variant of expansionVariants) {
+        for (const row of keywordSearchChunks(kbIds, variant, limit)) {
+          if (seen.has(row.chunk_id)) continue;
+          seen.add(row.chunk_id);
+          hits.push(toHit(row, { score: row.score, keywordScore: row.score, source: 'keyword' }));
+          expansionAdded++;
+        }
+      }
+      // bm25 has no absolute scale, so minScore is deliberately not re-applied here —
+      // same rule the keyword arm follows above.
+      hits = hits.slice(0, limit);
+    }
+  }
+
   let reranked = false;
   let rerankMs = 0;
   if (options.useRerank && isRerankConfigured() && hits.length > 1) {
@@ -204,6 +252,9 @@ export async function searchChunks(
         keyword_candidates: keywordRows.length,
         fused_candidates: hits.length,
         reranked,
+        expansion_variants: expansionVariants,
+        expansion_added: expansionAdded,
+        expansion_concurrency_cap: EXPANSION_CONCURRENCY_CAP,
         timings_ms: {
           vector: vectorMs,
           keyword: keywordMs,

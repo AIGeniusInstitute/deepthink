@@ -130,6 +130,41 @@ WeKnora 保护 LaTeX `$...$`、markdown 链接/图片、表格块、围栏代码
 
 参数：触发条件 `命中数 < max(1, EmbeddingTopK)`；最多 5 条；最短 3 字符；并发上限 16；扩展查询**只搜关键词**（`DisableVectorMatch: true`）。
 
+#### 2.4.1 源码核对结果（本轮逐行读过 `query_expansion.go` + `search.go:141` + 其自测）
+
+侦察阶段给的摘要有几处不准，以源码为准：
+
+| # | 事实 | 出处 |
+|---|---|---|
+| 1 | 触发条件是 `EnableQueryExpansion && len(SearchResult) < max(1, EmbeddingTopK)`，是**首位结果计数**不是分数 | `search.go:141` |
+| 2 | `DisableKeywordsMatch` 为真时**直接返回 nil**，一条检索都不发 | `query_expansion.go:27-32` |
+| 3 | 变体来源是 `RewriteQuery`（无改写时 = 用户原查询），且 `seen` 同时预置 `RewriteQuery` 和 `Query` 的小写 | `query_expansion.go:126,133-136` |
+| 4 | 并发是 `capSem = min(16, jobs)`，job 数 = 变体数 × 检索目标数 | `query_expansion.go:48-56` |
+| 5 | 非 0 但有界的默认值：`expTopK = max(EmbeddingTopK*2, RerankTopK*2)`、`expKwTh = KeywordThreshold*0.8` | `query_expansion.go:41-42` |
+| 6 | 开关来自 `conversation.enable_query_expansion`，Go bool 零值 → **默认关** | `config.go:147` |
+
+#### 2.4.2 六条显式偏离（不是疏漏，全部写进模块头注释）
+
+本模块**不做 jieba 分词**——这是最大的一条，单独说明，其余五条列在后面。
+
+**偏离 1：无分词器。** WeKnora 的 `tokenize()` 把汉字串交给 `types.Jieba.CutForSearch`，`extractKeywords` 返回的是 jieba **词**（"如何配置向量数据库" → 配置/向量/数据库）。本仓库没有分词器、也不打算引入：关键词臂用的是 FTS5 **trigram** 分词器（`db.ts` 的 `KB_CHUNK_FTS_TOKENIZER`），本就不需要词边界；`chunker.ts:11` 也已写明"中文一字约等于一 token"的既有立场。
+
+所以汉字串按索引分词的方式切——按字——并把 jieba+停用词表做到的事改在**字符级**做。这成立的原因是：WeKnora 停用词表里的中文项**全是单字**（的/是/在/了/和/与/或）。可观测效果同类——变体 = 查询减去虚词——但变体**字符串**与 WeKnora 不同，因此照搬 `query_expansion_test.go` 里断言 jieba 词的用例（如 网易/大厦）在本实现下不成立。这条已写成一条**断言差异**的测试，避免偏离随时间腐烂。
+
+**偏离 3（规则 1 的门槛）**：上游用 `len(keywords) >= 2` 把关键词变体卡住，jieba 很容易满足。无分词器时一条中文查询会塌成**单个** run，该门槛会让整个规则对中文失效——"向量数据库的索引参数配置"会一条变体都产不出。这不是字符串差异而是**能力丢失**。故门槛放宽为：≥2 个关键词，**或**单个关键词且已与原查询不同（虚词确实被去掉了；等于原查询的单关键词不算改写）。
+
+**偏离 2（长度门槛按 rune 而非 byte）**：上游写 `len(s) < 3` / `len(m[1]) > 2` / `len(seg) > 5`，Go 的 `len()` 对 string 是**字节**。中文一字 3 字节，所以这些门槛对中文实际比数字看起来宽松约 3 倍（单个汉字就能过"3"这道闸）。字节长度是 Go 字符串下标的副产物而非设计取值，故按 rune 计——即显然的意图。副作用：对中文输入比 WeKnora **更严**。
+
+**偏离 4（引号字符类）**：上游字符类是 `["'"'「」『』]`；hexdump 后 0x22/0x27 各出现**两次**，即作者显然想写的智能引号 U+201C/U+201D/U+2018/U+2019 被 ASCII 引号吃掉了。本实现保留 ASCII 那一对**并补上**智能引号，两种引法都取得到。
+
+**偏离 5（顺序而非并发）**：上游把「变体 × 检索目标」扇出到 goroutine、上限 `min(16, jobs)`。本仓库的 `keywordSearchChunks` 是同步的（better-sqlite3），且一次收全部 kbId，所以每个变体只有一个 job、无可重叠。上限值仍写进 debug 载荷以对齐观测，但不做任何调度。
+
+**偏离 6（无关键词阈值）**：上游为扩展命中考量 `expKwTh = KeywordThreshold * 0.8`。本仓库关键词臂不做任何阈值过滤（bm25 没有绝对尺度），没有可缩放的阈值；扩展命中也同样豁免 `minScore`，理由与此前关键词臂的注释一致。
+
+#### 2.4.3 落点
+
+`src/kb/query-expansion.ts`（纯函数，无 DB/网络/配置读取）+ `searchChunks` 内的触发块（在 rerank **之前**，让扩宽后的候选集能被重排）。开关：请求级 `enable_query_expansion` 覆盖 `rag.json` 的 `enableQueryExpansion`，两者都缺省为关。
+
 ### 2.5 意图识别
 
 - 7 类：`greeting` / `chitchat` / `follow_up` / `image_only` / `summarize` / `web_search` / `doc_only`。
@@ -150,7 +185,10 @@ WeKnora 保护 LaTeX `$...$`、markdown 链接/图片、表格块、围栏代码
 | AC-5 | 面包屑进入 embedding 文本但**不进入 content** | 单测 |
 | AC-6 | FAQ 库不建关键词索引 | 单测：FTS 表中无该库 chunk |
 | AC-7 | 查询扩展最多 5 条、最短 3 字符 | 单测 |
-| AC-8 | 既有 51 条 KB 测试全部不回归 | `npx vitest run tests/units/kb-*` |
+| AC-9 | 扩展仅在召回不足时触发；关闭时同一查询召回应为 0 | 集成测试：开/关同一查询配对断言 |
+| AC-10 | 扩展只走关键词臂，不重复向量臂 | 集成测试：命中 `source` 全为 `keyword` |
+| AC-11 | 中文查询在无分词器下仍能产出变体 | 单测：纯中文无疑问词用例 |
+| AC-8 | 既有 KB 测试全部不回归 | `npx vitest run tests/units/kb-*` |
 
 ---
 
