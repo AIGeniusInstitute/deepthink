@@ -10,14 +10,14 @@
 
 | 期 | 内容 | 状态 |
 |---|---|---|
-| **P1** | 知识库内核补全：父子分块 / FAQ 索引 / 预生成问题 / 查询改写 / 意图识别 | ✅ **已完成**：5/5 子项 + UI 验收 18/18 + test_report + 合并（含上线实例上报的 1 个修复） |
+| **P1** | 知识库内核补全：父子分块 / FAQ 索引 / 预生成问题 / 查询改写 / 意图识别 | ✅ **已完成**：5/5 子项 + UI 验收 18/18 + PDF 上传验收 10/10 + test_report + 合并（含上线实例上报的 3 个修复） |
 | P2 | 文档接入扩展（xlsx/pptx、图片、整目录上传） | 未启动 |
 | P3 | 检索增强（rerank 深化、Wiki、GraphRAG） | 未启动 |
 | P4 | Agent 协作（fork/rewind、artifacts、steering） | 未启动 |
 | P5 | 平台化（SSO、多租户、Langfuse、小程序、扩展） | 未启动 |
 
-**P1 已完成**：UI 验收 18/18 通过（截图见 `docs/test_report/2026-10-16-weknora-full-replica/screenshots/`），
-全量回归 174 文件 / 2386 条通过，5 个缺陷已按 issue 工作流修复并沉淀，
+**P1 已完成**：UI 验收 18/18 + PDF 上传验收 10/10 通过（截图见 `docs/test_report/2026-10-16-weknora-full-replica/screenshots/`），
+全量回归 175 文件 / 2390 条通过，8 个缺陷已按 issue 工作流修复并沉淀，
 报告见 `docs/test_report/2026-10-16-weknora-full-replica/TEST_REPORT.md`。P2–P5 未启动。
 
 ---
@@ -355,13 +355,34 @@ DT_BASE=http://localhost:9911 DT_USER=admin DT_PASS='******' DT_DATA_DIR=$HOME/.
 - ✅ test_report 及用例通过截图（9 张，`docs/test_report/2026-10-16-weknora-full-replica/screenshots/`）
 - ✅ 合并 worktree → main 并 push
 
-UI 验收过程中发现 5 个缺陷，全部走 issue 工作流修复（详见 §3.6）。
+**PDF 上传验收（2026-10-16 追加，在用户上线实例上跑）**：
+
+```
+make start-prod PORT=9999
+DT_BASE=http://127.0.0.1:9999 DT_USER=admin DT_PASS='******' \
+DT_KB=40585997-0346-4468-bd71-8522134f7a1e \
+DT_PDF="/Users/edy/Downloads/CSCO非小细胞肺癌治疗指南2026.pdf" \
+  node tests/e2e/kb-pdf-upload.mjs
+→ 合计 10 项，通过 10，失败 0
+→ npx tsc --noEmit -p tsconfig.json      → 通过
+→ npx tsc --noEmit -p web/tsconfig.json  → 通过
+→ npx vitest run → Test Files 175 passed | 4 skipped (179)
+                    Tests 2390 passed | 16 skipped (2406)
+```
+
+- ✅ 环境与用户完全对齐：9999 实例、用户的库、用户那个 49.7 MiB 的真实 PDF、真实按钮点击
+- ✅ 验收产物保留作为测试现场：截图 10–13 + 对照知识库「PDF 解析验证 713131」
+- ⚠️ 该文件是 287 页纯扫描件（无文字层），**修复后仍无法入库，这是正确结果**；
+  PDF 链路本身由对照用例（带文字层的真 PDF 端到端切块）证明可用。详见 §5 #20。
+
+验收（含用户上报）共发现 8 个缺陷，全部走 issue 工作流修复（详见 §3.6）。
 
 ---
 
-## 3.6 UI 验收发现的 5 个缺陷（2026-10-16）
+## 3.6 验收发现的 8 个缺陷（2026-10-16）
 
-**4 个单测全绿也照样漏** —— 都在"数据对、链路对"之后的那一公里。
+**7 个单测全绿也照样漏** —— 都在"数据对、链路对"之后的那一公里。
+D1–D5 来自自建隔离实例的 UI 验收；**D6–D8 来自用户在自己那个 9999 实例上的实际使用**。
 
 | # | issue | 现象 | 根因层 | 修复 |
 |---|---|---|---|---|
@@ -370,6 +391,19 @@ UI 验收过程中发现 5 个缺陷，全部走 issue 工作流修复（详见 
 | D3 | `2026-10-16-kb-parent-child-invisible-end-to-end.md` | 父子分块勾不上、看不到、只有父块 | 前端入口 + 呈现 + 接口字段 | 三处各补一处 |
 | D4 | `2026-10-16-faq-entry-not-indexed-on-create.md` | FAQ 条目永远"待向量化" | 后端漏调用索引 | POST/PUT 内联 `indexFaqEntry` |
 | D5 | `2026-10-16-faq-index-mode-select-reverts.md` | 索引方式下拉弹回旧值 | 前端漏回写 store | `updateFaqConfig` 回写 `list` |
+| D6 | `2026-10-16-kb-upload-button-label-swallows-click.md` | 点「上传文档」毫无反应 | `<label>` 按规范不转发对 `<button>` 的点击 | 改 `ref.current?.click()` |
+| D7 | `2026-10-16-kb-pdf-parse-crash-and-fabricated-page-markers.md` | 任何 PDF 上传 100% 失败 | `pdf-parse` v2 是具名类导出，`mod.default ?? mod` 退化成命名空间对象 | `new PDFParse({data})` + `getText()` + `finally destroy()` |
+| D8 | 同上（同一函数的第二个缺陷） | 无（界面一切正常） | `pageJoiner` 默认值给每页伪造 `-- n of N --`，空值守卫永不触发 | `getText({ pageJoiner: '' })` |
+
+**D6–D8 有一个共同点：本地验收全绿而用户一用就坏。** 原因各不相同，但都指向同一条教训 ——
+**验收环境/入口与用户的真实环境/入口不一致时，绿是假的**：
+
+- D6：`setInputFiles()` 绕过了"点按钮"这一跳 → 改为 `waitForEvent('filechooser')`
+- D7：本地验收只传 `.md`，PDF 分支**从未被执行过** → 补 `document-parser-pdf.test.ts` + 真 UI e2e
+- D8：单看界面完全正常（它导致的是静默入库）→ 断言改成"列表条数不变"而不只是"弹了错误"
+
+**D7/D8 必须连着修**：只修 D7，用户那份 287 页扫描件会"上传成功"并入库 5,632 字符的
+伪造页码标记 —— **从一次显式失败变成一次静默污染**。实测对照见 test_report §3.2.1。
 
 **D1/D2 是验证基础设施的缺陷**，最危险：D1 让"改的代码"根本没被服务，D2 让"启动成功"是假的
 （服务的是上一轮进程）——两者都会让后续**所有**验证结论失效。D2 修复前正是"命令说成功、
@@ -410,6 +444,10 @@ UI 验收过程中发现 5 个缺陷，全部走 issue 工作流修复（详见 
 | 16 | `make status` 未校验监听 pid 与 pidfile 是否一致、未在看门狗计数 > 1 时告警 | D2 的建议项，超出本次修复范围，**未改** |
 | 17 | `src/web.ts` 未在启动日志里打印实际的静态资源根目录 | D1 的建议项，下次同类问题可一眼看出，**未改** |
 | 18 | 上传按钮的 `<Button>` 未带 `type="button"`（全仓库其余按钮同样如此）。当前无 `<form>` 包裹所以无害，被放进 `<form>` 会退化成提交按钮 | 既存写法，不在 D6 因果链上，**未顺手改** |
+| 19 | 上传接口先 `c.req.formData()` 再判大小：**整个请求体先落内存**。100MB 限制是可用性闸门，**不是内存保护** | 未修，需改成流式提前截断才谈得上保护 |
+| 20 | **没有 OCR**：纯扫描件（无文字层）的 PDF 无法入库，当前行为是明确报错 | 用户那份 287 页扫描件属于此类。要支持需接 OCR/视觉模型逐页识别，**成本与选型等用户决策** |
+| 21 | `~/.deepthink-9999` **未配置 `embedding.json`** ⇒ 该实例知识库只有关键词（FTS）可用，向量臂是空的（界面显示"已向量化 0"） | 环境配置问题，非代码缺陷。配好后点「重建索引」即可补向量（入口已存在） |
+| 22 | 解析类错误文案是英文（`PDF has no extractable text…`），原样透传到界面 toast | 与仓库其余解析器错误风格一致，未单独本地化；若面向最终用户建议在接口层统一映射 |
 
 ---
 
@@ -417,5 +455,9 @@ UI 验收过程中发现 5 个缺陷，全部走 issue 工作流修复（详见 
 
 1. ✅ P1 已完成：5 个子项实现（§2.1 / §2.2 / §2.3 / §2.4 / §2.5）+ Playwright UI 验收 18/18
    + 5 篇 issue + test_report（含 9 张通过截图）+ 合并 worktree → main。
-2. P2–P5 未启动。启动 P2 前建议先处置 §5 里的 15（索引方式切换无重建入口）——
+2. ✅ 用户上线实例反馈的 3 个缺陷（D6 上传按钮 / D7 PDF 崩溃 / D8 扫描件静默入库）已修复，
+   在 9999 上以真实文件走真实入口验收 10/10（§3.6、test_report §3.2）。
+3. P2–P5 未启动。启动 P2 前建议先处置 §5 里的 15（索引方式切换无重建入口）——
    它是目前唯一一个"UI 上明确提示了动作、但用户无路可走"的缺口。
+4. §5 里的 20（OCR）需要用户拍板：**要不要让扫描件也能入库**。若不接 OCR，
+   建议后续在 UI 上传前的提示里明确写出"暂不支持扫描件（无文字层）"，省得用户反复试。

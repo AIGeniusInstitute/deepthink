@@ -79,13 +79,28 @@ export function sniffTextFromBuffer(buf: Buffer): ParserType | null {
   return printable / sample.length > 0.95 ? 'text' : null;
 }
 
+/**
+ * `pdf-parse` v2 是**具名类导出**（`export { PDFParse }`），没有默认导出 ——
+ * v1 那套 `pdf(buffer)` 的函数式调用在 v2 下会退化成调用命名空间对象，报
+ * `pdfParse is not a function`。用法是 `new PDFParse({data})` + `getText()`，
+ * 且必须 `destroy()` 释放 pdfjs 的文档句柄（大文件不释放会一直占着内存）。
+ *
+ * 第二个坑：`getText()` 的 `pageJoiner` 默认值是 `'\n-- {n} of {total} --'`，
+ * 也就是**给每一页伪造一条页码标记**。纯扫描件（无文字层）本该抽出空串，被这么一加
+ * 就成了「287 页 × 一条标记」的非空文本 —— 下面的空值守卫永远不会触发，知识库会把
+ * 纯噪声当正文静默入库。传空串关掉它，抽出的才是真正的正文。
+ */
 export async function parsePdf(buf: Buffer): Promise<string> {
-  const mod = await import('pdf-parse');
-  const pdfParse = (mod as any).default ?? (mod as any);
-  const result = await pdfParse(buf);
-  const text = (result?.text ?? '').trim();
-  if (!text) throw new Error('PDF has no extractable text (possibly a scanned image)');
-  return text;
+  const { PDFParse } = (await import('pdf-parse')) as typeof import('pdf-parse');
+  const parser = new PDFParse({ data: buf });
+  try {
+    const result = await parser.getText({ pageJoiner: '' });
+    const text = (result?.text ?? '').trim();
+    if (!text) throw new Error('PDF has no extractable text (possibly a scanned image)');
+    return text;
+  } finally {
+    await parser.destroy().catch(() => {});
+  }
 }
 
 export async function parseDocx(buf: Buffer): Promise<string> {
