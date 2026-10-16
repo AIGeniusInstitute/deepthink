@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api } from '../api/client';
+import { api, apiFetch } from '../api/client';
 
 export interface KbDocumentMeta {
   id: string;
@@ -11,6 +11,13 @@ export interface KbDocumentMeta {
   parser_type?: string | null;
   embedding_model?: string | null;
   embedded: boolean;
+  parse_status?: string | null;
+  parse_stage?: string | null;
+  error_message?: string | null;
+  chunk_count?: number | null;
+  embedded_chunk_count?: number | null;
+  processed_at?: string | null;
+  stages?: Array<{ stage: string; status: string; ms: number; detail?: string }>;
 }
 
 export interface KnowledgeBase {
@@ -23,13 +30,70 @@ export interface KnowledgeBase {
   updatedAt: string;
 }
 
-export interface KbSearchHit {
-  kb_id: string;
-  kb_name?: string | null;
+/** 一条检索命中：内容 + 可回源核验的字符偏移。 */
+export interface KbHit {
+  chunk_id: string;
   doc_id: string;
+  kb_id: string;
   filename: string;
-  snippet: string;
-  rank: number;
+  content: string;
+  heading_path: string | null;
+  start_at: number;
+  end_at: number;
+  score: number;
+  vector_score: number | null;
+  keyword_score: number | null;
+  source: 'vector' | 'keyword' | 'hybrid';
+}
+
+export interface KbChunk {
+  id: string;
+  kb_id: string;
+  doc_id: string;
+  chunk_index: number;
+  content?: string;
+  preview: string;
+  char_count: number;
+  heading_path: string | null;
+  start_at: number;
+  end_at: number;
+  is_enabled: boolean;
+  embedded: boolean;
+  embedding_model?: string | null;
+}
+
+export interface KbCitation {
+  chunk_id: string;
+  doc_id: string;
+  kb_id: string;
+  filename: string;
+  heading_path: string | null;
+  start_at: number;
+  end_at: number;
+  content: string;
+  score: number;
+}
+
+export interface KbChatMessage {
+  id?: string;
+  role: 'user' | 'assistant';
+  content: string;
+  citations?: KbCitation[];
+  created_at?: string;
+}
+
+export interface KbSearchParams {
+  mode?: 'keyword' | 'vector' | 'hybrid';
+  top_k?: number;
+  min_score?: number;
+  rerank?: boolean;
+  debug?: boolean;
+}
+
+export interface ChunkConfigInput {
+  strategy?: 'auto' | 'heading' | 'heuristic' | 'recursive';
+  chunk_size?: number;
+  chunk_overlap?: number;
 }
 
 interface KbState {
@@ -40,13 +104,33 @@ interface KbState {
   create: (name: string, description: string) => Promise<KnowledgeBase | null>;
   remove: (id: string) => Promise<boolean>;
   listDocuments: (kbId: string) => Promise<KbDocumentMeta[]>;
-  uploadDocument: (kbId: string, file: File) => Promise<boolean>;
-  uploadFromUrl: (kbId: string, url: string) => Promise<boolean>;
+  getDocument: (docId: string) => Promise<KbDocumentMeta | null>;
+  uploadDocument: (kbId: string, file: File, cfg?: ChunkConfigInput) => Promise<{ ok: boolean; error?: string }>;
+  uploadFromUrl: (kbId: string, url: string) => Promise<{ ok: boolean; error?: string }>;
   removeDocument: (kbId: string, docId: string) => Promise<boolean>;
-  search: (kbId: string, query: string, limit?: number) => Promise<KbSearchHit[]>;
-  embedAll: (kbId: string) => Promise<{ embedded: number; failed: number } | null>;
-  embedDocument: (kbId: string, docId: string) => Promise<boolean>;
+  reparseDocument: (docId: string, cfg?: ChunkConfigInput) => Promise<boolean>;
+  cancelIngest: (docId: string) => Promise<boolean>;
+  getDocumentContent: (docId: string, start?: number, end?: number) => Promise<string>;
+  listChunks: (docId: string, full?: boolean) => Promise<KbChunk[]>;
+  updateChunk: (chunkId: string, content: string) => Promise<KbChunk | null>;
+  removeChunk: (chunkId: string) => Promise<boolean>;
+  listChunkRevisions: (chunkId: string) => Promise<Array<{ id: string; content: string; created_at: string }>>;
+  revertChunk: (chunkId: string, revisionId: string) => Promise<KbChunk | null>;
+  previewChunks: (kbId: string, text: string, cfg?: ChunkConfigInput) => Promise<KbChunk[]>;
+  search: (kbId: string, query: string, params?: KbSearchParams) => Promise<{ hits: KbHit[]; debug?: any }>;
+  rebuildIndex: (kbId: string) => Promise<{
+    dimension_changed?: boolean;
+    rechunked_documents?: number;
+    attempted?: number;
+    success?: number;
+    failed?: number;
+  } | null>;
+  listChatMessages: (sessionId: string) => Promise<KbChatMessage[]>;
+  clearChatSession: (sessionId: string) => Promise<boolean>;
 }
+
+/** 子资源路径统一挂在这个前缀下，避免各处重复拼串。 */
+const KB_API = '/api/paas/knowledge-bases';
 
 export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
   list: [],
@@ -55,7 +139,7 @@ export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
   load: async () => {
     set({ loading: true, error: null });
     try {
-      const res = await api.get<{ knowledge_bases: KnowledgeBase[] }>('/api/paas/knowledge-bases');
+      const res = await api.get<{ knowledge_bases: KnowledgeBase[] }>(KB_API);
       set({ list: res.knowledge_bases ?? [], loading: false });
     } catch (e: any) {
       set({ loading: false, error: e?.message ?? 'Load failed' });
@@ -63,7 +147,7 @@ export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
   },
   create: async (name, description) => {
     try {
-      const res = await api.post<{ knowledge_base: KnowledgeBase }>('/api/paas/knowledge-bases', { name, description });
+      const res = await api.post<{ knowledge_base: KnowledgeBase }>(KB_API, { name, description });
       await get().load();
       return res.knowledge_base;
     } catch {
@@ -72,7 +156,7 @@ export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
   },
   remove: async (id) => {
     try {
-      await api.delete(`/api/paas/knowledge-bases/${id}`);
+      await api.delete(`${KB_API}/${id}`);
       await get().load();
       return true;
     } catch {
@@ -80,53 +164,207 @@ export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
     }
   },
   listDocuments: async (kbId) => {
-    const res = await api.get<{ documents: KbDocumentMeta[] }>(`/api/paas/knowledge-bases/${kbId}/documents`);
+    const res = await api.get<{ documents: KbDocumentMeta[] }>(`${KB_API}/${kbId}/documents`);
     return res.documents ?? [];
   },
-  uploadDocument: async (kbId, file) => {
-    const fd = new FormData();
-    fd.append('file', file);
+  getDocument: async (docId) => {
     try {
-      await api.post<{ document: KbDocumentMeta }>(`/api/paas/knowledge-bases/${kbId}/documents`, fd, 120_000);
-      return true;
-    } catch {
-      return false;
-    }
-  },
-  uploadFromUrl: async (kbId, url) => {
-    try {
-      await api.post(`/api/paas/knowledge-bases/${kbId}/documents/url`, { url }, 30_000);
-      return true;
-    } catch {
-      return false;
-    }
-  },
-  removeDocument: async (kbId, docId) => {
-    try {
-      await api.delete(`/api/paas/knowledge-bases/${kbId}/documents/${docId}`);
-      return true;
-    } catch {
-      return false;
-    }
-  },
-  search: async (kbId, query, limit = 5) => {
-    const res = await api.post<{ results: KbSearchHit[] }>(`/api/paas/knowledge-bases/${kbId}/search`, { query, limit });
-    return res.results ?? [];
-  },
-  embedAll: async (kbId) => {
-    try {
-      const res = await api.post<{ embedded?: number; failed?: number }>(`/api/paas/knowledge-bases/${kbId}/embed-all`, {}, 120_000);
-      return { embedded: res.embedded ?? 0, failed: res.failed ?? 0 };
+      const res = await api.get<{ document: KbDocumentMeta }>(`${KB_API}/documents/${docId}`);
+      return res.document;
     } catch {
       return null;
     }
   },
-  embedDocument: async (kbId, docId) => {
+  uploadDocument: async (kbId, file, cfg) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (cfg?.strategy) fd.append('strategy', cfg.strategy);
+    if (cfg?.chunk_size) fd.append('chunk_size', String(cfg.chunk_size));
+    if (cfg?.chunk_overlap !== undefined) fd.append('chunk_overlap', String(cfg.chunk_overlap));
     try {
-      await api.post(`/api/paas/knowledge-bases/${kbId}/documents/${docId}/embed`, {}, 30_000);
+      await apiFetch<{ document: KbDocumentMeta }>(`${KB_API}/${kbId}/documents`, {
+        method: 'POST',
+        body: fd,
+        // 上传本身只做解析；切块与向量化在后台流水线里跑，所以不需要长超时。
+        timeoutMs: 120_000,
+      });
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '上传失败' };
+    }
+  },
+  uploadFromUrl: async (kbId, url) => {
+    try {
+      await api.post(`${KB_API}/${kbId}/documents/url`, { url }, 30_000);
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? 'URL 抓取失败' };
+    }
+  },
+  removeDocument: async (kbId, docId) => {
+    try {
+      await api.delete(`${KB_API}/${kbId}/documents/${docId}`);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  reparseDocument: async (docId, cfg) => {
+    try {
+      await api.post(`${KB_API}/documents/${docId}/reparse`, cfg ?? {});
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  cancelIngest: async (docId) => {
+    try {
+      await api.post(`${KB_API}/documents/${docId}/cancel`, {});
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  getDocumentContent: async (docId, start, end) => {
+    const qs = new URLSearchParams();
+    if (start !== undefined) qs.set('start', String(start));
+    if (end !== undefined) qs.set('end', String(end));
+    const res = await api.get<{ content: string }>(
+      `${KB_API}/documents/${docId}/content${qs.toString() ? `?${qs}` : ''}`,
+    );
+    return res.content ?? '';
+  },
+  listChunks: async (docId, full = false) => {
+    const res = await api.get<{ chunks: KbChunk[] }>(
+      `${KB_API}/documents/${docId}/chunks${full ? '?full=1' : ''}`,
+    );
+    return res.chunks ?? [];
+  },
+  updateChunk: async (chunkId, content) => {
+    try {
+      const res = await api.put<{ chunk: KbChunk }>(`${KB_API}/chunks/${chunkId}`, { content });
+      return res.chunk;
+    } catch {
+      return null;
+    }
+  },
+  removeChunk: async (chunkId) => {
+    try {
+      await api.delete(`${KB_API}/chunks/${chunkId}`);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  listChunkRevisions: async (chunkId) => {
+    const res = await api.get<{ revisions: Array<{ id: string; content: string; created_at: string }> }>(
+      `${KB_API}/chunks/${chunkId}/revisions`,
+    );
+    return res.revisions ?? [];
+  },
+  revertChunk: async (chunkId, revisionId) => {
+    try {
+      const res = await api.post<{ chunk: KbChunk }>(`${KB_API}/chunks/${chunkId}/revert`, {
+        revision_id: revisionId,
+      });
+      return res.chunk;
+    } catch {
+      return null;
+    }
+  },
+  previewChunks: async (kbId, text, cfg) => {
+    const res = await api.post<{ chunks: KbChunk[] }>(`${KB_API}/${kbId}/chunker/preview`, {
+      text,
+      ...cfg,
+    });
+    return res.chunks ?? [];
+  },
+  search: async (kbId, query, params) => {
+    const res = await api.post<{ hits: KbHit[]; debug?: any }>(`${KB_API}/${kbId}/search`, {
+      query,
+      ...params,
+    });
+    return { hits: res.hits ?? [], debug: res.debug };
+  },
+  rebuildIndex: async (kbId) => {
+    try {
+      return await api.post<{
+        dimension_changed?: boolean;
+        rechunked_documents?: number;
+        attempted?: number;
+        success?: number;
+        failed?: number;
+      }>(`${KB_API}/${kbId}/rebuild-index`, {}, 300_000);
+    } catch {
+      return null;
+    }
+  },
+  listChatMessages: async (sessionId) => {
+    const res = await api.get<{ messages: KbChatMessage[] }>(
+      `${KB_API}/chat/sessions/${sessionId}/messages`,
+    );
+    return res.messages ?? [];
+  },
+  clearChatSession: async (sessionId) => {
+    try {
+      await api.delete(`${KB_API}/chat/sessions/${sessionId}`);
       return true;
     } catch {
       return false;
     }
   },
 }));
+
+export type KbStreamEvent =
+  | { type: 'session'; session_id: string }
+  | { type: 'citations'; citations: KbCitation[] }
+  | { type: 'delta'; text: string }
+  | { type: 'done'; answer: string; fallback: boolean }
+  | { type: 'error'; message: string };
+
+/**
+ * 知识库问答（SSE）。
+ *
+ * 不走 apiFetch：它是按整包 JSON 设计的，这里要的是逐帧读取。用 fetch + 手写
+ * SSE 解析，并把 AbortSignal 透出去，让调用方可以中断一次回答。
+ */
+export async function streamKbChat(
+  body: { question: string; session_id?: string; kb_ids?: string[]; top_k?: number; mode?: string },
+  onEvent: (event: KbStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`${KB_API}/chat`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(detail || `问答请求失败（${res.status}）`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // SSE 以空行分帧；最后一段可能不完整，留在 buffer 里等下一批。
+    const frames = buffer.split('\n\n');
+    buffer = frames.pop() ?? '';
+    for (const frame of frames) {
+      const line = frame.trim();
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (payload === '[DONE]') return;
+      try {
+        onEvent(JSON.parse(payload) as KbStreamEvent);
+      } catch {
+        // 忽略无法解析的保活帧
+      }
+    }
+  }
+}

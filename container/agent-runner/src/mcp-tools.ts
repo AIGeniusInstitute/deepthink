@@ -2197,7 +2197,12 @@ Use this when the user describes a reusable capability that should be persisted 
               kb_id: string;
               kb_name?: string;
               doc_id: string;
+              chunk_id?: string;
               filename: string;
+              heading_path?: string | null;
+              start_at?: number;
+              end_at?: number;
+              content?: string;
               snippet: string;
               rank: number;
             }>;
@@ -2206,10 +2211,18 @@ Use this when the user describes a reusable capability that should be persisted 
                 content: [{ type: 'text' as const, text: 'No matching documents found in bound KBs.' }],
               };
             }
-            const lines = hits.map(
-              (h, i) =>
-                `### ${i + 1}. ${h.filename}${h.kb_name ? ` (KB: ${h.kb_name})` : ''}\n${h.snippet}`,
-            );
+            // Chunk offsets are surfaced so the Agent can cite a verifiable
+            // span (and follow up with kb_read_document for more context).
+            const lines = hits.map((h, i) => {
+              const heading = h.heading_path ? ` · ${h.heading_path}` : '';
+              const span =
+                typeof h.start_at === 'number' && typeof h.end_at === 'number'
+                  ? ` · chars [${h.start_at}, ${h.end_at})`
+                  : '';
+              const body = h.content ?? h.snippet;
+              const more = h.chunk_id ? `\n(chunk_id: ${h.chunk_id}, doc_id: ${h.doc_id})` : '';
+              return `### ${i + 1}. ${h.filename}${h.kb_name ? ` (KB: ${h.kb_name})` : ''}${heading}${span}\n${body}${more}`;
+            });
             return {
               content: [
                 { type: 'text' as const, text: `Found ${hits.length} match(s):\n\n${lines.join('\n\n')}` },
@@ -2221,6 +2234,140 @@ Use this when the user describes a reusable capability that should be persisted 
                 {
                   type: 'text' as const,
                   text: `KB search IPC error: ${err instanceof Error ? err.message : String(err)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      ),
+    );
+
+    // --- kb_read_document ---
+    tools.push(
+      tool(
+        'kb_read_document',
+        'Read the full text (or a character range) of a document in a bound knowledge base. Use the start/end offsets returned by kb_search to pull the exact passage around a citation.',
+        {
+          docId: z.string().describe('Document id, as returned by kb_search'),
+          start: z
+            .number()
+            .optional()
+            .describe('Start character offset (inclusive). Defaults to 0.'),
+          end: z
+            .number()
+            .optional()
+            .describe('End character offset (exclusive). Defaults to 20000 characters from start.'),
+        },
+        async (args) => {
+          if (!args.docId?.trim()) {
+            return {
+              content: [{ type: 'text' as const, text: 'docId is required.' }],
+              isError: true,
+            };
+          }
+          const requestId = newRequestId();
+          try {
+            const result = await pollIpcResult(
+              TASKS_DIR,
+              {
+                type: 'kb_read_document',
+                requestId,
+                groupFolder: ctx.groupFolder,
+                kbIds: ctx.kbIds,
+                docId: args.docId.trim(),
+                start: args.start,
+                end: args.end,
+                timestamp: new Date().toISOString(),
+              },
+              'kb_read_result',
+              15_000,
+            );
+            if (!result.success) {
+              return {
+                content: [
+                  { type: 'text' as const, text: `Read failed: ${result.error || 'Unknown error'}` },
+                ],
+                isError: true,
+              };
+            }
+            const header =
+              `${result.filename} — chars [${result.start_at}, ${result.end_at}) of ${result.total_chars}` +
+              (result.truncated ? ' (truncated)' : '');
+            return {
+              content: [{ type: 'text' as const, text: `${header}\n\n${result.content}` }],
+            };
+          } catch (err) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: `Read IPC error: ${err instanceof Error ? err.message : String(err)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      ),
+    );
+
+    // --- kb_list_documents ---
+    tools.push(
+      tool(
+        'kb_list_documents',
+        `List the documents available in the knowledge bases bound to this Agent, with parse status and chunk counts. Bound KB count: ${ctx.kbIds.length}.`,
+        {},
+        async () => {
+          const requestId = newRequestId();
+          try {
+            const result = await pollIpcResult(
+              TASKS_DIR,
+              {
+                type: 'kb_list_documents',
+                requestId,
+                groupFolder: ctx.groupFolder,
+                kbIds: ctx.kbIds,
+                timestamp: new Date().toISOString(),
+              },
+              'kb_list_result',
+              15_000,
+            );
+            if (!result.success) {
+              return {
+                content: [
+                  { type: 'text' as const, text: `List failed: ${result.error || 'Unknown error'}` },
+                ],
+                isError: true,
+              };
+            }
+            const documents = (result.documents || []) as Array<{
+              kb_name: string;
+              doc_id: string;
+              filename: string;
+              parse_status: string;
+              chunk_count: number;
+            }>;
+            if (documents.length === 0) {
+              return {
+                content: [{ type: 'text' as const, text: 'No documents in the bound knowledge bases.' }],
+              };
+            }
+            const lines = documents.map(
+              (d) =>
+                `- ${d.filename} (KB: ${d.kb_name}) — ${d.parse_status}, ${d.chunk_count} chunks, doc_id: ${d.doc_id}`,
+            );
+            return {
+              content: [
+                { type: 'text' as const, text: `${documents.length} document(s):\n${lines.join('\n')}` },
+              ],
+            };
+          } catch (err) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: `List IPC error: ${err instanceof Error ? err.message : String(err)}`,
                 },
               ],
               isError: true,

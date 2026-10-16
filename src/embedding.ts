@@ -16,6 +16,12 @@ import {
   getKbDocumentContent,
   listUnembeddedDocsInKb,
   updateDocEmbedding,
+  listUnembeddedChunks,
+  listUnembeddedChunksForDocument,
+  updateChunkEmbedding,
+  setKbVecDimension,
+  resolveKbVecDimension,
+  countEmbeddedChunksForDocument,
   type KbDocumentRow,
 } from './db.js';
 
@@ -223,3 +229,156 @@ export async function embedAllInKb(kbId: string): Promise<{
 }
 
 export type { KbDocumentRow };
+
+// ─── Chunk-level embedding ────────────────────────────────
+
+/**
+ * Embed several texts in one API call.
+ *
+ * The endpoint accepts an array input, so this is a genuine batch rather than
+ * the sequential loop `embedBatch` performs. Results stay index-aligned; a
+ * failure yields null in that slot so one bad input cannot sink the batch.
+ */
+export async function embedTexts(texts: string[]): Promise<(Float32Array | null)[]> {
+  const config = getEmbeddingConfig();
+  if (!config || texts.length === 0) return texts.map(() => null);
+
+  const payload = texts.map((t) => t.slice(0, MAX_EMBED_TEXT_CHARS));
+  try {
+    const controller = new AbortController();
+    // Scale the timeout with batch size — a large batch legitimately takes longer.
+    const timer = setTimeout(() => controller.abort(), 30_000 + texts.length * 500);
+    const res = await fetch(`${config.baseUrl}/embeddings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({ model: config.model, input: payload }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      logger.warn(
+        { status: res.status, errText: errText.slice(0, 200) },
+        'Batch embedding API returned non-OK status',
+      );
+      return texts.map(() => null);
+    }
+    const json = (await res.json()) as {
+      data?: Array<{ index?: number; embedding?: number[] }>;
+    };
+    const out: (Float32Array | null)[] = texts.map(() => null);
+    json.data?.forEach((entry, i) => {
+      const idx = typeof entry.index === 'number' ? entry.index : i;
+      if (idx < 0 || idx >= out.length) return;
+      const arr = entry.embedding;
+      if (!Array.isArray(arr) || arr.length === 0) return;
+      const f32 = new Float32Array(arr.length);
+      for (let k = 0; k < arr.length; k++) f32[k] = arr[k];
+      out[idx] = f32;
+    });
+    return out;
+  } catch (err) {
+    logger.warn({ err }, 'Batch embedding API call failed');
+    return texts.map(() => null);
+  }
+}
+
+/** Chunk texts need a title prefix so a fragment carries its document context. */
+function chunkEmbeddingInput(filename: string, headingPath: string | null, content: string): string {
+  const header = headingPath ? `${filename} > ${headingPath}` : filename;
+  return `${header}\n${content}`;
+}
+
+const CHUNK_EMBED_BATCH = 32;
+
+/**
+ * Embed every not-yet-embedded chunk of a document.
+ * Returns counts; individual failures are reported, not thrown.
+ */
+export async function embedChunksForDocument(docId: string): Promise<{
+  attempted: number;
+  success: number;
+  failed: number;
+}> {
+  const config = getEmbeddingConfig();
+  if (!config) return { attempted: 0, success: 0, failed: 0 };
+
+  const rows = listUnembeddedChunksForDocument(docId);
+  if (rows.length === 0) return { attempted: 0, success: 0, failed: 0 };
+
+  let success = 0;
+  let failed = 0;
+  for (let i = 0; i < rows.length; i += CHUNK_EMBED_BATCH) {
+    const batch = rows.slice(i, i + CHUNK_EMBED_BATCH);
+    const vectors = await embedTexts(
+      batch.map((c) => chunkEmbeddingInput(c.filename, c.heading_path, c.content)),
+    );
+    batch.forEach((chunk, k) => {
+      const vec = vectors[k];
+      if (vec) {
+        updateChunkEmbedding(chunk.id, vec, config.model);
+        success++;
+      } else {
+        failed++;
+      }
+    });
+  }
+  return { attempted: rows.length, success, failed };
+}
+
+/**
+ * Reconcile the vec0/pgvector table dimension with the embedding config.
+ * Returns true when the dimension changed, which invalidates every stored
+ * vector — callers should then re-embed.
+ */
+export function syncVecDimensionFromConfig(): boolean {
+  const config = getEmbeddingConfig();
+  if (!config) return false;
+  const current = resolveKbVecDimension();
+  if (current === config.dimensions) return false;
+  if (setKbVecDimension(config.dimensions)) {
+    logger.info(
+      { from: current, to: config.dimensions },
+      'Embedding dimension changed — KB vector indexes rebuilt, re-embedding required',
+    );
+    return true;
+  }
+  return false;
+}
+
+/** Embed all pending chunks of a KB (bounded per call). */
+export async function embedAllChunksInKb(kbId: string, limit = 200): Promise<{
+  attempted: number;
+  success: number;
+  failed: number;
+}> {
+  const config = getEmbeddingConfig();
+  if (!config) return { attempted: 0, success: 0, failed: 0 };
+  const rows = listUnembeddedChunks(kbId, limit);
+  if (rows.length === 0) return { attempted: 0, success: 0, failed: 0 };
+
+  let success = 0;
+  let failed = 0;
+  for (let i = 0; i < rows.length; i += CHUNK_EMBED_BATCH) {
+    const batch = rows.slice(i, i + CHUNK_EMBED_BATCH);
+    const vectors = await embedTexts(batch.map((c) => c.content));
+    batch.forEach((chunk, k) => {
+      const vec = vectors[k];
+      if (vec) {
+        updateChunkEmbedding(chunk.id, vec, config.model);
+        success++;
+      } else {
+        failed++;
+      }
+    });
+  }
+  return { attempted: rows.length, success, failed };
+}
+
+/** Count of chunks of a document that currently hold a vector. */
+export function embeddedChunkCount(docId: string): number {
+  return countEmbeddedChunksForDocument(docId);
+}

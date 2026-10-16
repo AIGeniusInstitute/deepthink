@@ -8,33 +8,74 @@
 
 import type { Buffer } from 'node:buffer';
 
-export type ParserType = 'pdf' | 'docx' | 'text' | 'markdown' | null;
+export type ParserType =
+  | 'pdf'
+  | 'docx'
+  | 'html'
+  | 'csv'
+  | 'json'
+  | 'text'
+  | 'markdown';
+
+/** Formats accepted by the upload endpoint, for error messages and UI hints. */
+export const SUPPORTED_PARSERS: ParserType[] = [
+  'pdf',
+  'docx',
+  'html',
+  'csv',
+  'json',
+  'markdown',
+  'text',
+];
 
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46]; // %PDF
 const DOCX_MAGIC = [0x50, 0x4b, 0x03, 0x04]; // PK\x03\x04 (zip)
 
-export function detectParser(filename: string, mimeType?: string): ParserType {
+export function detectParser(filename: string, mimeType?: string): ParserType | null {
   const lower = filename.toLowerCase();
   if (lower.endsWith('.pdf') || mimeType === 'application/pdf') return 'pdf';
   if (
     lower.endsWith('.docx') ||
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ) return 'docx';
+  if (lower.endsWith('.html') || lower.endsWith('.htm') || mimeType === 'text/html') return 'html';
+  if (lower.endsWith('.csv') || mimeType === 'text/csv') return 'csv';
+  if (lower.endsWith('.tsv') || mimeType === 'text/tab-separated-values') return 'csv';
+  if (lower.endsWith('.json') || mimeType === 'application/json') return 'json';
   if (
     lower.endsWith('.md') ||
     lower.endsWith('.markdown') ||
     mimeType === 'text/markdown' ||
     mimeType === 'text/x-markdown'
   ) return 'markdown';
-  if (lower.endsWith('.txt') || mimeType === 'text/plain' || mimeType === 'application/octet-stream') return 'text';
+  if (lower.endsWith('.txt') || mimeType === 'text/plain') return 'text';
   // Fallback: sniff magic bytes
   return null;
 }
 
-export function sniffParserFromBuffer(buf: Buffer): ParserType {
+export function sniffParserFromBuffer(buf: Buffer): ParserType | null {
   if (buf.length >= 4 && PDF_MAGIC.every((b, i) => buf[i] === b)) return 'pdf';
   if (buf.length >= 4 && DOCX_MAGIC.every((b, i) => buf[i] === b)) return 'docx';
   return null;
+}
+
+/**
+ * Last-resort classification for uploads with an unhelpful name and MIME type:
+ * accept the buffer as text only if it plausibly *is* text. Binary formats we
+ * cannot extract would otherwise be indexed as mojibake and pollute retrieval.
+ */
+export function sniffTextFromBuffer(buf: Buffer): ParserType | null {
+  const sample = buf.subarray(0, 4096);
+  if (sample.length === 0) return null;
+  if (sample.includes(0)) return null; // NUL byte ⇒ binary
+  let printable = 0;
+  for (const byte of sample) {
+    // Allow ASCII, and any high byte (UTF-8 continuation / CJK lead byte).
+    if (byte >= 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d || byte >= 0x80) {
+      printable++;
+    }
+  }
+  return printable / sample.length > 0.95 ? 'text' : null;
 }
 
 export async function parsePdf(buf: Buffer): Promise<string> {
@@ -52,6 +93,75 @@ export async function parseDocx(buf: Buffer): Promise<string> {
   const text = (result?.value ?? '').trim();
   if (!text) throw new Error('DOCX has no extractable text');
   return text;
+}
+
+export async function parseHtml(html: string): Promise<string> {
+  return stripHtml(html);
+}
+
+/**
+ * CSV/TSV → one line per record, cells joined by " | ".
+ *
+ * Deliberately naive: quoted fields containing the delimiter are not handled.
+ * A real CSV parser is a dependency and a maintenance surface for a format
+ * whose whole point is that it is line-oriented; documents that need exact
+ * cell semantics belong in a spreadsheet importer, not here.
+ */
+export async function parseDelimited(text: string, delimiter: string): Promise<string> {
+  const lines = text.split(/\r?\n/);
+  const out: string[] = [];
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    out.push(
+      line
+        .split(delimiter)
+        .map((cell) => cell.trim())
+        .filter((cell) => cell.length > 0)
+        .join(' | '),
+    );
+  }
+  const result = out.join('\n').trim();
+  if (!result) throw new Error('Delimited file has no non-empty rows');
+  return result;
+}
+
+/**
+ * JSON → indented text, one scalar per line as `path: value`.
+ *
+ * Flattening rather than `JSON.stringify(value, null, 2)` because retrieval
+ * matches on text: a leaf path (`user.address.city: 北京`) is a far better
+ * chunk than a brace-delimited blob.
+ */
+export async function parseJson(text: string): Promise<string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`Invalid JSON: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const lines: string[] = [];
+  flattenJson(parsed, '', lines, 0);
+  const result = lines.join('\n').trim();
+  if (!result) throw new Error('JSON has no scalar values to index');
+  return result;
+}
+
+const MAX_JSON_DEPTH = 32;
+const MAX_JSON_LINES = 200_000;
+
+function flattenJson(value: unknown, path: string, out: string[], depth: number): void {
+  if (out.length >= MAX_JSON_LINES || depth > MAX_JSON_DEPTH) return;
+  if (value === null || typeof value !== 'object') {
+    out.push(`${path || '(root)'}: ${String(value)}`);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => flattenJson(item, `${path}[${i}]`, out, depth + 1));
+    return;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    flattenJson(child, path ? `${path}.${key}` : key, out, depth + 1);
+  }
 }
 
 export async function fetchUrlContent(url: string, opts?: { timeoutMs?: number; maxBytes?: number }): Promise<string> {

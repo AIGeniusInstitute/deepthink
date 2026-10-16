@@ -17,6 +17,7 @@ import { McpServersPage } from './pages/McpServersPage';
 import { PluginsPage } from './pages/PluginsPage';
 import { AgentDefinitionsPage } from './pages/AgentDefinitionsPage';
 import { KnowledgeBasesPage } from './pages/KnowledgeBasesPage';
+import { KnowledgeBaseDetailPage } from './pages/KnowledgeBaseDetailPage';
 import { AgentStudioPage } from './pages/AgentStudioPage';
 import { MarketplacePage } from './pages/MarketplacePage';
 import { SharePage } from './pages/SharePage';
@@ -123,6 +124,7 @@ export function App() {
           <Route path="/agents" element={<AgentStudioPage />} />
           <Route path="/agents/:id" element={<Suspense fallback={<PageLoader />}><AgentDetailPage /></Suspense>} />
           <Route path="/knowledge-bases" element={<KnowledgeBasesPage />} />
+          <Route path="/knowledge-bases/:id" element={<KnowledgeBaseDetailPage />} />
           <Route path="/marketplace" element={<MarketplacePage />} />
           <Route path="/sandbox" element={<Suspense fallback={<PageLoader />}><SandboxPage /></Suspense>} />
           <Route path="/engines" element={<Suspense fallback={<PageLoader />}><EnginesPage /></Suspense>} />

@@ -54,7 +54,7 @@ import { getDefaultPermissions, normalizePermissions } from './permissions.js';
  * initDatabase(); consumers (and tests) should import this rather than
  * hard-coding the literal — bump it whenever a migration is added.
  */
-export const SCHEMA_VERSION = '72';
+export const SCHEMA_VERSION = '73';
 
 let db: InstanceType<typeof Database>;
 let vecExtensionLoaded = false;
@@ -312,21 +312,17 @@ export function initDatabase(): void {
 
   // Phase 3: 加载 sqlite-vec 扩展（向量索引）。失败时回退线性扫描。
   // PostgreSQL 后端无 sqlite-vec；向量搜索走线性扫描（pgvector 为后续 Phase）。
+  //
+  // The vec0 tables themselves are created later by initKbVecTables(), once
+  // router_state exists — their dimension is configuration-dependent and was
+  // previously hardcoded to 1536, which silently broke indexing for any other
+  // embedding model.
   if (!isPostgresBackend) {
   try {
     const sqliteVecReq = createRequire(import.meta.url);
     const sqliteVec = sqliteVecReq('sqlite-vec');
     sqliteVec.load(db);
     vecExtensionLoaded = true;
-    try {
-      db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS kb_documents_vec USING vec0(
-        doc_id TEXT PRIMARY KEY,
-        embedding FLOAT[1536]
-      )`);
-    } catch (err) {
-      logger.warn({ err }, 'kb_documents_vec virtual table creation failed — vector index disabled');
-      vecExtensionLoaded = false;
-    }
     logger.info({ version: vecVersion() }, 'sqlite-vec extension loaded — vector index enabled');
   } catch (err) {
     logger.warn({ err }, 'sqlite-vec extension load failed — falling back to linear scan');
@@ -1221,6 +1217,56 @@ export function initDatabase(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_kb_docs_kb ON kb_documents(kb_id);
 
+    -- Chunk layer: a document is split into addressable spans so retrieval can
+    -- return a citable fragment instead of the whole file. start_at/end_at are
+    -- absolute character offsets into kb_documents.content.
+    CREATE TABLE IF NOT EXISTS kb_chunks (
+      id TEXT PRIMARY KEY,
+      kb_id TEXT NOT NULL,
+      doc_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      chunk_index INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      heading_path TEXT,
+      start_at INTEGER NOT NULL,
+      end_at INTEGER NOT NULL,
+      pre_chunk_id TEXT,
+      next_chunk_id TEXT,
+      is_enabled INTEGER NOT NULL DEFAULT 1,
+      chunk_type TEXT NOT NULL DEFAULT 'text',
+      embedding BLOB,
+      embedding_model TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (doc_id) REFERENCES kb_documents(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks(doc_id);
+    CREATE INDEX IF NOT EXISTS idx_kb_chunks_kb ON kb_chunks(kb_id);
+
+    CREATE TABLE IF NOT EXISTS kb_chunk_revisions (
+      id TEXT PRIMARY KEY,
+      chunk_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT 'edit',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_chunk_rev ON kb_chunk_revisions(chunk_id);
+
+    -- Retrieval-augmented QA. Sessions are implicit: a session_id is minted on
+    -- first use, so there is no separate session row to keep in sync.
+    CREATE TABLE IF NOT EXISTS kb_chat_messages (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      citations_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_chat_session ON kb_chat_messages(session_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_kb_chat_user ON kb_chat_messages(user_id, created_at);
+
     -- FTS5 virtual table + sync triggers are created separately below;
     -- they are SQLite-only (PG uses pg_trgm, see initKbSearchIndexes()).
 
@@ -1430,6 +1476,26 @@ export function initDatabase(): void {
   ensureColumn('kb_documents', 'embedding', 'BLOB');
   ensureColumn('agent_definitions', 'kind', "TEXT NOT NULL DEFAULT 'assistant'");
   ensureColumn('kb_documents', 'embedding_model', 'TEXT');
+
+  // Chunk-layer columns. Parser metadata previously existed only as a field on
+  // the KbDocumentRow type — reads always came back undefined. Existing rows
+  // default to 'ready' so pre-chunk documents keep behaving as before.
+  ensureColumn('kb_documents', 'parser_type', 'TEXT');
+  ensureColumn('kb_documents', 'parse_status', "TEXT NOT NULL DEFAULT 'ready'");
+  ensureColumn('kb_documents', 'parse_stage', 'TEXT');
+  ensureColumn('kb_documents', 'error_message', 'TEXT');
+  ensureColumn('kb_documents', 'chunk_count', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('kb_documents', 'embedded_chunk_count', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('kb_documents', 'embedding_dim', 'INTEGER');
+  ensureColumn('kb_documents', 'processed_at', 'TEXT');
+  ensureColumn('kb_documents', 'stages_json', 'TEXT');
+  ensureColumn('kb_documents', 'chunk_config_json', 'TEXT');
+
+  // Vector index tables are dimension-dependent, so they are created here
+  // rather than in the fixed-schema block above. A dimension change drops and
+  // rebuilds them: the BLOB column on the row is the source of truth, the vec0
+  // table is only an accelerator, so a rebuild costs a re-index, not data.
+  initKbVecTables(resolveKbVecDimension());
   ensureColumn('marketplace_items', 'status', "TEXT NOT NULL DEFAULT 'approved'");
   ensureColumn('marketplace_items', 'submitted_by', 'TEXT');
   // 补齐 status 列后再创建索引（老库 marketplace_items 缺 status 列）
@@ -11305,6 +11371,15 @@ export type KbDocumentRow = {
   parser_type?: string | null;
   embedding?: Buffer | null;
   embedding_model?: string | null;
+  parse_status?: string | null;
+  parse_stage?: string | null;
+  error_message?: string | null;
+  chunk_count?: number | null;
+  embedded_chunk_count?: number | null;
+  embedding_dim?: number | null;
+  processed_at?: string | null;
+  stages_json?: string | null;
+  chunk_config_json?: string | null;
 };
 
 export function listKnowledgeBases(userId: string): KnowledgeBaseRow[] {
@@ -11369,7 +11444,10 @@ export function deleteKnowledgeBase(id: string, userId: string): boolean {
       logger.warn({ err, kbId: id }, 'Failed to clean kb_documents_vec on KB delete');
     }
   }
-  db.prepare('DELETE FROM kb_documents WHERE kb_id = ?').all(id);
+  // Deleting the documents explicitly (rather than relying on the FK cascade)
+  // is what fires the kb_documents_fts delete trigger. kb_chunks cascades from
+  // kb_documents and fires the chunk FTS trigger in turn.
+  db.prepare('DELETE FROM kb_documents WHERE kb_id = ?').run(id);
   const result = db
     .prepare('DELETE FROM knowledge_bases WHERE id = ? AND user_id = ?')
     .run(id, userId);
@@ -11694,6 +11772,96 @@ export function listAllKbDocIds(kbId: string): Array<{ id: string; filename: str
  * Create SQLite FTS5 virtual table + sync triggers for kb_documents.
  * SQLite-only — PG has no fts5 module.
  */
+const KB_VEC_DIM_KEY = 'kb_vec_dim';
+const KB_VEC_DEFAULT_DIM = 1536;
+
+/**
+ * Dimension the KB vector indexes were built with. Persisted in router_state so
+ * a restart can detect a configuration change; embedding.ts imports this module
+ * (not the reverse), so the dimension has to be pushed in, not pulled.
+ */
+export function resolveKbVecDimension(): number {
+  const raw = getRouterStateInternal(KB_VEC_DIM_KEY);
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : KB_VEC_DEFAULT_DIM;
+}
+
+/**
+ * Record a new embedding dimension and rebuild the vec0/pgvector tables to
+ * match. Returns true when the dimension actually changed, which means every
+ * previously stored vector is unusable and the indexes need refilling.
+ */
+export function setKbVecDimension(dim: number): boolean {
+  if (!Number.isFinite(dim) || dim <= 0) return false;
+  const changed = resolveKbVecDimension() !== dim;
+  if (!changed) return false;
+  try {
+    db.prepare('INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)').run(
+      KB_VEC_DIM_KEY,
+      String(dim),
+    );
+  } catch (err) {
+    logger.warn({ err, dim }, 'Failed to persist KB vector dimension');
+  }
+  initKbVecTables(dim, true);
+  return true;
+}
+
+/**
+ * Create the vector index tables at `dim`. With `force`, existing tables are
+ * dropped first — required because vec0 fixes the dimension at CREATE time and
+ * will otherwise reject vectors of a different width.
+ */
+function initKbVecTables(dim: number, force = false): void {
+  if (!Number.isFinite(dim) || dim <= 0) return;
+
+  if (isPostgresBackend) {
+    if (!pgVectorLoaded) return;
+    try {
+      if (force) {
+        db.exec('DROP TABLE IF EXISTS kb_documents_vec');
+        db.exec('DROP TABLE IF EXISTS kb_chunks_vec');
+        pgVectorLoaded = false;
+      }
+      db.exec(`CREATE TABLE IF NOT EXISTS kb_documents_vec (
+        doc_id TEXT PRIMARY KEY,
+        embedding vector(${dim})
+      );`);
+      db.exec(`CREATE TABLE IF NOT EXISTS kb_chunks_vec (
+        chunk_id TEXT PRIMARY KEY,
+        embedding vector(${dim})
+      );`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_kb_chunks_vec_hnsw
+               ON kb_chunks_vec USING hnsw (embedding vector_cosine_ops);`);
+      pgVectorLoaded = true;
+    } catch (err) {
+      logger.warn({ err, dim }, 'pgvector chunk index creation failed — linear scan fallback');
+      pgVectorLoaded = false;
+    }
+    return;
+  }
+
+  if (!vecExtensionLoaded) return;
+  try {
+    if (force) db.exec('DROP TABLE IF EXISTS kb_documents_vec');
+    db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS kb_documents_vec USING vec0(
+      doc_id TEXT PRIMARY KEY,
+      embedding FLOAT[${dim}]
+    )`);
+  } catch (err) {
+    logger.warn({ err, dim }, 'kb_documents_vec creation failed — vector index disabled');
+  }
+  try {
+    if (force) db.exec('DROP TABLE IF EXISTS kb_chunks_vec');
+    db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunks_vec USING vec0(
+      chunk_id TEXT PRIMARY KEY,
+      embedding FLOAT[${dim}]
+    )`);
+  } catch (err) {
+    logger.warn({ err, dim }, 'kb_chunks_vec creation failed — chunk vector index disabled');
+  }
+}
+
 function initKbSearchIndexesSqlite(): void {
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS kb_documents_fts USING fts5(
@@ -11710,6 +11878,58 @@ function initKbSearchIndexesSqlite(): void {
       INSERT INTO kb_documents_fts(rowid, filename, content) VALUES (new.rowid, new.filename, new.content);
     END;
   `);
+  initKbChunkFtsSqlite();
+}
+
+/**
+ * FTS5 index over chunks. Retrieval operates on chunks, so the keyword arm of
+ * hybrid search must too — indexing whole documents would match the file but
+ * return nothing citable.
+ *
+ * The `trigram` tokenizer is not a preference, it is a requirement for this
+ * product: the default `unicode61` treats an unbroken run of CJK ideographs as
+ * a single token, so a Chinese sentence becomes one giant term and no realistic
+ * query matches it. Trigram indexes every 3-character window instead, which
+ * gives substring semantics for CJK and Latin alike. The cost is that MATCH
+ * terms must be >= 3 characters — shorter queries fall back to LIKE in
+ * keywordSearchChunks.
+ */
+const KB_CHUNK_FTS_TOKENIZER = 'trigram';
+
+function initKbChunkFtsSqlite(): void {
+  try {
+    // The index is derived data, so an existing table built with a different
+    // tokenizer is dropped and refilled rather than migrated in place.
+    const existing = db
+      .prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='kb_chunks_fts'`)
+      .get() as { sql?: string } | undefined;
+    if (existing?.sql && !existing.sql.includes(KB_CHUNK_FTS_TOKENIZER)) {
+      db.exec(`DROP TABLE IF EXISTS kb_chunks_fts;`);
+      logger.info('kb_chunks_fts rebuilt with the trigram tokenizer');
+    }
+
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunks_fts USING fts5(
+        content, heading_path, content='kb_chunks', content_rowid='rowid',
+        tokenize='${KB_CHUNK_FTS_TOKENIZER}'
+      );
+      CREATE TRIGGER IF NOT EXISTS kb_chunks_ai AFTER INSERT ON kb_chunks BEGIN
+        INSERT INTO kb_chunks_fts(rowid, content, heading_path) VALUES (new.rowid, new.content, new.heading_path);
+      END;
+      CREATE TRIGGER IF NOT EXISTS kb_chunks_ad AFTER DELETE ON kb_chunks BEGIN
+        INSERT INTO kb_chunks_fts(kb_chunks_fts, rowid, content, heading_path) VALUES('delete', old.rowid, old.content, old.heading_path);
+      END;
+      CREATE TRIGGER IF NOT EXISTS kb_chunks_au AFTER UPDATE ON kb_chunks BEGIN
+        INSERT INTO kb_chunks_fts(kb_chunks_fts, rowid, content, heading_path) VALUES('delete', old.rowid, old.content, old.heading_path);
+        INSERT INTO kb_chunks_fts(rowid, content, heading_path) VALUES (new.rowid, new.content, new.heading_path);
+      END;
+    `);
+    // Refill from the content table: covers a fresh tokenizer and any rows
+    // written while the FTS table was missing.
+    db.exec(`INSERT INTO kb_chunks_fts(kb_chunks_fts) VALUES('rebuild');`);
+  } catch (err) {
+    logger.warn({ err }, 'kb_chunks_fts creation failed — chunk keyword search degraded');
+  }
 }
 
 /**
@@ -11963,6 +12183,586 @@ export function hybridSearchKbDocuments(
   const merged = Array.from(map.values());
   merged.sort((a, b) => b.rank - a.rank);
   return merged.slice(0, limit);
+}
+
+// ─── Knowledge-base chunk layer ───────────────────────────
+
+export type KbChunkRow = {
+  id: string;
+  kb_id: string;
+  doc_id: string;
+  user_id: string;
+  chunk_index: number;
+  content: string;
+  content_hash: string;
+  heading_path: string | null;
+  start_at: number;
+  end_at: number;
+  pre_chunk_id: string | null;
+  next_chunk_id: string | null;
+  is_enabled: number;
+  chunk_type: string;
+  embedding?: Buffer | null;
+  embedding_model?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Partial patch: only the keys present are written. */
+export type KbDocumentParseState = {
+  parse_status?: string;
+  parse_stage?: string | null;
+  error_message?: string | null;
+  chunk_count?: number;
+  embedded_chunk_count?: number;
+  embedding_dim?: number | null;
+  processed_at?: string | null;
+  stages_json?: string | null;
+  chunk_config_json?: string | null;
+};
+
+/**
+ * Replace every chunk of a document in one transaction.
+ *
+ * Re-parsing must be all-or-nothing: a failure halfway through would otherwise
+ * leave the document with a partial index that still looks healthy.
+ */
+export function replaceChunksForDocument(
+  docId: string,
+  kbId: string,
+  userId: string,
+  chunks: Array<{
+    content: string;
+    headingPath: string | null;
+    startAt: number;
+    endAt: number;
+    chunkIndex: number;
+  }>,
+): KbChunkRow[] {
+  const now = isoNow();
+  return db.transaction(() => {
+    // Drop the vector index entries alongside the rows — kb_chunks_vec has no
+    // FK cascade of its own.
+    try {
+      db.prepare(
+        'DELETE FROM kb_chunks_vec WHERE chunk_id IN (SELECT id FROM kb_chunks WHERE doc_id = ?)',
+      ).run(docId);
+    } catch {
+      // vec table absent — nothing to clean.
+    }
+    db.prepare('DELETE FROM kb_chunks WHERE doc_id = ?').run(docId);
+
+    const ids = chunks.map(() => crypto.randomUUID());
+    const insert = db.prepare(
+      `INSERT INTO kb_chunks
+       (id, kb_id, doc_id, user_id, chunk_index, content, content_hash, heading_path,
+        start_at, end_at, pre_chunk_id, next_chunk_id, is_enabled, chunk_type, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'text', ?, ?)`,
+    );
+    chunks.forEach((c, i) => {
+      const hash = crypto.createHash('sha256').update(c.content).digest('hex');
+      insert.run(
+        ids[i],
+        kbId,
+        docId,
+        userId,
+        c.chunkIndex,
+        c.content,
+        hash,
+        c.headingPath,
+        c.startAt,
+        c.endAt,
+        i > 0 ? ids[i - 1] : null,
+        i + 1 < ids.length ? ids[i + 1] : null,
+        now,
+        now,
+      );
+    });
+    return db
+      .prepare('SELECT * FROM kb_chunks WHERE doc_id = ? ORDER BY chunk_index ASC')
+      .all(docId) as KbChunkRow[];
+  })();
+}
+
+export function listChunksForDocument(docId: string): KbChunkRow[] {
+  return db
+    .prepare('SELECT * FROM kb_chunks WHERE doc_id = ? ORDER BY chunk_index ASC')
+    .all(docId) as KbChunkRow[];
+}
+
+export function getKbChunk(chunkId: string): KbChunkRow | null {
+  const row = db.prepare('SELECT * FROM kb_chunks WHERE id = ?').get(chunkId) as
+    | KbChunkRow
+    | undefined;
+  return row ?? null;
+}
+
+export function getKbChunksByIds(ids: string[]): KbChunkRow[] {
+  if (ids.length === 0) return [];
+  const placeholders = ids.map(() => '?').join(',');
+  return db
+    .prepare(`SELECT * FROM kb_chunks WHERE id IN (${placeholders})`)
+    .all(...ids) as KbChunkRow[];
+}
+
+export function getKbDocument(
+  docId: string,
+  userId: string,
+): KbDocumentRow | null {
+  const row = db
+    .prepare('SELECT * FROM kb_documents WHERE id = ? AND user_id = ?')
+    .get(docId, userId) as KbDocumentRow | undefined;
+  return row ?? null;
+}
+
+export function getKbDocumentAnyOwner(docId: string): KbDocumentRow | null {
+  const row = db.prepare('SELECT * FROM kb_documents WHERE id = ?').get(docId) as
+    | KbDocumentRow
+    | undefined;
+  return row ?? null;
+}
+
+/** Update parse-pipeline bookkeeping on a document. */
+export function updateDocumentParseState(
+  docId: string,
+  patch: KbDocumentParseState,
+): void {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  const assign = (col: string, val: unknown): void => {
+    sets.push(`${col} = ?`);
+    values.push(val);
+  };
+  if (patch.parse_status !== undefined) assign('parse_status', patch.parse_status);
+  if (patch.parse_stage !== undefined) assign('parse_stage', patch.parse_stage);
+  if (patch.error_message !== undefined) assign('error_message', patch.error_message);
+  if (patch.chunk_count !== undefined) assign('chunk_count', patch.chunk_count);
+  if (patch.embedded_chunk_count !== undefined) {
+    assign('embedded_chunk_count', patch.embedded_chunk_count);
+  }
+  if (patch.embedding_dim !== undefined) assign('embedding_dim', patch.embedding_dim);
+  if (patch.processed_at !== undefined) assign('processed_at', patch.processed_at);
+  if (patch.stages_json !== undefined) assign('stages_json', patch.stages_json);
+  if (patch.chunk_config_json !== undefined) {
+    assign('chunk_config_json', patch.chunk_config_json);
+  }
+  if (sets.length === 0) return;
+  values.push(docId);
+  db.prepare(`UPDATE kb_documents SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+}
+
+export function setDocumentParserType(docId: string, parserType: string): void {
+  db.prepare('UPDATE kb_documents SET parser_type = ? WHERE id = ?').run(parserType, docId);
+}
+
+/** Persist an edited chunk body, keeping the previous text as a revision. */
+export function updateKbChunkContent(
+  chunkId: string,
+  content: string,
+  reason = 'edit',
+): KbChunkRow | null {
+  const existing = getKbChunk(chunkId);
+  if (!existing) return null;
+  const now = isoNow();
+  return db.transaction(() => {
+    db.prepare(
+      'INSERT INTO kb_chunk_revisions (id, chunk_id, content, reason, created_at) VALUES (?, ?, ?, ?, ?)',
+    ).run(crypto.randomUUID(), chunkId, existing.content, reason, now);
+    const hash = crypto.createHash('sha256').update(content).digest('hex');
+    // An edited chunk no longer matches its vector — clear it so the next
+    // embed pass picks it up rather than serving a stale similarity.
+    db.prepare(
+      `UPDATE kb_chunks SET content = ?, content_hash = ?, embedding = NULL,
+       embedding_model = NULL, updated_at = ? WHERE id = ?`,
+    ).run(content, hash, now, chunkId);
+    try {
+      db.prepare('DELETE FROM kb_chunks_vec WHERE chunk_id = ?').run(chunkId);
+    } catch {
+      // vec table absent.
+    }
+    return getKbChunk(chunkId);
+  })();
+}
+
+export function deleteKbChunk(chunkId: string): boolean {
+  try {
+    db.prepare('DELETE FROM kb_chunks_vec WHERE chunk_id = ?').run(chunkId);
+  } catch {
+    // vec table absent.
+  }
+  const res = db.prepare('DELETE FROM kb_chunks WHERE id = ?').run(chunkId);
+  return res.changes > 0;
+}
+
+export type KbChunkRevisionRow = {
+  id: string;
+  chunk_id: string;
+  content: string;
+  reason: string;
+  created_at: string;
+};
+
+export function listKbChunkRevisions(chunkId: string): KbChunkRevisionRow[] {
+  return db
+    .prepare(
+      'SELECT * FROM kb_chunk_revisions WHERE chunk_id = ? ORDER BY created_at DESC',
+    )
+    .all(chunkId) as KbChunkRevisionRow[];
+}
+
+export function revertKbChunkRevision(
+  chunkId: string,
+  revisionId: string,
+): KbChunkRow | null {
+  const rev = db
+    .prepare('SELECT * FROM kb_chunk_revisions WHERE id = ? AND chunk_id = ?')
+    .get(revisionId, chunkId) as KbChunkRevisionRow | undefined;
+  if (!rev) return null;
+  return updateKbChunkContent(chunkId, rev.content, 'revert');
+}
+
+/** Chunks in a KB that still lack a vector. */
+export function listUnembeddedChunks(kbId: string, limit = 500): KbChunkRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM kb_chunks
+       WHERE kb_id = ? AND is_enabled = 1 AND embedding IS NULL
+       ORDER BY chunk_index ASC LIMIT ?`,
+    )
+    .all(kbId, limit) as KbChunkRow[];
+}
+
+/** Chunks of one document that still lack a vector, with the filename joined in. */
+export function listUnembeddedChunksForDocument(
+  docId: string,
+): Array<KbChunkRow & { filename: string }> {
+  return db
+    .prepare(
+      `SELECT c.*, d.filename AS filename
+       FROM kb_chunks c JOIN kb_documents d ON d.id = c.doc_id
+       WHERE c.doc_id = ? AND c.is_enabled = 1 AND c.embedding IS NULL
+       ORDER BY c.chunk_index ASC`,
+    )
+    .all(docId) as Array<KbChunkRow & { filename: string }>;
+}
+
+export function updateChunkEmbedding(
+  chunkId: string,
+  embedding: Float32Array,
+  model: string,
+): void {
+  const buf = Buffer.from(embedding.buffer, embedding.byteOffset, embedding.byteLength);
+  db.prepare(
+    'UPDATE kb_chunks SET embedding = ?, embedding_model = ?, updated_at = ? WHERE id = ?',
+  ).run(buf, model, isoNow(), chunkId);
+  // Mirror into the ANN index where available; the BLOB stays authoritative.
+  try {
+    if (isPostgresBackend && pgVectorLoaded) {
+      db.prepare(
+        `INSERT INTO kb_chunks_vec (chunk_id, embedding) VALUES (?, ?::vector)
+         ON CONFLICT (chunk_id) DO UPDATE SET embedding = excluded.embedding`,
+      ).run(chunkId, float32ToVectorLiteral(embedding));
+    } else if (vecExtensionLoaded) {
+      db.prepare('DELETE FROM kb_chunks_vec WHERE chunk_id = ?').run(chunkId);
+      db.prepare('INSERT INTO kb_chunks_vec (chunk_id, embedding) VALUES (?, ?)').run(
+        chunkId,
+        buf,
+      );
+    }
+  } catch (err) {
+    logger.warn({ err, chunkId }, 'chunk vector index upsert failed — linear scan fallback');
+  }
+}
+
+export function countChunksForDocument(docId: string): number {
+  const r = db
+    .prepare('SELECT COUNT(*) AS n FROM kb_chunks WHERE doc_id = ?')
+    .get(docId) as { n: number } | undefined;
+  return r?.n ?? 0;
+}
+
+export function countEmbeddedChunksForDocument(docId: string): number {
+  const r = db
+    .prepare(
+      'SELECT COUNT(*) AS n FROM kb_chunks WHERE doc_id = ? AND embedding IS NOT NULL',
+    )
+    .get(docId) as { n: number } | undefined;
+  return r?.n ?? 0;
+}
+
+export type ChunkSearchRow = {
+  chunk_id: string;
+  doc_id: string;
+  kb_id: string;
+  filename: string;
+  content: string;
+  heading_path: string | null;
+  start_at: number;
+  end_at: number;
+  score: number;
+};
+
+/** Shortest term the trigram tokenizer can match on. */
+const FTS_TRIGRAM_MIN = 3;
+/** Guard against a pasted paragraph turning into an enormous MATCH expression. */
+const FTS_MAX_TERMS = 24;
+
+/**
+ * Turn a natural-language query into an FTS5 MATCH expression.
+ *
+ * The query is a *question*, not a phrase: someone asking
+ * "ZEBRAFISH_SENTINEL_9X 是什么？" wants the chunk containing that token, so
+ * quoting the whole sentence (which is what this used to do) guarantees no
+ * match. Terms are extracted, OR-ed for recall, and bm25 ranks chunks matching
+ * more of them higher. Returns null when no term is long enough for the
+ * trigram index, which is the caller's cue to fall back to LIKE.
+ */
+export function buildChunkFtsQuery(query: string): string | null {
+  const terms = query
+    .split(/[^\p{L}\p{N}_]+/u)
+    .filter((t) => t.length >= FTS_TRIGRAM_MIN)
+    .slice(0, FTS_MAX_TERMS);
+  if (terms.length === 0) return null;
+  // Each term is quoted so FTS5 never reads it as operator syntax.
+  return terms.map((t) => `"${t.replace(/"/g, '""')}"`).join(' OR ');
+}
+
+/** Substring scan for queries the trigram index cannot serve (terms < 3 chars). */
+function likeSearchChunks(
+  kbIds: string[],
+  query: string,
+  limit: number,
+): ChunkSearchRow[] {
+  const placeholders = kbIds.map(() => '?').join(',');
+  const needle = query.trim();
+  try {
+    const rows = db
+      .prepare(
+        `SELECT c.id AS chunk_id, c.doc_id, c.kb_id, d.filename, c.content,
+                c.heading_path, c.start_at, c.end_at,
+                CAST(instr(c.content, ?) AS REAL) AS score
+         FROM kb_chunks c JOIN kb_documents d ON d.id = c.doc_id
+         WHERE c.kb_id IN (${placeholders}) AND c.is_enabled = 1
+           AND instr(c.content, ?) > 0
+         ORDER BY c.start_at LIMIT ?`,
+      )
+      .all(needle, ...kbIds, needle, limit) as ChunkSearchRow[];
+    return rows;
+  } catch (err) {
+    logger.warn({ err }, 'chunk LIKE fallback failed');
+    return [];
+  }
+}
+
+/** Keyword arm: FTS5 bm25 over chunks (PG: trigram similarity). */
+export function keywordSearchChunks(
+  kbIds: string[],
+  query: string,
+  limit: number,
+): ChunkSearchRow[] {
+  if (kbIds.length === 0 || !query.trim()) return [];
+  const placeholders = kbIds.map(() => '?').join(',');
+
+  if (isPostgresBackend) {
+    try {
+      const rows = db
+        .prepare(
+          `SELECT c.id AS chunk_id, c.doc_id, c.kb_id, d.filename, c.content,
+                  c.heading_path, c.start_at, c.end_at,
+                  similarity(c.content, ?) AS score
+           FROM kb_chunks c JOIN kb_documents d ON d.id = c.doc_id
+           WHERE c.kb_id IN (${placeholders}) AND c.is_enabled = 1
+             AND c.content ILIKE '%' || ? || '%'
+           ORDER BY score DESC LIMIT ?`,
+        )
+        .all(query, ...kbIds, query, limit) as ChunkSearchRow[];
+      return rows;
+    } catch (err) {
+      logger.warn({ err }, 'PG chunk keyword search failed');
+      return [];
+    }
+  }
+
+  const ftsQuery = buildChunkFtsQuery(query);
+  if (ftsQuery === null) return likeSearchChunks(kbIds, query, limit);
+
+  try {
+    const rows = db
+      .prepare(
+        `SELECT c.id AS chunk_id, c.doc_id, c.kb_id, d.filename, c.content,
+                c.heading_path, c.start_at, c.end_at, bm25(kb_chunks_fts) AS rank
+         FROM kb_chunks_fts f
+         JOIN kb_chunks c ON c.rowid = f.rowid
+         JOIN kb_documents d ON d.id = c.doc_id
+         WHERE kb_chunks_fts MATCH ? AND c.kb_id IN (${placeholders}) AND c.is_enabled = 1
+         ORDER BY rank LIMIT ?`,
+      )
+      .all(ftsQuery, ...kbIds, limit) as Array<ChunkSearchRow & { rank: number }>;
+    // bm25 returns a negative score where lower is better; flip so that higher
+    // is better everywhere, matching the vector arm.
+    if (rows.length > 0) return rows.map((r) => ({ ...r, score: -r.rank }));
+  } catch (err) {
+    logger.warn({ err }, 'chunk FTS query failed — falling back to LIKE');
+  }
+  // A trigram MATCH can also come back empty for a query whose only long terms
+  // are boilerplate. The substring scan is cheap and keeps recall honest.
+  return likeSearchChunks(kbIds, query, limit);
+}
+
+/** Vector arm: sqlite-vec / pgvector KNN, else linear scan over the BLOB column. */
+export function vectorSearchChunks(
+  kbIds: string[],
+  queryEmbedding: Float32Array,
+  limit: number,
+): ChunkSearchRow[] {
+  if (kbIds.length === 0) return [];
+  const placeholders = kbIds.map(() => '?').join(',');
+
+  if (isPostgresBackend && pgVectorLoaded) {
+    try {
+      const vecLit = float32ToVectorLiteral(queryEmbedding);
+      const rows = db
+        .prepare(
+          `SELECT c.id AS chunk_id, c.doc_id, c.kb_id, d.filename, c.content,
+                  c.heading_path, c.start_at, c.end_at,
+                  1 - (v.embedding <=> ?::vector) AS score
+           FROM kb_chunks_vec v
+           JOIN kb_chunks c ON c.id = v.chunk_id
+           JOIN kb_documents d ON d.id = c.doc_id
+           WHERE c.kb_id IN (${placeholders}) AND c.is_enabled = 1
+           ORDER BY v.embedding <=> ?::vector LIMIT ?`,
+        )
+        .all(vecLit, ...kbIds, vecLit, limit) as ChunkSearchRow[];
+      return rows;
+    } catch (err) {
+      logger.warn({ err }, 'pgvector chunk KNN failed — linear scan fallback');
+    }
+  } else if (vecExtensionLoaded) {
+    try {
+      const qbuf = Buffer.from(
+        queryEmbedding.buffer,
+        queryEmbedding.byteOffset,
+        queryEmbedding.byteLength,
+      );
+      const rows = db
+        .prepare(
+          `SELECT c.id AS chunk_id, c.doc_id, c.kb_id, d.filename, c.content,
+                  c.heading_path, c.start_at, c.end_at, 1 - v.distance AS score
+           FROM kb_chunks_vec v
+           JOIN kb_chunks c ON c.id = v.chunk_id
+           JOIN kb_documents d ON d.id = c.doc_id
+           WHERE v.embedding MATCH ? AND c.kb_id IN (${placeholders}) AND c.is_enabled = 1
+           ORDER BY v.distance LIMIT ?`,
+        )
+        .all(qbuf, ...kbIds, limit) as ChunkSearchRow[];
+      return rows;
+    } catch (err) {
+      logger.warn({ err }, 'chunk vec KNN failed — linear scan fallback');
+    }
+  }
+
+  const rows = db
+    .prepare(
+      `SELECT c.*, d.filename
+       FROM kb_chunks c JOIN kb_documents d ON d.id = c.doc_id
+       WHERE c.kb_id IN (${placeholders}) AND c.is_enabled = 1 AND c.embedding IS NOT NULL`,
+    )
+    .all(...kbIds) as Array<KbChunkRow & { filename: string }>;
+  const scored: ChunkSearchRow[] = [];
+  for (const r of rows) {
+    if (!r.embedding || r.embedding.length === 0) continue;
+    const emb = bufferToFloat32InDb(r.embedding);
+    scored.push({
+      chunk_id: r.id,
+      doc_id: r.doc_id,
+      kb_id: r.kb_id,
+      filename: r.filename,
+      content: r.content,
+      heading_path: r.heading_path,
+      start_at: r.start_at,
+      end_at: r.end_at,
+      score: cosineSimInDb(queryEmbedding, emb),
+    });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit);
+}
+
+/** Clear the vector index for a KB so it can be rebuilt from the BLOB column. */
+export function clearKbVectorIndex(kbId: string): void {
+  try {
+    db.prepare(
+      'DELETE FROM kb_chunks_vec WHERE chunk_id IN (SELECT id FROM kb_chunks WHERE kb_id = ?)',
+    ).run(kbId);
+  } catch {
+    // vec table absent.
+  }
+  db.prepare('UPDATE kb_chunks SET embedding = NULL, embedding_model = NULL WHERE kb_id = ?').run(
+    kbId,
+  );
+}
+
+export type KbChatMessageRow = {
+  id: string;
+  session_id: string;
+  user_id: string;
+  role: string;
+  content: string;
+  citations_json: string;
+  created_at: string;
+};
+
+export function appendKbChatMessage(input: {
+  sessionId: string;
+  userId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  citations?: unknown;
+}): KbChatMessageRow {
+  const id = crypto.randomUUID();
+  const now = isoNow();
+  db.prepare(
+    `INSERT INTO kb_chat_messages (id, session_id, user_id, role, content, citations_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    input.sessionId,
+    input.userId,
+    input.role,
+    input.content,
+    JSON.stringify(input.citations ?? []),
+    now,
+  );
+  return {
+    id,
+    session_id: input.sessionId,
+    user_id: input.userId,
+    role: input.role,
+    content: input.content,
+    citations_json: JSON.stringify(input.citations ?? []),
+    created_at: now,
+  };
+}
+
+export function listKbChatMessages(
+  sessionId: string,
+  userId: string,
+  limit = 100,
+): KbChatMessageRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM kb_chat_messages
+       WHERE session_id = ? AND user_id = ?
+       ORDER BY created_at ASC LIMIT ?`,
+    )
+    .all(sessionId, userId, limit) as KbChatMessageRow[];
+}
+
+export function deleteKbChatSession(sessionId: string, userId: string): number {
+  const res = db
+    .prepare('DELETE FROM kb_chat_messages WHERE session_id = ? AND user_id = ?')
+    .run(sessionId, userId);
+  return res.changes;
 }
 
 // ─── Marketplace: review + status ───
