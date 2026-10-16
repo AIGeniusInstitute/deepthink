@@ -35,14 +35,33 @@ import {
   deleteKbChatSession,
   countChunksForDocument,
   countEmbeddedChunksForDocument,
+  KB_TYPE_FAQ,
+  ensureFaqContainerDocument,
+  createFaqEntry,
+  updateFaqEntry,
+  listFaqEntries,
+  getFaqEntry,
+  deleteFaqEntries,
+  updateKnowledgeBaseFaqConfig,
   type KnowledgeBaseRow,
   type KbDocumentRow,
   type KbChunkRow,
 } from '../db.js';
 import {
+  DEFAULT_FAQ_CONFIG,
+  parseFaqConfig,
+  parseFaqMetadata,
+  normalizeAnswerStrategy,
+  normalizeIndexMode,
+  normalizeQuestionIndexMode,
+  type FaqMetadata,
+} from '../kb/faq.js';
+import {
   KnowledgeBaseCreateSchema,
   KnowledgeBasePatchSchema,
   KbSearchSchema,
+  FaqEntrySchema,
+  FaqEntryDeleteSchema,
 } from '../schemas.js';
 import type { KnowledgeBase, KbDocument } from '../types.js';
 import { logger } from '../logger.js';
@@ -87,6 +106,7 @@ paasKbRoute.use('*', authMiddleware);
 const MAX_DOC_BYTES = 20 * 1024 * 1024; // 20MB — spreadsheets and decks need headroom
 
 function serializeKb(row: KnowledgeBaseRow): KnowledgeBase {
+  const type = row.type === KB_TYPE_FAQ ? KB_TYPE_FAQ : 'document';
   return {
     id: row.id,
     userId: row.user_id,
@@ -95,6 +115,10 @@ function serializeKb(row: KnowledgeBaseRow): KnowledgeBase {
     docCount: row.doc_count,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    type,
+    // 上游对非 FAQ 库把 faq_config 清成 nil（EnsureDefaults，:772-774），
+    // 这里同样只在 FAQ 库上回显，避免普通库看到一份无意义的默认配置。
+    faqConfig: type === KB_TYPE_FAQ ? parseFaqConfig(row.faq_config) : null,
   };
 }
 
@@ -210,11 +234,22 @@ paasKbRoute.post('/', async (c) => {
   if (!validation.success) {
     return c.json({ error: 'Invalid input', issues: validation.error.issues }, 400);
   }
-  const row = createKnowledgeBase(
-    user.id,
-    validation.data.name,
-    validation.data.description,
-  );
+  const type = validation.data.type === KB_TYPE_FAQ ? KB_TYPE_FAQ : 'document';
+  const requested = validation.data.faq_config;
+  // 落库用上游的键名（snake_case），缺省项按 EnsureDefaults 补默认值。
+  const faqConfig =
+    type === KB_TYPE_FAQ
+      ? JSON.stringify({
+          index_mode: normalizeIndexMode(requested?.index_mode ?? DEFAULT_FAQ_CONFIG.indexMode),
+          question_index_mode: normalizeQuestionIndexMode(
+            requested?.question_index_mode ?? DEFAULT_FAQ_CONFIG.questionIndexMode,
+          ),
+        })
+      : null;
+  const row = createKnowledgeBase(user.id, validation.data.name, validation.data.description, {
+    type,
+    faqConfig,
+  });
   return c.json({ knowledge_base: serializeKb(row) }, 201);
 });
 
@@ -233,6 +268,24 @@ paasKbRoute.patch('/:id', async (c) => {
   if (!validation.success) {
     return c.json({ error: 'Invalid input', issues: validation.error.issues }, 400);
   }
+  const existing = requireKb(id, user.id);
+  if (!existing) return c.json({ error: 'Knowledge base not found' }, 404);
+
+  // faq_config 只在 FAQ 库上有意义（上游 EnsureDefaults 对非 FAQ 库直接清空）。
+  const requested = validation.data.faq_config;
+  if (requested && existing.type === KB_TYPE_FAQ) {
+    const current = parseFaqConfig(existing.faq_config);
+    updateKnowledgeBaseFaqConfig(
+      id,
+      JSON.stringify({
+        index_mode: normalizeIndexMode(requested.index_mode ?? current.indexMode),
+        question_index_mode: normalizeQuestionIndexMode(
+          requested.question_index_mode ?? current.questionIndexMode,
+        ),
+      }),
+    );
+  }
+
   const row = updateKnowledgeBase(id, user.id, {
     name: validation.data.name,
     description: validation.data.description,
@@ -246,6 +299,110 @@ paasKbRoute.delete('/:id', (c) => {
   const ok = deleteKnowledgeBase(c.req.param('id'), user.id);
   if (!ok) return c.json({ error: 'Knowledge base not found' }, 404);
   return c.json({ success: true });
+});
+
+// ─── FAQ entries ──────────────────────────────────────────
+//
+// 一条条目 = kb_chunks 里的一行（chunk_type='faq'），业务字段在 metadata JSON，
+// 与上游一致。上传路径对 FAQ 库关闭——上游的报错原文是"FAQ 知识库不支持文件
+// 上传，请使用 FAQ 导入功能"（`knowledge_create.go:61-63`）。
+
+function serializeFaqEntry(row: KbChunkRow): Record<string, unknown> {
+  const meta: FaqMetadata = parseFaqMetadata(row.metadata) ?? { standard_question: '' };
+  return {
+    id: row.id,
+    chunk_id: row.id,
+    knowledge_base_id: row.kb_id,
+    standard_question: meta.standard_question,
+    similar_questions: meta.similar_questions ?? [],
+    negative_questions: meta.negative_questions ?? [],
+    answers: meta.answers ?? [],
+    answer_strategy: normalizeAnswerStrategy(meta.answer_strategy),
+    version: meta.version ?? 1,
+    is_enabled: !!row.is_enabled,
+    content: row.content,
+    content_hash: row.content_hash,
+    embedded: !!row.embedding,
+    updated_at: row.updated_at,
+    created_at: row.created_at,
+  };
+}
+
+paasKbRoute.get('/:id/faq/entries', (c) => {
+  const user = c.get('user');
+  const kb = requireKb(c.req.param('id'), user.id);
+  if (!kb) return c.json({ error: 'Knowledge base not found' }, 404);
+  if (kb.type !== KB_TYPE_FAQ) {
+    return c.json({ error: 'Not a FAQ knowledge base' }, 422);
+  }
+  const entries = listFaqEntries(kb.id).map(serializeFaqEntry);
+  return c.json({ entries, total: entries.length });
+});
+
+paasKbRoute.get('/:id/faq/entries/:entryId', (c) => {
+  const user = c.get('user');
+  const kb = requireKb(c.req.param('id'), user.id);
+  if (!kb || kb.type !== KB_TYPE_FAQ) {
+    return c.json({ error: 'FAQ knowledge base not found' }, 404);
+  }
+  const row = getFaqEntry(c.req.param('entryId'));
+  if (!row || row.kb_id !== kb.id) return c.json({ error: 'FAQ entry not found' }, 404);
+  return c.json({ entry: serializeFaqEntry(row) });
+});
+
+paasKbRoute.post('/:id/faq/entries', async (c) => {
+  const user = c.get('user');
+  const kb = requireKb(c.req.param('id'), user.id);
+  if (!kb || kb.type !== KB_TYPE_FAQ) {
+    return c.json({ error: 'FAQ knowledge base not found' }, 404);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const validation = FaqEntrySchema.safeParse(body);
+  if (!validation.success) {
+    return c.json({ error: 'Invalid input', issues: validation.error.issues }, 400);
+  }
+  const { indexMode } = parseFaqConfig(kb.faq_config);
+  const container = ensureFaqContainerDocument(kb.id, user.id, kb.name);
+  const row = createFaqEntry(container.id, kb.id, user.id, validation.data, indexMode);
+  return c.json({ entry: serializeFaqEntry(row) }, 201);
+});
+
+paasKbRoute.put('/:id/faq/entries/:entryId', async (c) => {
+  const user = c.get('user');
+  const kb = requireKb(c.req.param('id'), user.id);
+  if (!kb || kb.type !== KB_TYPE_FAQ) {
+    return c.json({ error: 'FAQ knowledge base not found' }, 404);
+  }
+  const existing = getFaqEntry(c.req.param('entryId'));
+  if (!existing || existing.kb_id !== kb.id) {
+    return c.json({ error: 'FAQ entry not found' }, 404);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const validation = FaqEntrySchema.safeParse(body);
+  if (!validation.success) {
+    return c.json({ error: 'Invalid input', issues: validation.error.issues }, 400);
+  }
+  const { indexMode } = parseFaqConfig(kb.faq_config);
+  const row = updateFaqEntry(existing.id, validation.data, indexMode);
+  if (!row) return c.json({ error: 'FAQ entry not found' }, 404);
+  return c.json({ entry: serializeFaqEntry(row) });
+});
+
+paasKbRoute.delete('/:id/faq/entries', async (c) => {
+  const user = c.get('user');
+  const kb = requireKb(c.req.param('id'), user.id);
+  if (!kb || kb.type !== KB_TYPE_FAQ) {
+    return c.json({ error: 'FAQ knowledge base not found' }, 404);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const validation = FaqEntryDeleteSchema.safeParse(body);
+  if (!validation.success) {
+    return c.json({ error: 'Invalid input', issues: validation.error.issues }, 400);
+  }
+  // Only ids that really belong to this KB — an id from another KB must not be
+  // deletable by guessing it.
+  const owned = validation.data.ids.filter((id) => getFaqEntry(id)?.kb_id === kb.id);
+  return c.json({ deleted: deleteFaqEntries(owned) });
 });
 
 // ─── Chunking preview ─────────────────────────────────────
@@ -303,8 +460,13 @@ paasKbRoute.get('/:id/documents', (c) => {
 paasKbRoute.post('/:id/documents', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
-  if (!requireKb(id, user.id)) {
+  const kb = requireKb(id, user.id);
+  if (!kb) {
     return c.json({ error: 'Knowledge base not found' }, 404);
+  }
+  // 上游同样禁止 FAQ 库走文件上传（`knowledge_create.go:61-63`）。
+  if (kb.type === KB_TYPE_FAQ) {
+    return c.json({ error: 'FAQ 知识库不支持文件上传，请使用 FAQ 条目接口' }, 422);
   }
   let formData: FormData;
   try {

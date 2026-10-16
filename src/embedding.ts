@@ -22,8 +22,13 @@ import {
   setKbVecDimension,
   resolveKbVecDimension,
   countEmbeddedChunksForDocument,
+  setChunkVariantVectors,
+  clearChunkVariantVectors,
+  getKnowledgeBaseAnyOwner,
+  type KbChunkRow,
   type KbDocumentRow,
 } from './db.js';
+import { parseFaqConfig, parseFaqMetadata, buildFaqIndexTexts } from './kb/faq.js';
 
 const EMBEDDING_CONFIG_PATH = path.join(DATA_DIR, 'config', 'embedding.json');
 const MAX_EMBED_TEXT_CHARS = 8000; // OpenAI text-embedding-3-small input limit ~8K tokens
@@ -295,6 +300,89 @@ function chunkEmbeddingInput(filename: string, headingPath: string | null, conte
 const CHUNK_EMBED_BATCH = 32;
 
 /**
+ * The texts a single row contributes to the vector index.
+ *
+ * Document chunks contribute exactly one: the title-prefixed body. FAQ entries
+ * are different in two ways — the embedded text is **not** the stored body
+ * (`chunk.content` reads "Q: … / Similar Questions: …" while the index text is
+ * the bare questions joined by newlines), and `separate` mode produces one
+ * vector *per question* rather than one per row. Upstream draws exactly this
+ * distinction between `buildFAQChunkContent` and `buildFAQIndexInfoList`.
+ *
+ * Variant 0 is the standard question and lands in the row's own `embedding`
+ * column, so "not yet embedded" (`embedding IS NULL`) keeps meaning what it
+ * meant; variants 1..N go to the variant table.
+ */
+function chunkIndexTexts(row: ChunkEmbedRow, bodyText: (row: ChunkEmbedRow) => string): string[] {
+  if (row.chunk_type !== 'faq') {
+    return [bodyText(row)];
+  }
+  const meta = parseFaqMetadata(row.metadata);
+  if (!meta) {
+    // A FAQ row whose metadata will not parse still has an embeddable body;
+    // indexing it beats leaving a hole in the index.
+    return [row.content];
+  }
+  const config = parseFaqConfig(getKnowledgeBaseAnyOwner(row.kb_id)?.faq_config);
+  return buildFaqIndexTexts(meta, config.indexMode, config.questionIndexMode);
+}
+
+/**
+ * Embed a batch of chunk rows, writing variant 0 to the row and any further
+ * variants to the variant table.
+ *
+ * Variants are written **before** the row's own vector on purpose: the row's
+ * `embedding IS NULL` flag is what marks it as pending, so a crash between the
+ * two writes leaves the row pending and the next pass redoes both idempotently.
+ * The other order would leave variants missing forever.
+ */
+type ChunkEmbedRow = KbChunkRow & { filename?: string | null };
+
+async function embedChunkRows(
+  rows: ChunkEmbedRow[],
+  model: string,
+  bodyText: (row: ChunkEmbedRow) => string,
+): Promise<{ success: number; failed: number }> {
+  let success = 0;
+  let failed = 0;
+  for (let i = 0; i < rows.length; i += CHUNK_EMBED_BATCH) {
+    const batch = rows.slice(i, i + CHUNK_EMBED_BATCH);
+    const textsPerRow = batch.map((row) => chunkIndexTexts(row, bodyText));
+    const flat = textsPerRow.flat();
+    if (flat.length === 0) continue;
+    const vectors = await embedTexts(flat);
+
+    let cursor = 0;
+    batch.forEach((chunk, k) => {
+      const own = textsPerRow[k];
+      const ownVectors = vectors.slice(cursor, cursor + own.length);
+      cursor += own.length;
+      if (ownVectors.length === 0 || !ownVectors[0]) {
+        failed++;
+        return;
+      }
+      const extras = ownVectors
+        .slice(1)
+        .map((vec, index) => ({ index: index + 1, vec }))
+        .filter((v): v is { index: number; vec: Float32Array } => !!v.vec);
+      if (extras.length > 0) {
+        setChunkVariantVectors(
+          chunk.id,
+          extras.map((v) => ({ index: v.index, embedding: v.vec, model })),
+        );
+      } else {
+        // Mode may have flipped back to combined; drop stale variants so the
+        // ANN and variant arms cannot disagree about an entry.
+        clearChunkVariantVectors(chunk.id);
+      }
+      updateChunkEmbedding(chunk.id, ownVectors[0], model);
+      success++;
+    });
+  }
+  return { success, failed };
+}
+
+/**
  * Embed every not-yet-embedded chunk of a document.
  * Returns counts; individual failures are reported, not thrown.
  */
@@ -309,23 +397,11 @@ export async function embedChunksForDocument(docId: string): Promise<{
   const rows = listUnembeddedChunksForDocument(docId);
   if (rows.length === 0) return { attempted: 0, success: 0, failed: 0 };
 
-  let success = 0;
-  let failed = 0;
-  for (let i = 0; i < rows.length; i += CHUNK_EMBED_BATCH) {
-    const batch = rows.slice(i, i + CHUNK_EMBED_BATCH);
-    const vectors = await embedTexts(
-      batch.map((c) => chunkEmbeddingInput(c.filename, c.heading_path, c.content)),
-    );
-    batch.forEach((chunk, k) => {
-      const vec = vectors[k];
-      if (vec) {
-        updateChunkEmbedding(chunk.id, vec, config.model);
-        success++;
-      } else {
-        failed++;
-      }
-    });
-  }
+  const { success, failed } = await embedChunkRows(
+    rows,
+    config.model,
+    (c) => chunkEmbeddingInput(c.filename ?? '', c.heading_path, c.content),
+  );
   return { attempted: rows.length, success, failed };
 }
 
@@ -360,21 +436,7 @@ export async function embedAllChunksInKb(kbId: string, limit = 200): Promise<{
   const rows = listUnembeddedChunks(kbId, limit);
   if (rows.length === 0) return { attempted: 0, success: 0, failed: 0 };
 
-  let success = 0;
-  let failed = 0;
-  for (let i = 0; i < rows.length; i += CHUNK_EMBED_BATCH) {
-    const batch = rows.slice(i, i + CHUNK_EMBED_BATCH);
-    const vectors = await embedTexts(batch.map((c) => c.content));
-    batch.forEach((chunk, k) => {
-      const vec = vectors[k];
-      if (vec) {
-        updateChunkEmbedding(chunk.id, vec, config.model);
-        success++;
-      } else {
-        failed++;
-      }
-    });
-  }
+  const { success, failed } = await embedChunkRows(rows, config.model, (c) => c.content);
   return { attempted: rows.length, success, failed };
 }
 

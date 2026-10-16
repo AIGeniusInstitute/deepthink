@@ -301,14 +301,41 @@ export const AgentMountCreateSchema = z.object({
   resource_id: z.string().min(1).max(200),
 });
 
+/**
+ * FAQ 索引模式，键名与取值对齐上游（`types/knowledgebase.go:39-55`）。
+ * 不传时由服务端按 EnsureDefaults 补 `question_answer` + `combined`。
+ */
+export const FaqConfigSchema = z.object({
+  index_mode: z.enum(['question_only', 'question_answer']).optional(),
+  question_index_mode: z.enum(['combined', 'separate']).optional(),
+});
+
 export const KnowledgeBaseCreateSchema = z.object({
   name: z.string().min(1).max(80),
   description: z.string().max(500).optional(),
+  type: z.enum(['document', 'faq']).optional(),
+  faq_config: FaqConfigSchema.optional(),
 });
 
 export const KnowledgeBasePatchSchema = z.object({
   name: z.string().min(1).max(80).optional(),
   description: z.string().max(500).optional(),
+  faq_config: FaqConfigSchema.optional(),
+});
+
+/** A FAQ entry. Field names mirror upstream's payload (`types/faq.go:302-322`). */
+export const FaqEntrySchema = z.object({
+  standard_question: z.string().min(1).max(1000),
+  similar_questions: z.array(z.string().min(1).max(1000)).max(50).optional(),
+  negative_questions: z.array(z.string().min(1).max(1000)).max(50).optional(),
+  answers: z.array(z.string().min(1).max(4000)).max(5).optional(),
+  answer_strategy: z.enum(['all', 'random']).optional(),
+  is_enabled: z.boolean().optional(),
+});
+
+export const FaqEntryDeleteSchema = z.object({
+  // Upstream caps a single delete at 20 ids (`handler/faq.go:356-376`).
+  ids: z.array(z.string().min(1)).min(1).max(20),
 });
 
 export const KbSearchSchema = z.object({

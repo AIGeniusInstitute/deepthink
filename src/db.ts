@@ -7,6 +7,19 @@ import os from 'os';
 
 import { STORE_DIR, GROUPS_DIR, DATA_DIR } from './config.js';
 import { logger } from './logger.js';
+// Pure FAQ helpers (no DB access of their own), so this stays a one-way edge:
+// src/kb/* may import db.ts, db.ts may import src/kb/faq.ts, and faq.ts imports
+// neither. Do not introduce an import of db.ts from that module.
+import {
+  sanitizeFaqMetadata,
+  calculateFaqContentHash,
+  buildFaqChunkContent,
+  normalizeAnswerStrategy,
+  normalizeIndexMode,
+  type FaqIndexMode,
+  type FaqMetadata,
+  type AnswerStrategy,
+} from './kb/faq.js';
 import {
   AgentKind,
   AgentStatus,
@@ -1251,6 +1264,20 @@ export function initDatabase(): void {
     -- 之前执行 —— 在这里建索引会让既有库启动即 "no such column" 崩溃。
     -- 它建在下方 kb_chunks 的 ensureColumn 之后。
 
+    -- FAQ「分别索引」模式（question_index_mode='separate'）：一条 FAQ 条目
+    -- 仍只有一行 kb_chunks，但要为每个相似问各出一条向量，与上游
+    -- 「1 个 chunk → 1 + N 个 IndexInfo」一致。第 0 号变体（标准问）的向量
+    -- 仍写进 kb_chunks.embedding，走原有 ANN 通道；1..N 号写在这张表里。
+    -- 这样"未嵌入"的判据（kb_chunks.embedding IS NULL）继续成立。
+    CREATE TABLE IF NOT EXISTS kb_chunk_variant_vectors (
+      chunk_id TEXT NOT NULL,
+      variant_index INTEGER NOT NULL,
+      embedding BLOB NOT NULL,
+      embedding_model TEXT,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (chunk_id, variant_index)
+    );
+
     CREATE TABLE IF NOT EXISTS kb_chunk_revisions (
       id TEXT PRIMARY KEY,
       chunk_id TEXT NOT NULL,
@@ -1502,6 +1529,16 @@ export function initDatabase(): void {
   ensureColumn('kb_chunks', 'parent_chunk_id', 'TEXT');
   // 索引必须等列真的存在之后再建（见上方 kb_chunks 建表块内的说明）。
   db.exec('CREATE INDEX IF NOT EXISTS idx_kb_chunks_parent ON kb_chunks(parent_chunk_id)');
+
+  // FAQ 知识库（P1 §2.2）。判别字段沿用上游的 `type`（取值 document | faq），
+  // 存量知识库全部是普通文档库，默认值 'document' 与上游语义一致、无需回填。
+  // faq_config 存 JSON 文本（index_mode / question_index_mode），
+  // metadata 存 FAQ 条目的业务字段，两者都对齐上游"不拆列"的做法。
+  ensureColumn('knowledge_bases', 'type', "TEXT NOT NULL DEFAULT 'document'");
+  ensureColumn('knowledge_bases', 'faq_config', 'TEXT');
+  ensureColumn('kb_chunks', 'metadata', 'TEXT');
+  // 同上：索引必须等列存在之后再建。
+  db.exec('CREATE INDEX IF NOT EXISTS idx_kb_kb_type ON knowledge_bases(type)');
 
   // Vector index tables are dimension-dependent, so they are created here
   // rather than in the fixed-schema block above. A dimension change drops and
@@ -11369,7 +11406,14 @@ export type KnowledgeBaseRow = {
   doc_count: number;
   created_at: string;
   updated_at: string;
+  /** 'document' | 'faq'。既有库经 ensureColumn 补成 'document'。 */
+  type?: string | null;
+  /** FAQ 配置的 JSON 文本；仅 type='faq' 时有意义。 */
+  faq_config?: string | null;
 };
+
+export const KB_TYPE_DOCUMENT = 'document';
+export const KB_TYPE_FAQ = 'faq';
 
 export type KbDocumentRow = {
   id: string;
@@ -11400,6 +11444,14 @@ export function listKnowledgeBases(userId: string): KnowledgeBaseRow[] {
     .all(userId) as KnowledgeBaseRow[];
 }
 
+/** Owner-less lookup, for background passes that only have a kb_id in hand. */
+export function getKnowledgeBaseAnyOwner(id: string): KnowledgeBaseRow | null {
+  const row = db.prepare('SELECT * FROM knowledge_bases WHERE id = ?').get(id) as
+    | KnowledgeBaseRow
+    | undefined;
+  return row ?? null;
+}
+
 export function getKnowledgeBase(
   id: string,
   userId: string,
@@ -11414,14 +11466,25 @@ export function createKnowledgeBase(
   userId: string,
   name: string,
   description?: string,
+  options?: { type?: string; faqConfig?: string | null },
 ): KnowledgeBaseRow {
   const id = crypto.randomUUID();
   const now = isoNow();
+  const type = options?.type === KB_TYPE_FAQ ? KB_TYPE_FAQ : KB_TYPE_DOCUMENT;
   db.prepare(
-    `INSERT INTO knowledge_bases (id, user_id, name, description, doc_count, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 0, ?, ?)`,
-  ).run(id, userId, name, description ?? '', now, now);
+    `INSERT INTO knowledge_bases
+       (id, user_id, name, description, doc_count, created_at, updated_at, type, faq_config)
+     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+  ).run(id, userId, name, description ?? '', now, now, type, options?.faqConfig ?? null);
   return getKnowledgeBase(id, userId)!;
+}
+
+export function updateKnowledgeBaseFaqConfig(id: string, faqConfig: string | null): void {
+  db.prepare('UPDATE knowledge_bases SET faq_config = ?, updated_at = ? WHERE id = ?').run(
+    faqConfig,
+    isoNow(),
+    id,
+  );
 }
 
 export function updateKnowledgeBase(
@@ -12215,6 +12278,8 @@ export type KbChunkRow = {
   parent_chunk_id: string | null;
   is_enabled: number;
   chunk_type: string;
+  /** FAQ 条目的业务字段（JSON 文本）；文档块为 NULL。 */
+  metadata?: string | null;
   embedding?: Buffer | null;
   embedding_model?: string | null;
   created_at: string;
@@ -12424,6 +12489,319 @@ export function deleteKbChunk(chunkId: string): boolean {
   }
   const res = db.prepare('DELETE FROM kb_chunks WHERE id = ?').run(chunkId);
   return res.changes > 0;
+}
+
+// ── FAQ 条目（P1 §2.2） ──────────────────────────────────────────────────────
+//
+// 说明：deleteKbChunk 已在上面处理 kb_chunks_vec 的清理，这里只需要额外清
+// 变体向量表（它没有级联）。
+//
+// 对齐上游：一条 FAQ 条目 = kb_chunks 里的一行，chunk_type='faq'，业务字段全在
+// metadata JSON 里，不建独立表。
+//
+// ⚠️ 偏移量不变式的例外：文档块满足
+//     kb_documents.content.slice(start_at, end_at) === content
+// FAQ 块的 content 是**合成**出来的("Q: … / Answers: …")，不是任何文档的子串，
+// 因此该不变式**只对 chunk_type ∈ {text, parent_text} 成立**。FAQ 行固定写
+// start_at=0、end_at=content.length，读取方（引用渲染、切片预览）不得据此去
+// 切容器文档——FAQ 命中要直接用 chunk.content 本身。
+
+/** Drop the ANN/BLOB vector for one chunk, tolerating an absent vec table. */
+function clearChunkVector(chunkId: string): void {
+  try {
+    db.prepare('DELETE FROM kb_chunks_vec WHERE chunk_id = ?').run(chunkId);
+  } catch {
+    // vec table absent.
+  }
+}
+
+function sha256Hex(input: string): string {
+  return crypto.createHash('sha256').update(input, 'utf8').digest('hex');
+}
+
+/**
+ * Wire shape of a FAQ entry, using upstream's payload key names verbatim
+ * (`types/faq.go:302-322`) so nothing has to translate at the route boundary.
+ */
+export interface FaqEntryInput {
+  standard_question: string;
+  similar_questions?: string[];
+  negative_questions?: string[];
+  answers?: string[];
+  answer_strategy?: AnswerStrategy | string;
+  is_enabled?: boolean;
+}
+
+/**
+ * FAQ 知识库在 kb_documents 上的「容器文档」。
+ *
+ * 上游每个 FAQ 库有且只有一条 Knowledge 承载全部条目（`ensureFAQKnowledge`，
+ * 注释原文 "FAQ knowledge base should have exactly one Knowledge entry"）。
+ * 本仓库 kb_chunks.doc_id 是外键，所以需要一一对应的容器行。content 恒为空串。
+ */
+export function ensureFaqContainerDocument(
+  kbId: string,
+  userId: string,
+  kbName: string,
+): KbDocumentRow {
+  const existing = db
+    .prepare('SELECT * FROM kb_documents WHERE kb_id = ? ORDER BY created_at ASC LIMIT 1')
+    .get(kbId) as KbDocumentRow | undefined;
+  if (existing) return existing;
+
+  const id = crypto.randomUUID();
+  const now = isoNow();
+  const filename = kbName.trim() || 'FAQ';
+  db.prepare(
+    `INSERT INTO kb_documents
+       (id, kb_id, user_id, filename, content, content_hash, size_bytes, created_at,
+        parser_type, parse_status)
+     VALUES (?, ?, ?, ?, '', ?, 0, ?, 'faq', 'ready')`,
+  ).run(id, kbId, userId, filename, sha256Hex(''), now);
+  return db.prepare('SELECT * FROM kb_documents WHERE id = ?').get(id) as KbDocumentRow;
+}
+
+function nextChunkIndex(docId: string): number {
+  const row = db
+    .prepare('SELECT COALESCE(MAX(chunk_index), -1) AS max_idx FROM kb_chunks WHERE doc_id = ?')
+    .get(docId) as { max_idx: number };
+  return row.max_idx + 1;
+}
+
+/** Serialize FAQ metadata for the row's `metadata` column. */
+export function serializeFaqMetadata(meta: FaqMetadata): string {
+  return JSON.stringify(sanitizeFaqMetadata(meta));
+}
+
+export function createFaqEntry(
+  docId: string,
+  kbId: string,
+  userId: string,
+  input: FaqEntryInput,
+  indexMode: FaqIndexMode,
+): KbChunkRow {
+  const now = isoNow();
+  const meta = sanitizeFaqMetadata({
+    standard_question: input.standard_question,
+    similar_questions: input.similar_questions,
+    negative_questions: input.negative_questions,
+    answers: input.answers,
+    answer_strategy: normalizeAnswerStrategy(input.answer_strategy),
+  });
+  const content = buildFaqChunkContent(meta, normalizeIndexMode(indexMode));
+  const id = crypto.randomUUID();
+  db.prepare(
+    `INSERT INTO kb_chunks
+       (id, kb_id, doc_id, user_id, chunk_index, content, content_hash, heading_path,
+        start_at, end_at, pre_chunk_id, next_chunk_id, parent_chunk_id, is_enabled,
+        chunk_type, metadata, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, NULL, NULL, NULL, ?, 'faq', ?, ?, ?)`,
+  ).run(
+    id,
+    kbId,
+    docId,
+    userId,
+    nextChunkIndex(docId),
+    content,
+    calculateFaqContentHash(meta),
+    content.length,
+    input.is_enabled === false ? 0 : 1,
+    serializeFaqMetadata(meta),
+    now,
+    now,
+  );
+  return getKbChunk(id)!;
+}
+
+/**
+ * Replace an FAQ entry's metadata in place. Bumps `version` (upstream
+ * `UpdateFAQEntry`, `knowledge_faq.go:359`), which also invalidates the stored
+ * vector so the next embed pass re-indexes it — the same trick
+ * `updateKbChunkContent` uses for edited document chunks, except the body here
+ * is regenerated from metadata rather than supplied.
+ */
+export function updateFaqEntry(
+  chunkId: string,
+  input: FaqEntryInput,
+  indexMode: FaqIndexMode,
+): KbChunkRow | null {
+  const existing = getKbChunk(chunkId);
+  if (!existing || existing.chunk_type !== 'faq') return null;
+  const prior = existing.metadata ? JSON.parse(existing.metadata) : {};
+  const meta = sanitizeFaqMetadata({
+    standard_question: input.standard_question,
+    similar_questions: input.similar_questions,
+    negative_questions: input.negative_questions,
+    answers: input.answers,
+    answer_strategy: normalizeAnswerStrategy(input.answer_strategy),
+    version: (Number(prior.version) || 1) + 1,
+    source: prior.source,
+  });
+  const content = buildFaqChunkContent(meta, normalizeIndexMode(indexMode));
+  const now = isoNow();
+  db.prepare(
+    `UPDATE kb_chunks SET content = ?, content_hash = ?, end_at = ?, metadata = ?,
+       is_enabled = ?, embedding = NULL, embedding_model = NULL, updated_at = ?
+     WHERE id = ?`,
+  ).run(
+    content,
+    calculateFaqContentHash(meta),
+    content.length,
+    serializeFaqMetadata(meta),
+    input.is_enabled === false ? 0 : 1,
+    now,
+    chunkId,
+  );
+  clearChunkVector(chunkId);
+  clearChunkVariantVectors(chunkId);
+  return getKbChunk(chunkId);
+}
+
+/**
+ * Split knowledge-base ids by type. Upstream does exactly this before building
+ * retrieval params (`buildRetrievalParams`,
+ * `knowledgebase_search.go:436-460`: `faqVectorKBIDs` / `docVectorKBIDs` /
+ * `docKeywordKBIDs`) and the split is the *only* thing that routes FAQ traffic
+ * away from the keyword arm — there is no per-index type filter downstream.
+ */
+export function partitionKbIdsByType(kbIds: string[]): { faq: string[]; doc: string[] } {
+  const ids = kbIds.filter(Boolean);
+  if (ids.length === 0) return { faq: [], doc: [] };
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = db
+    .prepare(`SELECT id, type FROM knowledge_bases WHERE id IN (${placeholders})`)
+    .all(...ids) as Array<{ id: string; type: string | null }>;
+  const faqSet = new Set(rows.filter((r) => r.type === KB_TYPE_FAQ).map((r) => r.id));
+  return {
+    faq: ids.filter((id) => faqSet.has(id)),
+    // An unknown id counts as a document KB: it will simply match nothing.
+    doc: ids.filter((id) => !faqSet.has(id)),
+  };
+}
+
+/** FAQ entries of a knowledge base. Upstream lists newest-first. */
+export function listFaqEntries(kbId: string): KbChunkRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM kb_chunks WHERE kb_id = ? AND chunk_type = 'faq' ORDER BY updated_at DESC`,
+    )
+    .all(kbId) as KbChunkRow[];
+}
+
+export function getFaqEntry(chunkId: string): KbChunkRow | null {
+  const row = db
+    .prepare(`SELECT * FROM kb_chunks WHERE id = ? AND chunk_type = 'faq'`)
+    .get(chunkId) as KbChunkRow | undefined;
+  return row ?? null;
+}
+
+/** Look up several FAQ entries at once, for post-retrieval metadata filtering. */
+export function getFaqEntriesByIds(ids: string[]): KbChunkRow[] {
+  if (ids.length === 0) return [];
+  const placeholders = ids.map(() => '?').join(',');
+  return db
+    .prepare(`SELECT * FROM kb_chunks WHERE chunk_type = 'faq' AND id IN (${placeholders})`)
+    .all(...ids) as KbChunkRow[];
+}
+
+export function deleteFaqEntries(chunkIds: string[]): number {
+  if (chunkIds.length === 0) return 0;
+  return db.transaction(() => {
+    let removed = 0;
+    for (const id of chunkIds) {
+      clearChunkVariantVectors(id);
+      if (deleteKbChunk(id)) removed++;
+    }
+    return removed;
+  })();
+}
+
+// ── 变体向量（separate 模式的 1..N 号问题） ──────────────────────────────
+//
+// 见 kb_chunk_variant_vectors 建表注释。这些向量**不做 ANN**，检索走精确
+// 线性扫描：FAQ 库规模有限，而精确扫描的召回不劣于 ANN。这是性能取舍，不是
+// 召回取舍，已登记在 STATE 的已知缺口里。
+
+export function setChunkVariantVectors(
+  chunkId: string,
+  vectors: Array<{ index: number; embedding: Float32Array; model: string }>,
+): void {
+  const now = isoNow();
+  const insert = db.prepare(
+    `INSERT INTO kb_chunk_variant_vectors
+       (chunk_id, variant_index, embedding, embedding_model, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  );
+  db.transaction(() => {
+    db.prepare('DELETE FROM kb_chunk_variant_vectors WHERE chunk_id = ?').run(chunkId);
+    for (const v of vectors) {
+      insert.run(
+        chunkId,
+        v.index,
+        Buffer.from(v.embedding.buffer, v.embedding.byteOffset, v.embedding.byteLength),
+        v.model,
+        now,
+      );
+    }
+  })();
+}
+
+export function clearChunkVariantVectors(chunkId: string): void {
+  db.prepare('DELETE FROM kb_chunk_variant_vectors WHERE chunk_id = ?').run(chunkId);
+}
+
+/**
+ * Exact KNN over FAQ variant vectors. Results carry the **parent chunk id**, so
+ * a variant hit is indistinguishable from a body hit downstream — which is
+ * exactly upstream's merge rule (`knowledgebase_search_fusion.go:99-112`:
+ * dedup by chunk, keep the highest score).
+ */
+export function vectorSearchFaqVariants(
+  kbIds: string[],
+  queryEmbedding: Float32Array,
+  limit: number,
+): ChunkSearchRow[] {
+  if (kbIds.length === 0) return [];
+  const placeholders = kbIds.map(() => '?').join(',');
+  const rows = db
+    .prepare(
+      `SELECT v.chunk_id AS chunk_id, v.embedding AS embedding,
+              c.doc_id, c.kb_id, c.content, c.heading_path, c.start_at, c.end_at,
+              d.filename
+       FROM kb_chunk_variant_vectors v
+       JOIN kb_chunks c ON c.id = v.chunk_id
+       JOIN kb_documents d ON d.id = c.doc_id
+       WHERE c.kb_id IN (${placeholders}) AND c.is_enabled = 1`,
+    )
+    .all(...kbIds) as Array<{
+    chunk_id: string;
+    embedding: Buffer;
+    doc_id: string;
+    kb_id: string;
+    content: string;
+    heading_path: string | null;
+    start_at: number;
+    end_at: number;
+    filename: string;
+  }>;
+
+  const scored: ChunkSearchRow[] = [];
+  for (const r of rows) {
+    if (!r.embedding || r.embedding.length === 0) continue;
+    scored.push({
+      chunk_id: r.chunk_id,
+      doc_id: r.doc_id,
+      kb_id: r.kb_id,
+      filename: r.filename,
+      content: r.content,
+      heading_path: r.heading_path,
+      start_at: r.start_at,
+      end_at: r.end_at,
+      score: cosineSimInDb(queryEmbedding, bufferToFloat32InDb(r.embedding)),
+    });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit);
 }
 
 export type KbChunkRevisionRow = {

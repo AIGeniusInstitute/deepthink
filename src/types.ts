@@ -129,6 +129,10 @@ export interface KnowledgeBase {
   docCount: number;
   createdAt: string;
   updatedAt: string;
+  /** 'document'（默认）或 'faq'。 */
+  type?: 'document' | 'faq';
+  /** 仅 FAQ 库回显；普通库为 null（对齐上游 EnsureDefaults 的清空行为）。 */
+  faqConfig?: { indexMode: string; questionIndexMode: string } | null;
 }
 
 export interface KbDocument {

@@ -9,8 +9,12 @@
 import {
   keywordSearchChunks,
   vectorSearchChunks,
+  vectorSearchFaqVariants,
+  partitionKbIdsByType,
+  getFaqEntriesByIds,
   type ChunkSearchRow,
 } from '../db.js';
+import { matchesNegativeQuestions, parseFaqMetadata } from './faq.js';
 import { fuseRRF, candidatePoolSize, DEFAULT_FUSION, type FusionOptions } from './fusion.js';
 import {
   rerankScores,
@@ -77,6 +81,10 @@ export interface SearchDebug {
   expansion_added: number;
   /** Concurrency cap WeKnora uses for this stage; reported for parity (see query-expansion.ts). */
   expansion_concurrency_cap: number;
+  /** FAQ hits vetoed by an exactly-matching negative question. */
+  faq_negative_filtered: number;
+  /** How the KB ids split into FAQ (vector-only) and document buckets. */
+  kb_buckets: { faq: number; doc: number };
   timings_ms: { vector: number; keyword: number; fusion: number; rerank: number; total: number };
   fusion: FusionOptions;
 }
@@ -84,6 +92,21 @@ export interface SearchDebug {
 export interface ChunkSearchResult {
   hits: SearchHit[];
   debug: SearchDebug | null;
+}
+
+/**
+ * Collapse duplicate chunk ids, keeping the highest score. A FAQ entry can be
+ * reached by its body vector and by several variant vectors at once; upstream
+ * merges those into one result per chunk with `max` score
+ * (`knowledgebase_search_fusion.go:99-112`).
+ */
+function dedupeByChunk(rows: ChunkSearchRow[]): ChunkSearchRow[] {
+  const best = new Map<string, ChunkSearchRow>();
+  for (const row of rows) {
+    const prior = best.get(row.chunk_id);
+    if (!prior || row.score > prior.score) best.set(row.chunk_id, row);
+  }
+  return [...best.values()].sort((a, b) => b.score - a.score);
 }
 
 function toHit(row: ChunkSearchRow, extra: Partial<SearchHit>): SearchHit {
@@ -132,6 +155,8 @@ export async function searchChunks(
             expansion_variants: [],
             expansion_added: 0,
             expansion_concurrency_cap: EXPANSION_CONCURRENCY_CAP,
+            faq_negative_filtered: 0,
+            kb_buckets: { faq: 0, doc: 0 },
             timings_ms: { vector: 0, keyword: 0, fusion: 0, rerank: 0, total: 0 },
             fusion,
           }
@@ -146,19 +171,36 @@ export async function searchChunks(
   const effectiveMode: SearchMode =
     requestedMode === 'keyword' ? 'keyword' : wantVector ? requestedMode : 'keyword';
 
+  // ── FAQ / 文档分流 ──────────────────────────────────────────────────────
+  //
+  // 上游把 KB 分成三桶后才构造检索参数（`buildRetrievalParams`），FAQ 库**只**
+  // 进向量桶 —— "FAQ KBs are retrieved exclusively via the FAQ vector index and
+  // have no keyword index"。这条分流就是 FAQ 不参与关键词检索的全部机制，检索
+  // 器内部没有任何按类型过滤的逻辑，所以必须在入口处分好桶。
+  const buckets = partitionKbIdsByType(kbIds);
+  const hasFaq = buckets.faq.length > 0;
+
   let vectorRows: ChunkSearchRow[] = [];
   let vectorMs = 0;
   if (wantVector) {
     const t0 = Date.now();
-    vectorRows = vectorSearchChunks(kbIds, options.queryEmbedding!, pool);
+    vectorRows = [
+      ...vectorSearchChunks(buckets.doc, options.queryEmbedding!, pool),
+      ...vectorSearchChunks(buckets.faq, options.queryEmbedding!, pool),
+      // separate 模式下每个相似问各有一条向量，命中后归并回父条目、取最高分
+      // （上游 `deduplicateByScore`）。
+      ...vectorSearchFaqVariants(buckets.faq, options.queryEmbedding!, pool),
+    ];
+    vectorRows = dedupeByChunk(vectorRows);
     vectorMs = Date.now() - t0;
   }
 
   let keywordRows: ChunkSearchRow[] = [];
   let keywordMs = 0;
-  if (requestedMode !== 'vector') {
+  // FAQ 桶刻意不传给关键词臂：它没有关键词索引，也不应该有一条。
+  if (requestedMode !== 'vector' && buckets.doc.length > 0) {
     const t0 = Date.now();
-    keywordRows = keywordSearchChunks(kbIds, options.query, pool);
+    keywordRows = keywordSearchChunks(buckets.doc, options.query, pool);
     keywordMs = Date.now() - t0;
   }
 
@@ -198,6 +240,34 @@ export async function searchChunks(
   hits = hits.slice(0, limit);
   const fusionMs = Date.now() - tFuse;
 
+  // ── FAQ 负向问题过滤 ────────────────────────────────────────────────────
+  //
+  // 放在这里（融合之后、扩展与 rerank 之前），与上游 `applyFAQPostProcessing`
+  // 的位置一致。负向问题**不参与索引**，只在这一步做事后否决：精确相等（两侧
+  // 小写+trim），不是子串匹配。metadata 解析失败的条目**保留**——上游也是
+  // 保留，宁可多一条结果也不要因为脏数据静默吞掉正确命中。
+  let faqNegativeFiltered = 0;
+  if (hasFaq) {
+    const faqHits = hits.filter((h) => buckets.faq.includes(h.kbId));
+    if (faqHits.length > 0) {
+      const metas = new Map(
+        getFaqEntriesByIds(faqHits.map((h) => h.chunkId)).map((row) => [
+          row.id,
+          parseFaqMetadata(row.metadata),
+        ]),
+      );
+      hits = hits.filter((h) => {
+        if (!buckets.faq.includes(h.kbId)) return true;
+        const meta = metas.get(h.chunkId);
+        if (!meta || !matchesNegativeQuestions(options.query, meta.negative_questions)) {
+          return true;
+        }
+        faqNegativeFiltered++;
+        return false;
+      });
+    }
+  }
+
   // ── Query expansion: rescue a short first pass ──────────────────────────
   //
   // WeKnora's trigger is `EnableQueryExpansion && len(SearchResult) < max(1, EmbeddingTopK)`;
@@ -217,7 +287,8 @@ export async function searchChunks(
       // no re-embedding and no second vector lookup. The existing hits are ahead of
       // these and limit is applied after, so a variant can only fill the shortfall.
       for (const variant of expansionVariants) {
-        for (const row of keywordSearchChunks(kbIds, variant, limit)) {
+        // 同样只打文档桶：扩展是关键词臂的救援手段，而 FAQ 没有关键词索引。
+        for (const row of keywordSearchChunks(buckets.doc, variant, limit)) {
           if (seen.has(row.chunk_id)) continue;
           seen.add(row.chunk_id);
           hits.push(toHit(row, { score: row.score, keywordScore: row.score, source: 'keyword' }));
@@ -260,6 +331,8 @@ export async function searchChunks(
         expansion_variants: expansionVariants,
         expansion_added: expansionAdded,
         expansion_concurrency_cap: EXPANSION_CONCURRENCY_CAP,
+        faq_negative_filtered: faqNegativeFiltered,
+        kb_buckets: { faq: buckets.faq.length, doc: buckets.doc.length },
         timings_ms: {
           vector: vectorMs,
           keyword: keywordMs,

@@ -104,13 +104,61 @@ WeKnora 保护 LaTeX `$...$`、markdown 链接/图片、表格块、围栏代码
 
 ### 2.2 FAQ 索引
 
-**复用 `kb_chunks`，不建新表**（WeKnora 同样如此）。KB 行新增 `kb_type: 'document' | 'faq'`（默认 `document`）。
+> 本节初稿是按印象写的，与源码有四处不符（字段名 `kb_type`→`type`、`answer`→`answers`、
+> `revision`→`version`，以及负向过滤的位置）。以下为逐行核对后的版本，
+> 更正过程记在 `docs/task_state/.../STATE.md` §2.7。
 
-- FAQ 条目以 chunk 形式存储，元数据进 `kb_chunks.metadata` JSON：`{ standard_question, similar_questions[], negative_questions[], answer, answer_strategy, revision }`。
-- `index_mode`：`question_answer`（默认）| `question_only`。
-- `question_index_mode`：`combined`（默认，多问题合并成一条向量）| `separate`。
-- 负向问题过滤为**小写精确相等**（WeKnora 语义，非子串匹配）。
-- **FAQ 库只走向量索引，不建关键词索引**（`buildRetrievalParams` 把 KB 拆成 `faqVectorKBIDs` / `docKeywordKBIDs`）。
+**复用 `kb_chunks`，不建新表**（WeKnora 同样如此）。KB 行新增 `type`（`document` | `faq` | `wiki`，
+默认 `document`）与 `faq_config`（JSON）。
+
+#### 2.2.1 源码事实
+
+| # | 事实 | 出处 |
+|---|---|---|
+| 1 | KB 类型字段是 `type`，不是 `kb_type` | `internal/types/knowledgebase.go` |
+| 2 | 配置是 `faq_config` JSON `{index_mode, question_index_mode}`；后端 `EnsureDefaults` 给 `question_answer` + `combined` | `knowledgebase.go:783-795` |
+| 3 | ⚠️ Vue 编辑器给的是**另一套**默认：`question_only` + `separate` | `web/src/views/knowledge/...` |
+| 4 | 条目 = `kb_chunks` 行，`chunk_type='faq'`；业务字段在 `metadata` | `knowledge_faq.go` |
+| 5 | metadata 键名：`standard_question` / `similar_questions` / `negative_questions` / **`answers`（复数）** / `answer_strategy` / **`version`** / `source` | `internal/types/faq.go` |
+| 6 | **两份不同的"内容"**：`buildFAQChunkContent`（给人看，带 `Q:` / `Similar Questions:` / `Answers:` 前缀）≠ `buildFAQIndexContent`（给向量看，裸 `\n` 连接） | `knowledge_faq.go:1618` / `:1875` |
+| 7 | `combined` = 1 条向量；`separate` = 1 + N 条（标准问 + 每个相似问各一条，`SourceID` 加后缀） | `buildFAQIndexInfoList:1892` |
+| 8 | **FAQ 库没有关键词索引**——上游不是靠"检索器里按类型过滤"，而是靠建参数时把 KB 分成 `faqVectorKBIDs` / `docKeywordKBIDs` 两个桶 | `knowledgebase_search.go:456-461` |
+| 9 | 负向问题**不进索引、不进 content**；命中之后才按 `lower(trim(x)) == lower(trim(neg))` **精确相等**否决，且**刻意不调 `NormalizeQuestion`**（标点参与比较） | `knowledge_faq.go` |
+| 10 | `answer_strategy: 'random'` 存得下，但上游**从不读取**它——永远返回全部答案 | 同上 |
+
+#### 2.2.2 四条显式偏离
+
+1. **不做繁转简。** 上游 `NormalizeQuestion` 内嵌 ~40KB OpenCC 词典做繁→简。不 vendor。
+   后果有界：仅繁体输入的内容指纹与上游不同（一条繁体条目和它的简体孪生条目不会互相判重）；
+   **简体输入逐字节一致**。
+2. **首尾标点字符集照抄上游字节，不补弯引号。** 上游 `strings.Trim` 的集合里 ASCII `"` 出现三次、
+   **没有**任何弯引号（`""''`）——与 §2.4 短语类里同一处作者意图丢失。这里刻意选**相反**的补救：
+   字符类里缺字符是真丢召回，而 trim 集合里多留一个弯引号只是没被去掉；指纹函数应当匹配字节而非意图。
+3. **`answer_strategy: 'random'` 原样携带但不生效**，与上游行为一致（见事实 10）。不"顺手修好"。
+4. **`separate` 的变体向量另存一张表**（见 2.2.3），上游是同一索引里多条 `SourceID`。
+
+#### 2.2.3 落点与承重不变式
+
+- **`kb_chunk_variant_vectors(chunk_id, variant_index, embedding, ...)`**：下标 0（标准问）仍写
+  `kb_chunks.embedding`，1..N 写变体表。这样 `embedding IS NULL` 继续表示"尚未嵌入"，
+  向量索引与去重逻辑都不用改。
+- **检索分桶是"FAQ 不进关键词臂"的唯一机制**：`partitionKbIdsByType` 把 kbIds 拆桶后，
+  关键词臂只收 `buckets.doc`。检索器内部**没有**任何按类型过滤的代码——所以这条必须在集成测试里
+  端到端证明，靠读代码分不出"实现了"与"看起来实现了"。
+- **负向否决是事后过滤**，位置在 `slice(0,limit)` 之后、扩展/重排之前，计数进
+  `SearchDebug.faq_negative_filtered`；metadata 解析失败**保留**命中（宁可多召回不可静默丢）。
+- **⚠️ 偏移量不变式在 FAQ 上不成立**：`text.slice(startAt, endAt) === content` 只对
+  `chunk_type ∈ {text, parent_text}` 成立。FAQ 的 content 是合成的（`Q: … / Answers: …`），
+  不是任何文档的子串；故 FAQ 行写 `start_at=0`、`end_at=content.length`，读者必须直接用
+  `chunk.content`，不能去切容器文档。已在 `src/db.ts` 的 FAQ 段头注明。
+- **已知缺口**：变体向量走精确线性扫描而非 ANN（性能取舍，不是召回取舍）；
+  `doc_count` 会把 FAQ 的容器文档算进去；上游 FAQ 专用入口那条 0.7 阈值未单独实现。
+
+#### 2.2.4 验收证据
+
+`tests/units/kb-faq.test.ts` 37 项（纯函数）+ `tests/units/kb-faq-search.test.ts` 21 项（接进检索链路）。
+两条承重命题各做过一次**反向验证**：把关键词臂改成收 FAQ 桶 → 只有"FAQ 库关键词召回为 0"挂；
+把负向过滤短路成 `if (true) return true` → 只有两条负向用例挂；两次改完都 `diff` 证明字节级还原。
 
 ### 2.3 预生成问题（Doc2Query）
 
