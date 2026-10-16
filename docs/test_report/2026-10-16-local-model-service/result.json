@@ -1,0 +1,113 @@
+{
+  "base": "http://localhost:9898",
+  "kbId": "57544e5a-47f5-4c3d-b687-a751f2876ae7",
+  "results": [
+    {
+      "name": "登录成功",
+      "ok": true,
+      "detail": "http://localhost:9898/chat"
+    },
+    {
+      "name": "本机模型服务可用",
+      "ok": true,
+      "detail": "0.40.3"
+    },
+    {
+      "name": "扫描件 OCR 已启用",
+      "ok": true,
+      "detail": "qwen2.5vl:7b"
+    },
+    {
+      "name": "视觉模型已安装",
+      "ok": true,
+      "detail": "qwen2.5vl:7b, qwen3-vl:8b, moondream:latest, bge-m3:latest, nomic-embed-text:latest"
+    },
+    {
+      "name": "点「上传文档」能唤起文件选择框（真实用户路径）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "上传被接受（201）",
+      "ok": true,
+      "detail": "HTTP 201"
+    },
+    {
+      "name": "响应带 ocr 标志，走的是扫描件通道",
+      "ok": true,
+      "detail": "{\"document\":{\"id\":\"ab54f037-1923-4dcd-b6c4-6b4242d0d85c\",\"kb_id\":\"57544e5a-47f5-4c3d-b687-a751f2876ae7\",\"filename\":\"scanned-3p.pdf\",\"content_hash\":\"pending:ab54"
+    },
+    {
+      "name": "文档进入「OCR 识别中」状态",
+      "ok": true,
+      "detail": "就绪"
+    },
+    {
+      "name": "文档最终变为「就绪」",
+      "ok": true,
+      "detail": "scanned-3p.pdf就绪PDF·OCR0.4 KB · 分块 4 · 已向量化 4 · 2026-10-16T10:34:48.326Z"
+    },
+    {
+      "name": "文档记录存在",
+      "ok": true,
+      "detail": "scanned-3p.pdf"
+    },
+    {
+      "name": "parser_type = pdf_ocr",
+      "ok": true,
+      "detail": "pdf_ocr"
+    },
+    {
+      "name": "分块数 > 0",
+      "ok": true,
+      "detail": "chunk_count=4"
+    },
+    {
+      "name": "正文含扫描页里的真实词 ALPHA-7749",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "正文含扫描页里的真实词 BRAVO-2251",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "正文含扫描页里的真实词 CHARLIE-9930",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "正文含扫描页里的真实词 Osimertinib",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "正文不是页码噪声（不含伪造的页码标记）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "用扫描页里的词检索能命中该文档",
+      "ok": true,
+      "detail": "{\"chunk_id\":\"761c9d64-d6a5-4262-827d-124c88922e49\",\"doc_id\":\"ab54f037-1923-4dcd-b6c4-6b4242d0d85c\",\"kb_id\":\"57544e5a-47f5-4c3d-b687-a751f2876ae7\",\"filename\":\"scanned-3p.pdf\",\"content\":\"\\nPage Two\\n\\n| Drug | Dosage |\\n| --- | --- |\\n| Osime"
+    },
+    {
+      "name": "关闭 OCR 时上传扫描件返回 400",
+      "ok": true,
+      "detail": "HTTP 400"
+    },
+    {
+      "name": "错误信息指向设置页（可执行，不是\"上传失败\"四个字）",
+      "ok": true,
+      "detail": "{\"error\":\"该 PDF 没有文字层（扫描件），需要 OCR，但 OCR 当前未启用。请在「设置 → 本机模型服务」中启用扫描件 OCR 后重新上传。\",\"code\":\"ocr_disabled\"}"
+    },
+    {
+      "name": "被拒绝的上传没有留下文档行",
+      "ok": true,
+      "detail": "1 → 1"
+    }
+  ],
+  "passed": 21,
+  "total": 21
+}

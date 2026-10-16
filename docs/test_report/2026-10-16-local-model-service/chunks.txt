@@ -1,0 +1,25 @@
+【第 1 页】
+
+
+| Page One |
+| --- |
+| Keyword: ALPHA-7749 |
+| This page has no text layer at all. |
+
+【第 2 页】
+
+
+Page Two
+
+| Drug | Dosage |
+| --- | --- |
+| Osimertinib 80 mg once daily | |
+| Code: BRAVO-2251 | |
+
+【第 3 页】
+
+
+| Page Three |
+| --- |
+| Review every 6 weeks |
+| Keyword: CHARLIE-9930 |
