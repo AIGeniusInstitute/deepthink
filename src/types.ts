@@ -133,6 +133,12 @@ export interface KnowledgeBase {
   type?: 'document' | 'faq';
   /** 仅 FAQ 库回显；普通库为 null（对齐上游 EnsureDefaults 的清空行为）。 */
   faqConfig?: { indexMode: string; questionIndexMode: string } | null;
+  /** Doc2Query 预生成问题配置，两种库都回显；未设过即为默认的"关"。 */
+  questionGenerationConfig?: {
+    enabled: boolean;
+    questionCount: number;
+    customInstructions: string;
+  };
 }
 
 export interface KbDocument {

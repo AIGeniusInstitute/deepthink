@@ -165,6 +165,19 @@ export function KbChunkViewer({ docId }: { docId: string }) {
               </pre>
             )}
 
+            {c.generated_questions && c.generated_questions.length > 0 && (
+              <div className="text-xs border-t pt-2" data-testid="kb-chunk-questions">
+                <div className="font-medium mb-1 text-muted-foreground">
+                  预生成问题（{c.generated_questions.length}）· 只进向量索引，不是分块正文
+                </div>
+                <ul className="list-disc pl-4 space-y-0.5 text-muted-foreground">
+                  {c.generated_questions.map((q, i) => (
+                    <li key={i}>{q}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {verified[c.id] !== undefined && (
               <div className="text-xs border-t pt-2">
                 <div className="font-medium mb-1">

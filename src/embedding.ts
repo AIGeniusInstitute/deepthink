@@ -23,7 +23,7 @@ import {
   resolveKbVecDimension,
   countEmbeddedChunksForDocument,
   setChunkVariantVectors,
-  clearChunkVariantVectors,
+  clearChunkVectorsBySource,
   getKnowledgeBaseAnyOwner,
   type KbChunkRow,
   type KbDocumentRow,
@@ -373,7 +373,9 @@ async function embedChunkRows(
       } else {
         // Mode may have flipped back to combined; drop stale variants so the
         // ANN and variant arms cannot disagree about an entry.
-        clearChunkVariantVectors(chunk.id);
+        // 只清 faq_variant：预生成问题是另一条独立的索引来源，与 FAQ 的索引模式
+        // 无关，重新嵌入一次不该把它一起抹掉。
+        clearChunkVectorsBySource(chunk.id, 'faq_variant');
       }
       updateChunkEmbedding(chunk.id, ownVectors[0], model);
       success++;

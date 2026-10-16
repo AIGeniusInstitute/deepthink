@@ -310,17 +310,30 @@ export const FaqConfigSchema = z.object({
   question_index_mode: z.enum(['combined', 'separate']).optional(),
 });
 
+/**
+ * Doc2Query 配置。键名与上游 `QuestionGenerationConfig`
+ * （`types/knowledgebase.go:639-646`）一致；上限 10 由 clampQuestionCount 兜底，
+ * 这里只做形态校验。自定义指令上限 4000 同理，落库前会再截一次。
+ */
+export const QuestionGenerationConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  question_count: z.number().int().optional(),
+  custom_instructions: z.string().optional(),
+});
+
 export const KnowledgeBaseCreateSchema = z.object({
   name: z.string().min(1).max(80),
   description: z.string().max(500).optional(),
   type: z.enum(['document', 'faq']).optional(),
   faq_config: FaqConfigSchema.optional(),
+  question_generation_config: QuestionGenerationConfigSchema.optional(),
 });
 
 export const KnowledgeBasePatchSchema = z.object({
   name: z.string().min(1).max(80).optional(),
   description: z.string().max(500).optional(),
   faq_config: FaqConfigSchema.optional(),
+  question_generation_config: QuestionGenerationConfigSchema.optional(),
 });
 
 /** A FAQ entry. Field names mirror upstream's payload (`types/faq.go:302-322`). */

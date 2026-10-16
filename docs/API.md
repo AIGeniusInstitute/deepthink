@@ -38,24 +38,27 @@
 
 流水线：文档先解析 → 按策略切分成**携带原文绝对字符偏移**的分块 → 逐块向量化；检索在**分块粒度**做（向量臂 + 关键词臂 RRF 融合）。不变式 `text.slice(chunk.start_at, chunk.end_at) === chunk.content`，这是引用能回源核验的前提。
 
-- `GET|POST /` · `GET|PATCH|DELETE /:id` — 知识库 CRUD。知识库有 `type`：`document`（默认）| `faq`；FAQ 库额外回显 `faqConfig`，普通库该字段为 `null`
+- `GET|POST /` · `GET|PATCH|DELETE /:id` — 知识库 CRUD。知识库有 `type`：`document`（默认）| `faq`；FAQ 库额外回显 `faqConfig`，普通库该字段为 `null`。两种库都回显 `questionGenerationConfig`（Doc2Query，默认 `{enabled:false, questionCount:3, customInstructions:''}`）；创建/更新用 snake_case `question_generation_config: {enabled, question_count, custom_instructions}`，**PATCH 是部分更新**（只传 `enabled` 不会把 `question_count` 打回默认）
 - `POST /:id/chunker/preview` — 用给定分块配置预演切分，不落库
 - `GET|POST /:id/documents` — 文档列表 / 上传（multipart，单文件 ≤20MB；可选表单字段 `strategy` / `chunk_size` / `chunk_overlap`，省略则用默认 `heuristic` / 512 / 80）
 - `POST /:id/documents/url` — 从 URL 抓取正文入库（15s 超时，1MB 文本上限）
 - `GET /documents/:docId` — 单文档元数据（`parse_status` / `parse_stage` / `chunk_count` / `embedded_chunk_count` / `error_message` / `stages`）
 - `GET /documents/:docId/content?start&end` — 按字符区间取原文（引用回源核验、分块编辑预览用）
-- `GET /documents/:docId/chunks?full=1` — 分块列表，每块带 `start_at` / `end_at` / `heading_path`
+- `GET /documents/:docId/chunks?full=1` — 分块列表，每块带 `start_at` / `end_at` / `heading_path` / `content_revision` / `generated_questions[]`（后者是 Doc2Query 的产出，**不属于**分块正文）
 - `POST /documents/:docId/reparse` · `POST /documents/:docId/cancel` · `DELETE /:id/documents/:docId`
-- `GET|PUT|DELETE /chunks/:chunkId` — 单块读写删（改内容后该块向量失效，需重建）
+- `GET|PUT|DELETE /chunks/:chunkId` — 单块读写删（改内容后该块向量**与预生成问题**都失效并被清除，需重新嵌入 / 重新生成）
 - `GET /chunks/:chunkId/revisions` · `POST /chunks/:chunkId/revert` — 修订历史与回滚
 - `POST /:id/documents/:docId/embed` · `POST /:id/embed-all` · `POST /:id/rebuild-index` — 向量化与索引重建（`dimension_changed` 为真说明嵌入维度变了，全部文档需重新嵌入）
 - `GET /:id/faq/entries` · `GET|PUT|DELETE /:id/faq/entries/:entryId` · `POST /:id/faq/entries` — **FAQ 条目**（仅 `type=faq` 的库；普通库返回 422）。字段用 snake_case：`standard_question` / `similar_questions[]` / `negative_questions[]` / `answers[]` / `answer_strategy` / `is_enabled`。批量删除走 `DELETE /:id/faq/entries`，body `{ids: [...]}`（≤20 条一次），只删属于本库的 id
+- `POST /:id/generate-questions` — **Doc2Query**:对全部合格分块（`chunk_type=text`、启用、有可提取文字）预生成问题并编入向量索引。**同步**执行、逐块调用问答模型（`data/config/rag.json` 的 `model`，temperature 0.7 / max_tokens 512），分块多时耗时长。返回 `{eligible, generated, questions, skipped, stale}`：`skipped` 是单块调用失败被跳过的次数（不影响其余分块），`stale` 是生成期间正文被改动而丢弃结果的次数。未启用或没配模型 → **400** + `disabled: true`（不是错误，只是能力不可用）
 - `POST /:id/search` — 三模式检索，body `{query, mode, limit, minScore, useRerank, debug}`，`mode` ∈ `hybrid`（默认）| `keyword` | `vector`；`debug: true` 返回 `mode` / `effective_mode` / `pool_size` / 各臂候选数 / `faq_negative_filtered` / `kb_buckets` 与 `timings_ms`
 - `POST /search/all` — 跨当前用户全部知识库检索
 - `POST /chat` — RAG 问答；stream 时走 SSE，`citations` 事件先于 `delta` 发出，末尾 `data: [DONE]`
 - `GET /chat/sessions/:sessionId/messages` · `DELETE /chat/sessions/:sessionId`
 
 **检索语义注意**：关键词臂是**子串/短语**语义（FTS5 `trigram` 分词器 + 词项 OR，`<3` 字符的词走 `instr()` 降级）。中文整句在纯 `keyword` 模式下不命中——它不是文档里的连续子串；默认的 `hybrid` 模式由向量臂覆盖这类查询。详见 [`docs/issues/2026-10-16-kb-chinese-keyword-search-dead.md`](issues/2026-10-16-kb-chinese-keyword-search-dead.md)。
+
+**Doc2Query 语义注意**：预生成的问题**不进 `chunk.content`**，只是额外的一条向量索引条目（命中后按 `chunk_id` 归并回父分块），所以检索结果的 `content` 永远是分块正文、`start_at/end_at` 偏移不变式照常成立。与上游有一处有意偏离：**问题只进向量索引，不进关键词索引**，因此 `mode: 'keyword'` 召不回这些问法——这是取舍不是 bug，向量召回只增不减。另外生成的问题是**快照**：分块正文一旦被编辑（`content_revision` 自增），该块的预生成问题及其向量会被一并清除，需要重新生成。
 
 **FAQ 检索语义注意**：FAQ 库**没有关键词索引**（与上游一致），只走向量臂——所以 `mode: 'keyword'` 对 FAQ 库**恒定返回 0 条**，这不是故障。机制是检索前按 KB 类型分桶、关键词臂只收文档桶（`debug.kb_buckets` 可观察）。另外负向问题是**检索后**按"忽略大小写与首尾空白的精确相等"否决，不是子串匹配：提问"RAG怎么安装？"不会被负例"RAG怎么安装"误杀。FAQ 分块的 `content` 是合成的问答文本，**不满足** `slice(start_at,end_at)===content` 这条偏移量不变式，引用回源请直接读 `content`。
 

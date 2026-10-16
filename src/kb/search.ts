@@ -9,7 +9,7 @@
 import {
   keywordSearchChunks,
   vectorSearchChunks,
-  vectorSearchFaqVariants,
+  vectorSearchChunkVariants,
   partitionKbIdsByType,
   getFaqEntriesByIds,
   type ChunkSearchRow,
@@ -187,9 +187,12 @@ export async function searchChunks(
     vectorRows = [
       ...vectorSearchChunks(buckets.doc, options.queryEmbedding!, pool),
       ...vectorSearchChunks(buckets.faq, options.queryEmbedding!, pool),
-      // separate 模式下每个相似问各有一条向量，命中后归并回父条目、取最高分
-      // （上游 `deduplicateByScore`）。
-      ...vectorSearchFaqVariants(buckets.faq, options.queryEmbedding!, pool),
+      // 两类额外条目：FAQ 的相似问变体、Doc2Query 的预生成问题。它们各有独立
+      // 的索引条目（上游靠 SourceID 后缀区分），但都带父 chunk_id，所以命中后
+      // 按 chunk 归并、取最高分即可 —— 上游 `deduplicateByScore`
+      // （knowledgebase_search_fusion.go:99-112）就是按 ChunkID 去重的。
+      ...vectorSearchChunkVariants(buckets.faq, options.queryEmbedding!, pool, 'faq_variant'),
+      ...vectorSearchChunkVariants(buckets.doc, options.queryEmbedding!, pool, 'generated_question'),
     ];
     vectorRows = dedupeByChunk(vectorRows);
     vectorMs = Date.now() - t0;

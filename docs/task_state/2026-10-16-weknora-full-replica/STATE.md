@@ -10,7 +10,7 @@
 
 | 期 | 内容 | 状态 |
 |---|---|---|
-| **P1** | 知识库内核补全：父子分块 / FAQ 索引 / 预生成问题 / 查询改写 / 意图识别 | **进行中（4/5 子项完成）** |
+| **P1** | 知识库内核补全：父子分块 / FAQ 索引 / 预生成问题 / 查询改写 / 意图识别 | **5/5 子项已实现；UI 验收 / test_report / 合并未做** |
 | P2 | 文档接入扩展（xlsx/pptx、图片、整目录上传） | 未启动 |
 | P3 | 检索增强（rerank 深化、Wiki、GraphRAG） | 未启动 |
 | P4 | Agent 协作（fork/rewind、artifacts、steering） | 未启动 |
@@ -28,7 +28,7 @@
 | 查询改写 / 扩展 | §2.4 | ✅ 已实现并验证 | `bcc904d` |
 | 查询理解（改写 + 意图） | §2.5 | ✅ 已实现并验证 | 见 §2.6 |
 | FAQ 索引 | §2.2 | ✅ 已实现并验证 | 见 §2.7 |
-| 预生成问题（Doc2Query） | §2.3 | ⬜ 未实现 | — |
+| 预生成问题（Doc2Query） | §2.3 | ✅ 已实现并验证 | 见 §2.8 |
 
 前置已完成：`21d3880` 知识库 URL 入库 SSRF 修复（PRD §2.9，属 issue 线，非本需求）。
 
@@ -197,6 +197,78 @@
 
 ---
 
+## 2.8 已完成：预生成问题 Doc2Query §2.3
+
+### 交付内容
+
+**纯逻辑 `src/kb/doc2query.ts`**（无 DB、无网络）
+配置夹取/序列化、输出解析、`SourceID` 规则、提示词渲染、合格性判定、时效判定。
+
+**编排 `src/kb/question-gen.ts`**
+`generateQuestionsForKb(kbId, model)`：读 KB 配置 → 按 20 分批 → 逐块调 LLM → 失败只跳过该块 →
+生成前后比对 `content_revision` → 写 metadata → 批量嵌入 → 写 `generated_question` 向量。
+另导出 `dropGeneratedQuestionVectors`。
+
+**`src/db.ts`**
+`kb_chunk_variant_vectors` 加 `source` 列进主键（含未发布表形态的 drop/recreate 迁移）；
+`kb_chunks.content_revision`、`knowledge_bases.question_generation_config` 两个 `ensureColumn`；
+`updateKbChunkContent` 自增 revision 并清该块的预生成问题向量；`deleteKbChunk` 与
+`replaceChunksForDocument` 清对应变体行；`vectorSearchFaqVariants` → `vectorSearchChunkVariants(..., source)`；
+新增 `patchChunkMetadata` / `setChunkGeneratedQuestions` / `getChunkGeneratedQuestions` /
+`listChunksNeedingQuestions` / `getSiblingChunkContents` / `updateKnowledgeBaseQuestionGenerationConfig`。
+
+**`src/kb/search.ts`**：向量臂在去重前并入 `faq_variant` 与 `generated_question` 两类额外条目。
+
+**`src/embedding.ts`**：`clearChunkVariantVectors(chunk.id)` → `clearChunkVectorsBySource(chunk.id, 'faq_variant')`
+（见下"回归点"）。
+
+**`src/routes/paas-knowledge-bases.ts`**：`questionGenerationConfig` 回显；创建/更新接受该配置
+（PATCH 是部分更新）；`POST /:id/generate-questions`；分块序列化带 `generated_questions` 与
+`content_revision`（直接读行上的 metadata，避免每个分块回查一次库）。
+
+**前端**：`web/src/stores/knowledge-bases.ts`（类型 + `updateQuestionGenConfig` + `generateQuestions`）、
+`web/src/components/knowledge-base/KbDoc2QueryPanel.tsx`（开关 / 每块问题数 / 业务指令 / 生成按钮）、
+`KbChunkViewer` 每个分块列出已生成的问题、`KnowledgeBaseDetailPage` 文档页签挂载面板。
+
+### 自查中发现并修掉的两个真 bug（都是我引入的）
+
+| # | 问题 | 后果 | 修法 |
+|---|---|---|---|
+| 1 | `clearChunkVariantVectors` 清**全部来源**，而 `embedding.ts` 在 FAQ 索引模式翻回 combined 时调它 | **重新嵌入一次文档库就会把预生成问题向量全抹掉** —— 功能静默失效，不报错 | 改成 `clearChunkVectorsBySource(..., 'faq_variant')` |
+| 2 | `makeQuestionId` 用 `Date.now() * 1e6` 做 double 加法 | 纳秒时间戳 1.7e18 超出 `Number.MAX_SAFE_INTEGER`，`+1` 被吞，同批前 256 条问题 id 完全相同 | 改用 `BigInt`；`buildGeneratedQuestionsMetadata` 默认值同步改 |
+
+另有两处文档与代码不符，按"改字面不改行为"处理（`listChunksNeedingQuestions` 的注释声称会筛
+未嵌入分块，SQL 并没有——上游也不看单块嵌入状态，改注释）。
+
+### 验证证据
+
+- `npx vitest run tests/units/kb-doc2query.test.ts tests/units/kb-doc2query-flow.test.ts` → **53 passed**（36 + 17）。
+- 全部 KB 单测 → **244 passed**（14 文件）。
+- 全量回归见 §4。
+- **负向验证 ×3**（每次 `diff` 证明字节级还原）：
+
+| 被破坏的分支 | 挂掉的用例数 |
+|---|---|
+| 去掉检索里的 `generated_question` 合并 | 2 |
+| 单块失败 `continue` → `return` | 1 |
+| 去掉 `content_revision` 过期判定 | 1 |
+
+### ⚠️ 召回测试第一版是**平凡成立**的（已重写）
+
+第一版写成"单个分块的 KB，搜到了就算问题进了索引"。做负向验证时发现：**把检索里的
+`generated_question` 合并整行删掉，用例照样全绿**——因为那个 KB 里只有这一个分块，普通向量臂
+必然返回它，命中和问题索引没有任何关系。
+
+重写为：用一个**自身没有向量**的分块（入库时嵌入服务返回 503，分块落库但 `embedding` 为空——
+这是上游允许的真实状态，生成问题的合格判定只看 KB 有没有配嵌入模型），此时可检索路径**只剩
+问题索引一条**；再加一条"命中得分是问题向量相似度 ≈ 1"的直接证据。重写后同样的破坏会让 2 条
+用例挂掉。
+
+**教训**：单元素语料上的"检索到了"不构成证据。凡是"命中即证明"的用例，先做一次负向验证确认
+它**真的会挂**，否则等于没测。
+
+---
+
 ## 3. 过程中的缺陷与修复
 
 ### 3.1 迁移顺序 bug（我引入，已修复）
@@ -250,22 +322,25 @@ e2e 中「父块不在向量表」最初是**平凡成立**的——测试环境
 ## 4. 验证证据
 
 ```
-make typecheck          → 通过（无 error 行）
-npx vitest run          → Test Files  172 passed | 4 skipped (176)
-                          Tests  2332 passed | 16 skipped (2348)
-                          0 failed
+npx tsc --noEmit -p tsconfig.json       → 通过（无 error 行）
+npx tsc --noEmit -p web/tsconfig.json   → 通过（无 error 行）
+cd web && npx vite build                → ✓ built in 11.55s
+npx vitest run                          → Test Files  173 passed | 1 failed | 4 skipped (178)
+                                          Tests  2384 passed | 1 failed | 16 skipped (2401)
+                                          （唯一失败项是 §4 末尾那个既存偶发超时，见下）
 ```
 
-历次基线：§2.1 交付 166 文件 / 2214 测试 → §2.4 交付 168 / 2239（+2 文件、+25 条）→ §2.5 交付 170 / 2274（+2 文件、+35 条）→ §2.2 交付 **172+4 / 2348**（+2 文件、+58 条）。每一步都是全量回归，不是只跑新用例。
+历次基线：§2.1 交付 166 文件 / 2214 测试 → §2.4 交付 168 / 2239（+2 文件、+25 条）→ §2.5 交付 170 / 2274（+2 文件、+35 条）→ §2.2 交付 **172+4 / 2348**（+2 文件、+58 条）→ §2.3 交付 **173 / 2401**（+2 文件、+53 条）。每一步都是全量回归，不是只跑新用例。
 
 **一个既存的偶发失败（不是本次引入，未修）**：`tests/feishu-card.test.ts` 的
 `buildInteractiveCard delegates to buildAgentReplyCard without default header` 是动态 import，
 默认 5s 超时，满负载并行跑时约 4 次里挂 1 次。**证据**：在 §2.2 之前那个 commit（`93df1ba`）上开
 独立 worktree 连跑 4 次，第 4 次复现同一条、同样 5007ms；§2.2 分支上连跑 3 次，同样只挂 1 次。
-两边同一速率 → 与 §2.2 无关。按"只清理自己弄脏的地方"不动它，此处登记。
+两边同一速率 → 与 §2.2 无关。§2.3 交付时再次复现同一条，**单独跑该文件连跑 3 次全绿（94/94 ×3）**，
+只在全量并行负载下偶发 → 确认是动态 import 争用，与本次改动无关。按"只清理自己弄脏的地方"不动它。
 
 **尚未做的验证**（P1 完成前必须补）：
-- ⬜ Playwright UI 验收（上传开启 `parent_child` 的文档，看检索/引用是否正常）
+- ⬜ Playwright UI 验收（父子分块 / FAQ 条目 / Doc2Query 三处界面）
 - ⬜ test_report 及用例通过截图
 - ⬜ 合并 worktree → main 并 push
 
@@ -285,11 +360,17 @@ npx vitest run          → Test Files  172 passed | 4 skipped (176)
 | 8 | FAQ 库的 `doc_count` 会把内部那个 FAQ 容器文档算进去（对用户显示成"有 1 个文档"） | 未处理，等 UI 阶段一起看 |
 | 9 | 上游 FAQ 专用入口那条 **0.7 相似度阈值**未单独实现（当前走通用检索链路） | 未实现，需确认是否影响 FAQ 召回质量 |
 | 10 | `tests/feishu-card.test.ts` 有 1 条偶发超时（约 4 次挂 1 次），**已证明与本次改动无关**（父 commit 同样复现） | 既存问题，按"不动别人弄脏的地方"未修，见 §4 |
+| 11 | Doc2Query 生成的问题**只进向量索引，不进关键词索引**（上游两边都进） | 有意取舍，召回只增不减，见方案 §2.3.2 偏离 4 |
+| 12 | 问题的向量也走**精确线性扫描**（与 7 同因，共用一张表） | 同 7，量级上来要重建索引 |
+| 13 | 生成是**同步接口**且**不记进度**：几百个分块时请求会一直挂着，中途刷新页面无法查询进度 | 单进程无任务队列的必然结果；分块数上来需要改异步 + 轮询 |
+| 14 | KB 级 chat 模型取全局 `rag.json` 的 `model`（上游用 `kb.SummaryModelID` 按库指定） | 本仓库没有按库配模型的存储，未实现 |
 
 ---
 
 ## 6. 下一步
 
-1. P1 剩余 **1** 项：§2.3 预生成问题（Doc2Query）。
-   §2.2 FAQ 索引已完成（本轮），§2.3 的源码侦察已做完，尚未动代码。
-2. P1 全部子项完成后：Playwright UI 验收 → bugfix loop → test_report（含通过截图）→ 合并 main 并 push
+1. P1 的 **5 个子项已全部实现并通过单测/集成测试**（§2.1 / §2.2 / §2.3 / §2.4 / §2.5）。
+   ⚠️ **这不等于 P1 完成**：PRD 要求的 UI 验收截图与 test_report 都还没有，合并也没做。
+2. Playwright UI 验收（父子分块上传、FAQ 条目管理、Doc2Query 开关与生成）→
+   发现问题走 issue 工作流（`docs/issues/`）→ test_report（含通过截图）→ 合并 worktree 到 main 并 push。
+3. P2–P5 未启动。

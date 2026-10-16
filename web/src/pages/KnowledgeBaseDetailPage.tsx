@@ -22,6 +22,7 @@ import { KbChunkViewer } from '@/components/knowledge-base/KbChunkViewer';
 import { KbSearchLab } from '@/components/knowledge-base/KbSearchLab';
 import { KbChatPanel } from '@/components/knowledge-base/KbChatPanel';
 import { KbFaqPanel } from '@/components/knowledge-base/KbFaqPanel';
+import { KbDoc2QueryPanel } from '@/components/knowledge-base/KbDoc2QueryPanel';
 
 type Tab = 'documents' | 'faq' | 'chunks' | 'search' | 'chat';
 
@@ -203,6 +204,12 @@ export function KnowledgeBaseDetailPage() {
       </div>
 
       <div className="mt-4">
+        {tab === 'documents' && kb && (
+          <div className="mb-4">
+            <KbDoc2QueryPanel kb={kb} />
+          </div>
+        )}
+
         {tab === 'documents' && (
           <Card>
             <CardContent className="p-4 space-y-4">

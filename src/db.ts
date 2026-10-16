@@ -20,6 +20,7 @@ import {
   type FaqMetadata,
   type AnswerStrategy,
 } from './kb/faq.js';
+import type { GeneratedQuestion } from './kb/doc2query.js';
 import {
   AgentKind,
   AgentStatus,
@@ -1264,18 +1265,25 @@ export function initDatabase(): void {
     -- 之前执行 —— 在这里建索引会让既有库启动即 "no such column" 崩溃。
     -- 它建在下方 kb_chunks 的 ensureColumn 之后。
 
-    -- FAQ「分别索引」模式（question_index_mode='separate'）：一条 FAQ 条目
-    -- 仍只有一行 kb_chunks，但要为每个相似问各出一条向量，与上游
-    -- 「1 个 chunk → 1 + N 个 IndexInfo」一致。第 0 号变体（标准问）的向量
-    -- 仍写进 kb_chunks.embedding，走原有 ANN 通道；1..N 号写在这张表里。
-    -- 这样"未嵌入"的判据（kb_chunks.embedding IS NULL）继续成立。
+    -- 一个分块的「额外向量」——即不等于正文本身的那些索引条目。两种来源：
+    --   - faq_variant：FAQ「分别索引」模式（question_index_mode='separate'）下
+    --     每个相似问各出一条向量。第 0 号（标准问）仍写进 kb_chunks.embedding，
+    --     走原有 ANN 通道；1..N 号写这里。
+    --   - generated_question：Doc2Query 给每个分块预生成的问题，每个问题一条。
+    -- 两者都与上游「1 个 chunk → 1 + N 个 IndexInfo」同构：额外条目各自有
+    -- SourceID，但都带着父 chunk_id，命中后按 chunk_id 归并。
+    -- source 列是显式的：虽然当前两类不会落在同一分块上（FAQ 分块不参与
+    -- 问题生成），但靠"不可能同时出现"来区分是最容易被后人改坏的那种约定。
+    -- 正文向量留在 kb_chunks.embedding，这样"未嵌入"的判据（embedding IS NULL）
+    -- 继续成立。
     CREATE TABLE IF NOT EXISTS kb_chunk_variant_vectors (
       chunk_id TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'faq_variant',
       variant_index INTEGER NOT NULL,
       embedding BLOB NOT NULL,
       embedding_model TEXT,
       created_at TEXT NOT NULL,
-      PRIMARY KEY (chunk_id, variant_index)
+      PRIMARY KEY (chunk_id, source, variant_index)
     );
 
     CREATE TABLE IF NOT EXISTS kb_chunk_revisions (
@@ -1537,8 +1545,32 @@ export function initDatabase(): void {
   ensureColumn('knowledge_bases', 'type', "TEXT NOT NULL DEFAULT 'document'");
   ensureColumn('knowledge_bases', 'faq_config', 'TEXT');
   ensureColumn('kb_chunks', 'metadata', 'TEXT');
+  // Doc2Query（P1 §2.3）。content_revision 对齐上游 Chunk.ContentRevision：
+  // 预生成问题是针对某版内容写的，内容一改就该作废重生成。
+  // question_generation_config 是 JSON（enabled / question_count /
+  // custom_instructions），未设置即"关闭"，与上游"零值即关"一致。
+  ensureColumn('kb_chunks', 'content_revision', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn('knowledge_bases', 'question_generation_config', 'TEXT');
   // 同上：索引必须等列存在之后再建。
   db.exec('CREATE INDEX IF NOT EXISTS idx_kb_kb_type ON knowledge_bases(type)');
+
+  // kb_chunk_variant_vectors 在 P1 §2.3 加了 source 列（FAQ 变体 vs 预生成问题）。
+  // 这张表本身还没发布过，所以能在早期跑过本分支的库上直接重建，不需要保数据。
+  const variantCols = db
+    .prepare('PRAGMA table_info(kb_chunk_variant_vectors)')
+    .all() as Array<{ name: string }>;
+  if (variantCols.length > 0 && !variantCols.some((c) => c.name === 'source')) {
+    db.exec('DROP TABLE kb_chunk_variant_vectors');
+    db.exec(`CREATE TABLE kb_chunk_variant_vectors (
+      chunk_id TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'faq_variant',
+      variant_index INTEGER NOT NULL,
+      embedding BLOB NOT NULL,
+      embedding_model TEXT,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (chunk_id, source, variant_index)
+    )`);
+  }
 
   // Vector index tables are dimension-dependent, so they are created here
   // rather than in the fixed-schema block above. A dimension change drops and
@@ -11410,6 +11442,8 @@ export type KnowledgeBaseRow = {
   type?: string | null;
   /** FAQ 配置的 JSON 文本；仅 type='faq' 时有意义。 */
   faq_config?: string | null;
+  /** Doc2Query 配置的 JSON 文本；NULL 表示关闭（与上游"零值即关"一致）。 */
+  question_generation_config?: string | null;
 };
 
 export const KB_TYPE_DOCUMENT = 'document';
@@ -11466,16 +11500,27 @@ export function createKnowledgeBase(
   userId: string,
   name: string,
   description?: string,
-  options?: { type?: string; faqConfig?: string | null },
+  options?: { type?: string; faqConfig?: string | null; questionGenerationConfig?: string | null },
 ): KnowledgeBaseRow {
   const id = crypto.randomUUID();
   const now = isoNow();
   const type = options?.type === KB_TYPE_FAQ ? KB_TYPE_FAQ : KB_TYPE_DOCUMENT;
   db.prepare(
     `INSERT INTO knowledge_bases
-       (id, user_id, name, description, doc_count, created_at, updated_at, type, faq_config)
-     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)`,
-  ).run(id, userId, name, description ?? '', now, now, type, options?.faqConfig ?? null);
+       (id, user_id, name, description, doc_count, created_at, updated_at, type, faq_config,
+        question_generation_config)
+     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    userId,
+    name,
+    description ?? '',
+    now,
+    now,
+    type,
+    options?.faqConfig ?? null,
+    options?.questionGenerationConfig ?? null,
+  );
   return getKnowledgeBase(id, userId)!;
 }
 
@@ -11486,6 +11531,13 @@ export function updateKnowledgeBaseFaqConfig(id: string, faqConfig: string | nul
     id,
   );
 }
+
+export function updateKnowledgeBaseQuestionGenerationConfig(id: string, config: string | null): void {
+  db.prepare(
+    'UPDATE knowledge_bases SET question_generation_config = ?, updated_at = ? WHERE id = ?',
+  ).run(config, isoNow(), id);
+}
+
 
 export function updateKnowledgeBase(
   id: string,
@@ -12278,8 +12330,13 @@ export type KbChunkRow = {
   parent_chunk_id: string | null;
   is_enabled: number;
   chunk_type: string;
-  /** FAQ 条目的业务字段（JSON 文本）；文档块为 NULL。 */
+  /**
+   * 业务字段（JSON 文本）：FAQ 条目是问答字段，文档块放 Doc2Query 的
+   * `generated_questions`；两者都不占独立列。
+   */
   metadata?: string | null;
+  /** 内容版本，编辑一次加一。预生成问题靠它判断是否过期。 */
+  content_revision?: number | null;
   embedding?: Buffer | null;
   embedding_model?: string | null;
   created_at: string;
@@ -12332,6 +12389,11 @@ export function replaceChunksForDocument(
     } catch {
       // vec table absent — nothing to clean.
     }
+    // 额外向量表同样没有级联，重切文档时必须一起清（旧分块的 FAQ 变体与预生成
+    // 问题都会指向已消失的 chunk_id）。
+    db.prepare(
+      'DELETE FROM kb_chunk_variant_vectors WHERE chunk_id IN (SELECT id FROM kb_chunks WHERE doc_id = ?)',
+    ).run(docId);
     db.prepare('DELETE FROM kb_chunks WHERE doc_id = ?').run(docId);
 
     const ids = chunks.map(() => crypto.randomUUID());
@@ -12468,15 +12530,22 @@ export function updateKbChunkContent(
     const hash = crypto.createHash('sha256').update(content).digest('hex');
     // An edited chunk no longer matches its vector — clear it so the next
     // embed pass picks it up rather than serving a stale similarity.
+    // content_revision 同步自增：预生成问题是针对旧内容写的，必须能被识别为过期。
     db.prepare(
       `UPDATE kb_chunks SET content = ?, content_hash = ?, embedding = NULL,
-       embedding_model = NULL, updated_at = ? WHERE id = ?`,
+       embedding_model = NULL, content_revision = content_revision + 1, updated_at = ? WHERE id = ?`,
     ).run(content, hash, now, chunkId);
     try {
       db.prepare('DELETE FROM kb_chunks_vec WHERE chunk_id = ?').run(chunkId);
     } catch {
       // vec table absent.
     }
+    // 预生成问题是针对旧正文写的，正文一改就不再成立：连同向量一起清掉，
+    // 否则该分块自身已无可检向量、却还能被一条过期问题召回。
+    // 这里直接写 SQL 而不是调 question-gen 的封装，避免 db → kb 的反向依赖。
+    db.prepare("DELETE FROM kb_chunk_variant_vectors WHERE chunk_id = ? AND source = 'generated_question'").run(
+      chunkId,
+    );
     return getKbChunk(chunkId);
   })();
 }
@@ -12487,6 +12556,9 @@ export function deleteKbChunk(chunkId: string): boolean {
   } catch {
     // vec table absent.
   }
+  // 额外向量表没有外键级联，删分块必须显式清，否则变体条目会留着指向一个
+  // 已不存在的 chunk_id，检索按 chunk 归并时把一条幽灵结果带出来。
+  db.prepare('DELETE FROM kb_chunk_variant_vectors WHERE chunk_id = ?').run(chunkId);
   const res = db.prepare('DELETE FROM kb_chunks WHERE id = ?').run(chunkId);
   return res.changes > 0;
 }
@@ -12716,27 +12788,34 @@ export function deleteFaqEntries(chunkIds: string[]): number {
   })();
 }
 
-// ── 变体向量（separate 模式的 1..N 号问题） ──────────────────────────────
+// ── 额外向量（FAQ 相似问变体 / Doc2Query 预生成问题） ─────────────────────
 //
 // 见 kb_chunk_variant_vectors 建表注释。这些向量**不做 ANN**，检索走精确
-// 线性扫描：FAQ 库规模有限，而精确扫描的召回不劣于 ANN。这是性能取舍，不是
-// 召回取舍，已登记在 STATE 的已知缺口里。
+// 线性扫描：额外条目的数量级有限，而精确扫描的召回不劣于 ANN。这是性能取舍，
+// 不是召回取舍，已登记在 STATE 的已知缺口里。
+
+export type ChunkVectorSource = 'faq_variant' | 'generated_question';
 
 export function setChunkVariantVectors(
   chunkId: string,
   vectors: Array<{ index: number; embedding: Float32Array; model: string }>,
+  source: ChunkVectorSource = 'faq_variant',
 ): void {
   const now = isoNow();
   const insert = db.prepare(
     `INSERT INTO kb_chunk_variant_vectors
-       (chunk_id, variant_index, embedding, embedding_model, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
+       (chunk_id, source, variant_index, embedding, embedding_model, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   );
   db.transaction(() => {
-    db.prepare('DELETE FROM kb_chunk_variant_vectors WHERE chunk_id = ?').run(chunkId);
+    db.prepare('DELETE FROM kb_chunk_variant_vectors WHERE chunk_id = ? AND source = ?').run(
+      chunkId,
+      source,
+    );
     for (const v of vectors) {
       insert.run(
         chunkId,
+        source,
         v.index,
         Buffer.from(v.embedding.buffer, v.embedding.byteOffset, v.embedding.byteLength),
         v.model,
@@ -12746,20 +12825,32 @@ export function setChunkVariantVectors(
   })();
 }
 
+/** 清掉这个分块的全部额外向量，两种来源都清——分块内容变了，两类都失效。 */
 export function clearChunkVariantVectors(chunkId: string): void {
   db.prepare('DELETE FROM kb_chunk_variant_vectors WHERE chunk_id = ?').run(chunkId);
 }
 
+export function clearChunkVectorsBySource(chunkId: string, source: ChunkVectorSource): void {
+  db.prepare('DELETE FROM kb_chunk_variant_vectors WHERE chunk_id = ? AND source = ?').run(
+    chunkId,
+    source,
+  );
+}
+
 /**
- * Exact KNN over FAQ variant vectors. Results carry the **parent chunk id**, so
- * a variant hit is indistinguishable from a body hit downstream — which is
- * exactly upstream's merge rule (`knowledgebase_search_fusion.go:99-112`:
+ * Exact KNN over a chunk's extra vectors. Results carry the **parent chunk id**,
+ * so an extra-entry hit is indistinguishable from a body hit downstream — which
+ * is exactly upstream's merge rule (`knowledgebase_search_fusion.go:99-112`:
  * dedup by chunk, keep the highest score).
+ *
+ * `source` is narrowed by the caller: FAQ search passes `faq_variant`, document
+ * search passes `generated_question`.
  */
-export function vectorSearchFaqVariants(
+export function vectorSearchChunkVariants(
   kbIds: string[],
   queryEmbedding: Float32Array,
   limit: number,
+  source: ChunkVectorSource,
 ): ChunkSearchRow[] {
   if (kbIds.length === 0) return [];
   const placeholders = kbIds.map(() => '?').join(',');
@@ -12771,9 +12862,9 @@ export function vectorSearchFaqVariants(
        FROM kb_chunk_variant_vectors v
        JOIN kb_chunks c ON c.id = v.chunk_id
        JOIN kb_documents d ON d.id = c.doc_id
-       WHERE c.kb_id IN (${placeholders}) AND c.is_enabled = 1`,
+       WHERE c.kb_id IN (${placeholders}) AND c.is_enabled = 1 AND v.source = ?`,
     )
-    .all(...kbIds) as Array<{
+    .all(...kbIds, source) as Array<{
     chunk_id: string;
     embedding: Buffer;
     doc_id: string;
@@ -12802,6 +12893,93 @@ export function vectorSearchFaqVariants(
   }
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit);
+}
+
+// ── Doc2Query 预生成问题（P1 §2.3） ─────────────────────────────────────────
+//
+// 与上游同构：问题**不进 chunk.content**，只写进该分块的 metadata JSON
+// （`generated_questions` / `generated_questions_revision`），并为每个问题建
+// 一条索引条目，正文是「文档标题 + \n + 问题」，载体是上面那张额外向量表
+// （source='generated_question'）。命中后按 chunk_id 归并回父分块，所以用户
+// 看到的仍然是分块正文。
+
+/** 读出 chunk 的 metadata JSON，坏数据当空对象。 */
+function readChunkMetadata(chunkId: string): Record<string, unknown> {
+  const row = getKbChunk(chunkId);
+  if (!row?.metadata) return {};
+  try {
+    const parsed = JSON.parse(row.metadata) as unknown;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 把补丁合进 metadata 后写回。整串覆盖写，避免 JSON 字段互相踩。 */
+export function patchChunkMetadata(chunkId: string, patch: Record<string, unknown>): void {
+  const merged = { ...readChunkMetadata(chunkId), ...patch };
+  db.prepare('UPDATE kb_chunks SET metadata = ?, updated_at = ? WHERE id = ?').run(
+    JSON.stringify(merged),
+    isoNow(),
+    chunkId,
+  );
+}
+
+/**
+ * 写入某分块的预生成问题。**整体替换**而非追加——上游 `SetDocumentMetadata`
+ * 是整对象 Marshal，异步路径会把已有问题覆盖掉。
+ */
+export function setChunkGeneratedQuestions(
+  chunkId: string,
+  metadata: { generated_questions: GeneratedQuestion[]; generated_questions_revision: number },
+): void {
+  patchChunkMetadata(chunkId, metadata);
+}
+
+export function getChunkGeneratedQuestions(chunkId: string): GeneratedQuestion[] {
+  const raw = readChunkMetadata(chunkId).generated_questions;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (q): q is GeneratedQuestion =>
+      !!q && typeof q === 'object' && typeof (q as any).question === 'string',
+  );
+}
+
+/**
+ * 待生成问题的分块：只有 `text` 型分块参与（父块、FAQ 条目、图注都不参与）。
+ *
+ * 这里**不**筛"是否已嵌入"：上游的合格判定也只看 KB 层面有没有配嵌入模型
+ * （`kb.NeedsEmbeddingModel()`），不看单个分块嵌没嵌。分块正文生成问题与它自己
+ * 有没有向量是两件事，问题的向量由 question-gen 单独算。
+ */
+export function listChunksNeedingQuestions(kbId: string, limit = 500): KbChunkRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM kb_chunks
+       WHERE kb_id = ? AND chunk_type = 'text' AND is_enabled = 1
+       ORDER BY chunk_index ASC LIMIT ?`,
+    )
+    .all(kbId, limit) as KbChunkRow[];
+}
+
+/** 同一文档内某分块的前后邻居，用作生成时的上下文（上游 prev/next）。 */
+export function getSiblingChunkContents(
+  docId: string,
+  chunkIndex: number,
+): { prev: string | null; next: string | null } {
+  const prev = db
+    .prepare(
+      `SELECT content FROM kb_chunks WHERE doc_id = ? AND chunk_index < ?
+       ORDER BY chunk_index DESC LIMIT 1`,
+    )
+    .get(docId, chunkIndex) as { content: string } | undefined;
+  const next = db
+    .prepare(
+      `SELECT content FROM kb_chunks WHERE doc_id = ? AND chunk_index > ?
+       ORDER BY chunk_index ASC LIMIT 1`,
+    )
+    .get(docId, chunkIndex) as { content: string } | undefined;
+  return { prev: prev?.content ?? null, next: next?.content ?? null };
 }
 
 export type KbChunkRevisionRow = {

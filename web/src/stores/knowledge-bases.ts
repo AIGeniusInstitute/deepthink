@@ -36,6 +36,24 @@ export interface KnowledgeBase {
   /** `faq` 库只走向量检索、只能放 FAQ 条目、不接受文件上传。 */
   type?: 'document' | 'faq';
   faqConfig?: FaqConfig | null;
+  /** Doc2Query 预生成问题（上游 question_generation_config）。 */
+  questionGenerationConfig?: QuestionGenerationConfig;
+}
+
+export interface QuestionGenerationConfig {
+  enabled: boolean;
+  questionCount: number;
+  customInstructions: string;
+}
+
+/** 一次问题生成的统计。`disabled` 为真时其余字段无意义。 */
+export interface QuestionGenStats {
+  eligible: number;
+  generated: number;
+  questions: number;
+  skipped: number;
+  stale: number;
+  disabled?: boolean;
 }
 
 /** 一条 FAQ 条目。字段在网络上统一是 snake_case，与后端零翻译。 */
@@ -96,6 +114,10 @@ export interface KbChunk {
   is_enabled: boolean;
   embedded: boolean;
   embedding_model?: string | null;
+  /** 正文版本号；改动一次加一，预生成问题靠它判断是否过期。 */
+  content_revision?: number;
+  /** Doc2Query 为该分块预生成的问题（只进向量索引，不是分块正文的一部分）。 */
+  generated_questions?: string[];
 }
 
 export interface KbCitation {
@@ -141,6 +163,11 @@ interface KbState {
   create: (name: string, description: string, type?: 'document' | 'faq') => Promise<KnowledgeBase | null>;
   remove: (id: string) => Promise<boolean>;
   updateFaqConfig: (kbId: string, config: Partial<FaqConfig>) => Promise<KnowledgeBase | null>;
+  updateQuestionGenConfig: (
+    kbId: string,
+    config: Partial<QuestionGenerationConfig>,
+  ) => Promise<KnowledgeBase | null>;
+  generateQuestions: (kbId: string) => Promise<{ ok: boolean; error?: string; stats?: QuestionGenStats }>;
   listFaqEntries: (kbId: string) => Promise<KbFaqEntry[]>;
   createFaqEntry: (kbId: string, input: FaqEntryInput) => Promise<{ ok: boolean; error?: string; entry?: KbFaqEntry }>;
   updateFaqEntry: (kbId: string, entryId: string, input: FaqEntryInput) => Promise<{ ok: boolean; error?: string; entry?: KbFaqEntry }>;
@@ -228,6 +255,30 @@ export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
       return res.knowledge_base;
     } catch {
       return null;
+    }
+  },
+  updateQuestionGenConfig: async (kbId, config) => {
+    try {
+      const res = await api.patch<{ knowledge_base: KnowledgeBase }>(`${KB_API}/${kbId}`, {
+        question_generation_config: {
+          ...(config.enabled !== undefined ? { enabled: config.enabled } : {}),
+          ...(config.questionCount !== undefined ? { question_count: config.questionCount } : {}),
+          ...(config.customInstructions !== undefined
+            ? { custom_instructions: config.customInstructions }
+            : {}),
+        },
+      });
+      return res.knowledge_base;
+    } catch {
+      return null;
+    }
+  },
+  generateQuestions: async (kbId) => {
+    try {
+      const stats = await api.post<QuestionGenStats>(`${KB_API}/${kbId}/generate-questions`, {});
+      return { ok: true, stats };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : '生成失败' };
     }
   },
   listFaqEntries: async (kbId) => {

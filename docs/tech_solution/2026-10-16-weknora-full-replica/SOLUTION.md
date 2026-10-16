@@ -162,10 +162,78 @@ WeKnora 保护 LaTeX `$...$`、markdown 链接/图片、表格块、围栏代码
 
 ### 2.3 预生成问题（Doc2Query）
 
-- **在文档处理阶段**生成，不是检索期。
-- 参数：`questionCount` 默认 3、**上限 10**；temperature 0.7；maxTokens 512。
-- 生成结果写入 chunk 元数据 `generated_questions`，并**以合成 source_id（截断 64 字符，超长取 hash）作为独立检索条目入索引**。
-- 解析：按行、trim 前导 `0-9.-*) `、丢弃长度 < 5 的行。
+> 本节初稿只写了四条要点，且有一条是错的（"丢弃长度 < 5 的行"——门槛是**字节**数）。
+> 以下为逐行核对后的版本。
+
+**在文档处理阶段生成，不是检索期**。生成的问题**不进 `chunk.content`**，只作为额外索引
+条目存在（上游靠 `SourceID` 加后缀区分），检索命中后按 `chunk_id` 归并回父分块——所以
+用户看到的永远是分块正文，不是问题文本。
+
+#### 2.3.1 源码事实
+
+| # | 事实 | 出处 |
+|---|---|---|
+| 1 | 配置结构 `QuestionGenerationConfig{Enabled, QuestionCount, CustomInstructions}`，JSON 键 `enabled` / `question_count` / `custom_instructions` | `types/knowledgebase.go:639-646` |
+| 2 | **默认关**：KB 列 `question_generation_config` 可空，零值即 `Enabled=false`，`EnsureDefaults` 从不碰它 | `knowledge_process_config.go:260` |
+| 3 | `question_count` 夹取 `≤0→3`、`>10→10`，在 5 处入口都夹 | `knowledge_process.go:2024-2031` |
+| 4 | 批次大小 **20**（`questionGenChunkBatchSize`） | `knowledge_post_process.go:599-604` |
+| 5 | LLM 调用：**只有 `user` 一条消息，没有 system**；temperature 0.7、maxTokens 512、`Thinking:&false` | `knowledge_process.go:2510-2521` |
+| 6 | 提示词模板 `generate_questions.yaml`，`{{context}}` 展开成 `<surrounding_context>` 里的 `<preceding_content>` / `<following_content>` | 同上 |
+| 7 | 自定义指令包进 `<question_generation_business_instructions>`，并追加一句固定的冲突优先级说明；上限 4000 rune | `prompt_instructions.go:9,14-25` |
+| 8 | 输出解析：按 `\n` 切、`TrimLeft(line, "0123456789.-*) ")`、trim、**`len(line) > 5`（字节）**、截到 questionCount、**不去重** | `knowledge_process.go:2524-2546` |
+| 9 | **单块失败只跳过它**（`continue`，不是 `return`）；**正文在生成期间被改过就丢弃结果**（比对 `ContentRevision`） | `knowledge_process.go:2404-2408` / `:2412-2417` |
+| 10 | `SourceID = chunkID + "-" + questionID`；超过 **64** 字节时**只**哈希 questionID（chunkID 原样保留），前缀换 `-q`，取 SHA-256 前 12 字节十六进制 | `types/faq.go:34-49` |
+| 11 | 索引正文 = `buildKnowledgeIndexContent` = `标题 + "\n" + 问题`（标题 trim，空则省略） | `knowledge_index_content.go:9-21` |
+| 12 | 合格性：`ChunkType == text`（**父块、FAQ、图注都不参与**）+ `chunkHasExtractableText`（剥掉 markdown 图片与 `<image>` 后还有没有字）+ KB 配了嵌入模型 | `knowledge_post_process.go:739-741` |
+| 13 | 存进**父分块**的 `metadata`：`{generated_questions:[{id, question, content_revision}], generated_questions_revision}`，**整体替换不是追加** | `knowledge_process.go:2094` 一带 |
+| 14 | 问题条目进**向量库和关键词库两边** | 同上 |
+
+#### 2.3.2 五条显式偏离
+
+1. **没有 asynq。** 上游把生成丢进 `question` 队列（MaxRetry 3 / Timeout 30min）在入库后自动跑。
+   本仓库是单进程，改成 `POST /:id/generate-questions` **显式触发、同步返回统计**——几百个分块
+   就是几百次 LLM 调用，挂在上传请求里会把上传拖成分钟级。批内"单块失败只跳过它"与上游一致。
+2. **没有 trace span。** 上游每批开 `postprocess.question.batch[i]`，本仓库没有 tracing 基建，只写日志。
+3. **没有 `Thinking: &false`。** 那是上游 chat 客户端的字段，OpenAI 兼容协议里没有对应项，故不发。
+4. **生成的问题只进向量索引，不进关键词索引。** 上游两边都进；本仓库的关键词索引是 `kb_chunks`
+   上的 FTS，额外条目没有承载位置。这是取舍不是遗漏：向量召回扩大、关键词召回不变，**召回只增不减**。
+5. **语言名映射只覆盖常见 locale**，其余原样返回 locale 串（上游 `LanguageLocaleName` 有几十项的表）。
+
+#### 2.3.3 落点与承重不变式
+
+- **`kb_chunk_variant_vectors` 复用**（§2.2 建的那张表），加一列 `source`
+  （`'faq_variant' | 'generated_question'`）进主键。没有靠"这两类向量不可能落在同一个 chunk 上"
+  来省掉这一列——那是最容易被后人改坏的那种约定。
+  ⚠️ 这张表在 §2.3 之前**没有发布过**，所以对早期跑过本分支的库做了"检测到缺 `source` 列就
+  drop + recreate"，不保数据。
+- **`kb_chunks.content_revision`**（默认 1）承载过期判定：`updateKbChunkContent` 每次自增，
+  生成前后各读一次比对，不一致就丢弃。
+- **索引一致性有两处必须显式清**（额外向量表没有外键级联，删行不删向量会留下指向幽灵
+  `chunk_id` 的条目）：`updateKbChunkContent` 清掉该块的预生成问题向量（正文变了问题就不成立）、
+  重切文档 / 删分块时按下标清掉对应行。
+- **⚠️ 容易踩的回归点**：`clearChunkVariantVectors(chunkId)` 清的是**全部来源**。
+  `embedding.ts` 里"FAQ 索引模式从 separate 翻回 combined"那条清理必须只清 `faq_variant`，
+  否则重新嵌入一次会把文档库的预生成问题一起抹掉。已改为 `clearChunkVectorsBySource`。
+- **`makeQuestionId` 必须用 `BigInt`**：纳秒时间戳约 1.7e18，超过 `Number.MAX_SAFE_INTEGER`
+  （9.0e15），double 相加时 `+1` 会被吞掉，同批前 256 条会得到同一个 id。Go 那边是 int64 没这问题。
+
+#### 2.3.4 验收证据
+
+`tests/units/kb-doc2query.test.ts` 36 项（纯函数）+ `tests/units/kb-doc2query-flow.test.ts` 17 项
+（配置 → 生成 → 落库 → 检索）。
+
+三条承重分支各做过一次**反向验证**，每次改完都 `diff` 证明字节级还原：
+
+| 被破坏的分支 | 挂掉的用例 |
+|---|---|
+| 检索里去掉 `generated_question` 向量合并 | 2 条（"向量臂能召回它" + "命中的是问题的父分块"） |
+| 单块失败由 `continue` 改成 `return` | 1 条（"单个分块调用失败只跳过它"） |
+| 去掉 `content_revision` 过期判定 | 1 条（"生成期间正文被改过 → 结果丢弃"） |
+
+⚠️ **召回测试的设计有个坑，已避开**：最初写成"单分块 + 搜到即算过"，删掉问题索引那一支
+照样通过——因为 KB 里只有那一个分块，向量检索必然返回它。现在改成用**自身没有向量**的分块
+（入库时嵌入服务故障，这是上游允许的真实状态），此时可检索路径只剩问题索引一条，断言才有内容；
+另加一条"命中得分为问题向量相似度（≈1）"作为直接证据。
 
 ### 2.4 查询改写 / 扩展
 

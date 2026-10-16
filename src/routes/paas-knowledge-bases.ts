@@ -43,6 +43,7 @@ import {
   getFaqEntry,
   deleteFaqEntries,
   updateKnowledgeBaseFaqConfig,
+  updateKnowledgeBaseQuestionGenerationConfig,
   type KnowledgeBaseRow,
   type KbDocumentRow,
   type KbChunkRow,
@@ -56,6 +57,13 @@ import {
   normalizeQuestionIndexMode,
   type FaqMetadata,
 } from '../kb/faq.js';
+import {
+  clampQuestionCount,
+  parseQuestionGenerationConfig,
+  serializeQuestionGenerationConfig,
+  type GeneratedQuestion,
+} from '../kb/doc2query.js';
+import { generateQuestionsForKb } from '../kb/question-gen.js';
 import {
   KnowledgeBaseCreateSchema,
   KnowledgeBasePatchSchema,
@@ -89,6 +97,7 @@ import {
   answerQuestionStream,
   resolveQueryExpansion,
   resolveQueryUnderstanding,
+  resolveRagConfig,
   type RagStreamEvent,
 } from '../kb/rag.js';
 import {
@@ -119,6 +128,9 @@ function serializeKb(row: KnowledgeBaseRow): KnowledgeBase {
     // 上游对非 FAQ 库把 faq_config 清成 nil（EnsureDefaults，:772-774），
     // 这里同样只在 FAQ 库上回显，避免普通库看到一份无意义的默认配置。
     faqConfig: type === KB_TYPE_FAQ ? parseFaqConfig(row.faq_config) : null,
+    // Doc2Query 配置对两种库都存在（FAQ 库用不上，但上游也没对它做区分），
+    // 所以这里总是回显，关着就是 `{enabled:false,...}`。
+    questionGenerationConfig: parseQuestionGenerationConfig(row.question_generation_config),
   };
 }
 
@@ -189,7 +201,30 @@ function serializeChunk(row: KbChunkRow, withContent = true): Record<string, unk
     embedding_model: row.embedding_model ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    // Doc2Query 的产出挂在这里，前端看分块时能直接看到"这块能回答什么问题"。
+    // 过期与否按 content_revision 判定，和上游 IsQuestionCurrent 同一套规则。
+    content_revision: row.content_revision ?? 1,
+    generated_questions: questionsOf(row).map((q) => q.question),
   };
+}
+
+/**
+ * 分块自带 metadata，直接读它即可 —— 列表接口一次返回几百个分块，每个再回查
+ * 一次库就是几百次多余查询。
+ */
+function questionsOf(row: KbChunkRow): GeneratedQuestion[] {
+  if (!row.metadata) return [];
+  try {
+    const meta = JSON.parse(row.metadata) as { generated_questions?: unknown };
+    const list = meta?.generated_questions;
+    if (!Array.isArray(list)) return [];
+    return list.filter(
+      (q): q is GeneratedQuestion =>
+        !!q && typeof q === 'object' && typeof (q as { question?: unknown }).question === 'string',
+    );
+  } catch {
+    return [];
+  }
 }
 
 /** Confirm the KB exists and belongs to the caller. */
@@ -246,9 +281,17 @@ paasKbRoute.post('/', async (c) => {
           ),
         })
       : null;
+  const qgRequested = validation.data.question_generation_config;
   const row = createKnowledgeBase(user.id, validation.data.name, validation.data.description, {
     type,
     faqConfig,
+    questionGenerationConfig: qgRequested
+      ? serializeQuestionGenerationConfig({
+          enabled: qgRequested.enabled === true,
+          questionCount: clampQuestionCount(qgRequested.question_count),
+          customInstructions: qgRequested.custom_instructions ?? '',
+        })
+      : null,
   });
   return c.json({ knowledge_base: serializeKb(row) }, 201);
 });
@@ -282,6 +325,22 @@ paasKbRoute.patch('/:id', async (c) => {
         question_index_mode: normalizeQuestionIndexMode(
           requested.question_index_mode ?? current.questionIndexMode,
         ),
+      }),
+    );
+  }
+
+  // Doc2Query 配置是「部分更新」：没传的字段沿用现值，传了才覆盖。
+  // 上游没有单独的更新接口，配置是随 KB 整体提交的；这里保留同样的语义但允许
+  // 只改一个开关，否则前端每改一次 enabled 都要把 question_count 一起回填。
+  const qgRequested = validation.data.question_generation_config;
+  if (qgRequested) {
+    const current = parseQuestionGenerationConfig(existing.question_generation_config);
+    updateKnowledgeBaseQuestionGenerationConfig(
+      id,
+      serializeQuestionGenerationConfig({
+        enabled: qgRequested.enabled ?? current.enabled,
+        questionCount: clampQuestionCount(qgRequested.question_count ?? current.questionCount),
+        customInstructions: qgRequested.custom_instructions ?? current.customInstructions,
       }),
     );
   }
@@ -850,6 +909,36 @@ paasKbRoute.post('/:id/rebuild-index', async (c) => {
     rechunked_documents: stale.length,
     ...stats,
   });
+});
+
+/**
+ * Doc2Query：给知识库里所有合格分块预生成"这段能回答的问题"，编进向量索引。
+ *
+ * 上游把这件事放在入库后处理里自动跑（`question:generation` 异步任务），本仓库
+ * 是单进程，改成显式触发 —— 生成要调 LLM，几百个分块就是几百次调用，挂在上传
+ * 请求里会把上传拖成分钟级。同步返回统计，前端据此提示。
+ *
+ * 未开启或没配 chat 模型时返回 `disabled: true` 而不是报错：没配模型不是错误，
+ * 只是这个能力用不了。
+ */
+paasKbRoute.post('/:id/generate-questions', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const kb = requireKb(id, user.id);
+  if (!kb) return c.json({ error: 'Knowledge base not found' }, 404);
+
+  const rag = resolveRagConfig();
+  const result = await generateQuestionsForKb(
+    id,
+    rag ? { baseUrl: rag.baseUrl, apiKey: rag.apiKey, model: rag.model } : null,
+  );
+  if (result.disabled) {
+    return c.json({
+      ...result,
+      error: '问题生成未开启或未配置问答模型（data/config/rag.json 的 model）',
+    }, 400);
+  }
+  return c.json({ kb_id: id, ...result });
 });
 
 // ─── Search ───────────────────────────────────────────────

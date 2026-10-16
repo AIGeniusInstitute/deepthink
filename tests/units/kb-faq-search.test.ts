@@ -344,11 +344,12 @@ describe('separate 模式：一条条目产生 1 + N 条向量', () => {
     expect(row.embedding).toBeTruthy();
 
     // 两个相似问 → 变体下标 1、2（下标 0 是标准问，在 chunk 自己身上）
-    const { vectorSearchFaqVariants } = await import('../../src/db.js');
-    const variants = vectorSearchFaqVariants(
+    const { vectorSearchChunkVariants } = await import('../../src/db.js');
+    const variants = vectorSearchChunkVariants(
       [separateKbId],
       new Float32Array(fakeVector(`${SIMILAR_B}\n${ANSWER}`)),
       10,
+      'faq_variant',
     );
     expect(variants.map((v) => v.chunk_id)).toContain(separateEntryId);
   });
@@ -377,11 +378,12 @@ describe('separate 模式：一条条目产生 1 + N 条向量', () => {
   });
 
   test('combined 模式的库不产生变体向量', async () => {
-    const { vectorSearchFaqVariants } = await import('../../src/db.js');
-    const variants = vectorSearchFaqVariants(
+    const { vectorSearchChunkVariants } = await import('../../src/db.js');
+    const variants = vectorSearchChunkVariants(
       [faqKbId],
       new Float32Array(fakeVector(getKbChunk(entryId)!.content)),
       10,
+      'faq_variant',
     );
     expect(variants).toHaveLength(0);
   });
