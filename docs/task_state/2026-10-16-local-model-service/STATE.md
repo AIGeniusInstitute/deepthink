@@ -9,8 +9,12 @@
 
 ## 1. 当前结论（一句话）
 
-**代码链路已打通并经真模型验证**：扫描件能 OCR、能按 Markdown 保留表格、失败页会留痕而不再静默丢页。
-**但默认视觉模型的吞吐不达标**，正在用实测数据选型（见 §4）。
+**需求已交付并验证**：扫描件能 OCR（保留 Markdown 表格、失败页留痕而不静默丢页），
+内置开源模型服务（Ollama + `bge-m3` + `qwen2.5vl:7b`）已在 **9999 生产实例**落地，
+检索实测生效（keyword 0 命中 / vector 3 命中）。
+
+隔离实例 e2e 21/21（`TEST_REPORT.md`），9999 落地复核 7/7（`ROLLOUT_9999.md`）。
+落地时发现并修复了 1 个新缺陷（§4.3）。未验与未修的边界如实记在两份报告的"遗留"一节。
 
 ---
 
@@ -105,13 +109,24 @@ finish_reason: "length"   total_tokens: 4096   contentLen: 0   reasonLen: 4196
 已改 `RECOMMENDED_VISION_MODEL = 'qwen2.5vl:7b'`。链路对两种模型都支持，
 想换回思维链模型只需改 `data/config/ocr.json` 的 `model`。
 
-### 4.2 其余待办
+### 4.2 其余待办 —— 已全部完成
 
-- [x] ~~按实测数据定下默认视觉模型~~ → 已定 `qwen2.5vl:7b`（§4.1）
-- [ ] e2e 验收 AC-1…AC-9（真实实例、真实文件选择框、分块正文含真实扫描词、检索命中）+ 截图
-- [ ] `docs/test_report/2026-10-16-local-model-service/TEST_REPORT.md`
-- [ ] 9999 落地：合并 main → 重建 → **先备份日志再** `make start-prod PORT=9999` → 用界面「一键启用」
-- [ ] 清理 `spike-*.ts` 与 `/tmp/ocr-spike/*.png`
+- [x] 按实测数据定下默认视觉模型 → 已定 `qwen2.5vl:7b`（§4.1）
+- [x] e2e 验收 AC-1…AC-5（真实实例、真实文件选择框、分块正文含真实扫描词、检索命中）+ 截图
+      → 21/21 通过，`tests/e2e/kb-ocr-scan.mjs`
+- [x] `docs/test_report/2026-10-16-local-model-service/TEST_REPORT.md`
+- [x] 9999 落地：合并 main → 重建 → **先备份日志再** `make start-prod PORT=9999` → 用界面「一键启用」
+      → 见 `docs/test_report/2026-10-16-local-model-service/ROLLOUT_9999.md`
+- [x] 清理 `spike-*.ts` 与 `/tmp/ocr-spike/*.png`
+
+### 4.3 落地 9999 时发现的新缺陷（已修）
+
+「重建索引」后列表仍显示「已向量化 0」—— `kb_documents.embedded_chunk_count` 是冗余计数列，
+`rebuild-index` 绕开 ingest 管线批量补向量，没人更新它。9999 上 267/267 个分块都有向量、
+检索实测命中，列表却说 0。
+
+修复：`docs/issues/2026-10-16-kb-embedded-count-stale.md`（分支 `worktree-fix-embedded-count`，
+提交 `6e9e8d1`）。9999 实测 0 → 266（前后截图见 ROLLOUT_9999.md §3.3）。
 
 ---
 
@@ -138,7 +153,9 @@ npx tsx spike-real-ocr.ts <model> ollama
 严格按监督者规则，本文件区分三种状态：
 
 - **已验证**：§3.2 的截断修复（有真模型输出、有正文留痕、有 `空页 0` 的对照）
-- **待验证**：扫描件从上传到"检索命中"的端到端链路（§4.2，尚未跑）
-- **不达标**：`qwen3-vl:8b` 吞吐（§4.1，有实测单页 300s 超时为证）
+- **已验证**：扫描件从上传到"检索命中"的端到端链路（`TEST_REPORT.md` §3，21/21）
+- **已验证**：9999 上向量模型生效（keyword 0 命中 / vector 3 命中，`ROLLOUT_9999.md` §2）
+- **不达标**：`qwen3-vl:8b` 吞吐（§4.1，有实测单页 300s 超时为证）→ 已换 `qwen2.5vl:7b`
 
-**在 §4.1 定论、§4.2 跑完之前，不宣称「扫描件已支持」交付完成。**
+**需求的两件事（扫描件支持 / 9999 配内置向量模型）均已交付并验证。**
+未验与未修的边界如实记在 `TEST_REPORT.md` §7 与 `ROLLOUT_9999.md` §7，不宣称"全部都行"。
