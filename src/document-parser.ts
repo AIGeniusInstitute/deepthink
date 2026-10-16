@@ -7,6 +7,7 @@
  */
 
 import type { Buffer } from 'node:buffer';
+import { assertResolvesToPublicAddress, validateSafeHttpsUrl } from './url-safety.js';
 
 export type ParserType =
   | 'pdf'
@@ -164,32 +165,62 @@ function flattenJson(value: unknown, path: string, out: string[], depth: number)
   }
 }
 
+/** 重定向跳数上限。设为 0 可禁用跟随（URL 入库不需要跨站跳转）。 */
+const MAX_REDIRECTS = 5;
+
+/**
+ * 校验单个跳转目标。字面量判定（快，且填内网字面 IP 时不依赖网络）之后
+ * 再做 DNS 解析判定——域名可以指向内网，只查字面量会漏。
+ */
+async function assertSafeFetchTarget(rawUrl: string): Promise<void> {
+  const reason = validateSafeHttpsUrl(rawUrl, { allowHttp: true });
+  if (reason) {
+    throw new Error(`Blocked URL: ${reason}`);
+  }
+  await assertResolvesToPublicAddress(new URL(rawUrl).hostname, 'URL hostname');
+}
+
 export async function fetchUrlContent(url: string, opts?: { timeoutMs?: number; maxBytes?: number }): Promise<string> {
   const timeoutMs = opts?.timeoutMs ?? 15_000;
   const maxBytes = opts?.maxBytes ?? 1_000_000;
 
-  if (!/^https?:\/\//i.test(url)) {
-    throw new Error('Only http(s) URLs are supported');
-  }
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: { 'User-Agent': 'DeepThink-KB-Fetcher/1.0' },
-    });
-    if (!res.ok) {
-      throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
+    // 逐跳校验：`redirect: 'follow'` 只校验首跳，一个指向内网的重定向即可绕过。
+    let current = url;
+    for (let hop = 0; ; hop++) {
+      await assertSafeFetchTarget(current);
+
+      const res = await fetch(current, {
+        signal: controller.signal,
+        redirect: 'manual',
+        headers: { 'User-Agent': 'DeepThink-KB-Fetcher/1.0' },
+      });
+
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get('location');
+        if (!location) {
+          throw new Error(`Redirect (${res.status}) without Location header`);
+        }
+        if (hop >= MAX_REDIRECTS) {
+          throw new Error(`Too many redirects (max ${MAX_REDIRECTS})`);
+        }
+        current = new URL(location, current).toString();
+        continue;
+      }
+
+      if (!res.ok) {
+        throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
+      }
+      const contentType = res.headers.get('content-type') ?? '';
+      if (!/text\/(html|plain)/i.test(contentType) && !/xml/i.test(contentType)) {
+        throw new Error(`Unsupported content type: ${contentType}`);
+      }
+      const html = await res.text();
+      const truncated = html.length > maxBytes ? html.slice(0, maxBytes) : html;
+      return stripHtml(truncated);
     }
-    const contentType = res.headers.get('content-type') ?? '';
-    if (!/text\/(html|plain)/i.test(contentType) && !/xml/i.test(contentType)) {
-      throw new Error(`Unsupported content type: ${contentType}`);
-    }
-    const html = await res.text();
-    const truncated = html.length > maxBytes ? html.slice(0, maxBytes) : html;
-    return stripHtml(truncated);
   } finally {
     clearTimeout(timer);
   }
