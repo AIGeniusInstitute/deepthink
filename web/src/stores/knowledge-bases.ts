@@ -20,6 +20,11 @@ export interface KbDocumentMeta {
   stages?: Array<{ stage: string; status: string; ms: number; detail?: string }>;
 }
 
+export interface FaqConfig {
+  indexMode: 'question_only' | 'question_answer';
+  questionIndexMode: 'combined' | 'separate';
+}
+
 export interface KnowledgeBase {
   id: string;
   userId: string;
@@ -28,6 +33,37 @@ export interface KnowledgeBase {
   docCount: number;
   createdAt: string;
   updatedAt: string;
+  /** `faq` 库只走向量检索、只能放 FAQ 条目、不接受文件上传。 */
+  type?: 'document' | 'faq';
+  faqConfig?: FaqConfig | null;
+}
+
+/** 一条 FAQ 条目。字段在网络上统一是 snake_case，与后端零翻译。 */
+export interface KbFaqEntry {
+  id: string;
+  chunk_id: string;
+  knowledge_base_id: string;
+  standard_question: string;
+  similar_questions: string[];
+  negative_questions: string[];
+  answers: string[];
+  answer_strategy: 'all' | 'random';
+  version: number;
+  is_enabled: boolean;
+  content: string;
+  content_hash: string;
+  embedded: boolean;
+  updated_at: string;
+  created_at: string;
+}
+
+export interface FaqEntryInput {
+  standard_question: string;
+  similar_questions?: string[];
+  negative_questions?: string[];
+  answers?: string[];
+  answer_strategy?: 'all' | 'random';
+  is_enabled?: boolean;
 }
 
 /** 一条检索命中：内容 + 可回源核验的字符偏移。 */
@@ -101,8 +137,14 @@ interface KbState {
   loading: boolean;
   error: string | null;
   load: () => Promise<void>;
-  create: (name: string, description: string) => Promise<KnowledgeBase | null>;
+  get: (id: string) => Promise<KnowledgeBase | null>;
+  create: (name: string, description: string, type?: 'document' | 'faq') => Promise<KnowledgeBase | null>;
   remove: (id: string) => Promise<boolean>;
+  updateFaqConfig: (kbId: string, config: Partial<FaqConfig>) => Promise<KnowledgeBase | null>;
+  listFaqEntries: (kbId: string) => Promise<KbFaqEntry[]>;
+  createFaqEntry: (kbId: string, input: FaqEntryInput) => Promise<{ ok: boolean; error?: string; entry?: KbFaqEntry }>;
+  updateFaqEntry: (kbId: string, entryId: string, input: FaqEntryInput) => Promise<{ ok: boolean; error?: string; entry?: KbFaqEntry }>;
+  deleteFaqEntries: (kbId: string, ids: string[]) => Promise<number>;
   listDocuments: (kbId: string) => Promise<KbDocumentMeta[]>;
   getDocument: (docId: string) => Promise<KbDocumentMeta | null>;
   uploadDocument: (kbId: string, file: File, cfg?: ChunkConfigInput) => Promise<{ ok: boolean; error?: string }>;
@@ -145,9 +187,21 @@ export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
       set({ loading: false, error: e?.message ?? 'Load failed' });
     }
   },
-  create: async (name, description) => {
+  get: async (id) => {
     try {
-      const res = await api.post<{ knowledge_base: KnowledgeBase }>(KB_API, { name, description });
+      const res = await api.get<{ knowledge_base: KnowledgeBase }>(`${KB_API}/${id}`);
+      return res.knowledge_base;
+    } catch {
+      return null;
+    }
+  },
+  create: async (name, description, type) => {
+    try {
+      const res = await api.post<{ knowledge_base: KnowledgeBase }>(KB_API, {
+        name,
+        description,
+        ...(type ? { type } : {}),
+      });
       await get().load();
       return res.knowledge_base;
     } catch {
@@ -161,6 +215,52 @@ export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
       return true;
     } catch {
       return false;
+    }
+  },
+  updateFaqConfig: async (kbId, config) => {
+    try {
+      const res = await api.patch<{ knowledge_base: KnowledgeBase }>(`${KB_API}/${kbId}`, {
+        faq_config: {
+          ...(config.indexMode ? { index_mode: config.indexMode } : {}),
+          ...(config.questionIndexMode ? { question_index_mode: config.questionIndexMode } : {}),
+        },
+      });
+      return res.knowledge_base;
+    } catch {
+      return null;
+    }
+  },
+  listFaqEntries: async (kbId) => {
+    const res = await api.get<{ entries: KbFaqEntry[] }>(`${KB_API}/${kbId}/faq/entries`);
+    return res.entries ?? [];
+  },
+  createFaqEntry: async (kbId, input) => {
+    try {
+      const res = await api.post<{ entry: KbFaqEntry }>(`${KB_API}/${kbId}/faq/entries`, input);
+      return { ok: true, entry: res.entry };
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '创建失败' };
+    }
+  },
+  updateFaqEntry: async (kbId, entryId, input) => {
+    try {
+      const res = await api.put<{ entry: KbFaqEntry }>(`${KB_API}/${kbId}/faq/entries/${entryId}`, input);
+      return { ok: true, entry: res.entry };
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '保存失败' };
+    }
+  },
+  deleteFaqEntries: async (kbId, ids) => {
+    try {
+      // api.delete 不带 body，而批量删除的 id 列表在 body 里，所以直接用 apiFetch。
+      const res = await apiFetch<{ deleted: number }>(`${KB_API}/${kbId}/faq/entries`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      return res?.deleted ?? 0;
+    } catch {
+      return 0;
     }
   },
   listDocuments: async (kbId) => {

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import {
   ArrowLeft,
   FileText,
+  HelpCircle,
   Layers,
   Link as LinkIcon,
   MessageSquare,
@@ -20,11 +21,13 @@ import { useKnowledgeBasesStore, type KbDocumentMeta } from '@/stores/knowledge-
 import { KbChunkViewer } from '@/components/knowledge-base/KbChunkViewer';
 import { KbSearchLab } from '@/components/knowledge-base/KbSearchLab';
 import { KbChatPanel } from '@/components/knowledge-base/KbChatPanel';
+import { KbFaqPanel } from '@/components/knowledge-base/KbFaqPanel';
 
-type Tab = 'documents' | 'chunks' | 'search' | 'chat';
+type Tab = 'documents' | 'faq' | 'chunks' | 'search' | 'chat';
 
 const TABS: Array<{ id: Tab; label: string; icon: typeof FileText }> = [
   { id: 'documents', label: '文档', icon: FileText },
+  { id: 'faq', label: 'FAQ 条目', icon: HelpCircle },
   { id: 'chunks', label: '分块', icon: Layers },
   { id: 'search', label: '检索测试台', icon: Search },
   { id: 'chat', label: '问答', icon: MessageSquare },
@@ -77,6 +80,17 @@ export function KnowledgeBaseDetailPage() {
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const kb = list.find((k) => k.id === id);
+  const isFaq = kb?.type === 'faq';
+
+  // FAQ 库没有文档也没有分块（条目就是它的全部内容），这两屏对它是空的，
+  // 留着一排能点进去的空白页签只会让人以为是坏了。
+  const visibleTabs = TABS.filter((t) =>
+    isFaq ? t.id !== 'documents' && t.id !== 'chunks' : t.id !== 'faq',
+  );
+
+  useEffect(() => {
+    if (isFaq && tab === 'documents') setTab('faq');
+  }, [isFaq, tab]);
 
   const refreshDocs = useCallback(async () => {
     if (!id) return;
@@ -169,7 +183,7 @@ export function KnowledgeBaseDetailPage() {
       />
 
       <div className="mt-4 flex items-center gap-1 border-b">
-        {TABS.map((t) => {
+        {visibleTabs.map((t) => {
           const Icon = t.icon;
           return (
             <button
@@ -379,10 +393,12 @@ export function KnowledgeBaseDetailPage() {
           </Card>
         )}
 
+        {tab === 'faq' && kb && <KbFaqPanel kb={kb} />}
+
         {tab === 'search' && (
           <Card>
             <CardContent className="p-4">
-              <KbSearchLab kbId={id} />
+              <KbSearchLab kbId={id} isFaq={isFaq} />
             </CardContent>
           </Card>
         )}
@@ -390,7 +406,7 @@ export function KnowledgeBaseDetailPage() {
         {tab === 'chat' && (
           <Card>
             <CardContent className="p-4">
-              <KbChatPanel kbId={id} />
+              <KbChatPanel kbId={id} isFaq={isFaq} />
             </CardContent>
           </Card>
         )}

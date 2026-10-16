@@ -19,6 +19,7 @@ export function KnowledgeBasesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  const [newType, setNewType] = useState<'document' | 'faq'>('document');
 
   useEffect(() => {
     void load();
@@ -29,11 +30,12 @@ export function KnowledgeBasesPage() {
       toast.error('请输入名称');
       return;
     }
-    const kb = await create(newName.trim(), newDesc);
+    const kb = await create(newName.trim(), newDesc, newType);
     if (kb) {
       toast.success('知识库已创建');
       setNewName('');
       setNewDesc('');
+      setNewType('document');
       setShowCreate(false);
       navigate(`/knowledge-bases/${kb.id}`);
     } else {
@@ -77,7 +79,14 @@ export function KnowledgeBasesPage() {
                   <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
                     {kb.description || '无描述'}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">{kb.docCount} 个文档</div>
+                  <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+                    <span>{kb.type === 'faq' ? 'FAQ 知识库' : `${kb.docCount} 个文档`}</span>
+                    {kb.type === 'faq' && (
+                      <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-600">
+                        问答对
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-0.5 shrink-0">
                   <Button
@@ -123,6 +132,33 @@ export function KnowledgeBasesPage() {
                 value={newDesc}
                 onChange={(e) => setNewDesc(e.target.value)}
               />
+              {/* 类型创建后不可改：两类库的入库路径完全不同（文件 vs 问答对）。 */}
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">类型</div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant={newType === 'document' ? 'default' : 'outline'}
+                    data-testid="kb-create-type-document"
+                    onClick={() => setNewType('document')}
+                  >
+                    文档库
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={newType === 'faq' ? 'default' : 'outline'}
+                    data-testid="kb-create-type-faq"
+                    onClick={() => setNewType('faq')}
+                  >
+                    FAQ 问答库
+                  </Button>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {newType === 'faq'
+                    ? '只存问答对，仅走向量检索，不接受文件上传'
+                    : '上传文档，自动切分并建立向量 + 关键词索引'}
+                </div>
+              </div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" size="sm" onClick={() => setShowCreate(false)}>
                   取消

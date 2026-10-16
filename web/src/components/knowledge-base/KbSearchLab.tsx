@@ -18,7 +18,7 @@ const MODES: Array<{ value: NonNullable<KbSearchParams['mode']>; label: string; 
  * 臂分数、融合来源和字符偏移一并摊开，让人能判断「没搜到」是切块问题、向量问题
  * 还是查询本身的问题，而不是黑盒式地反复改 topK。
  */
-export function KbSearchLab({ kbId }: { kbId: string }) {
+export function KbSearchLab({ kbId, isFaq = false }: { kbId: string; isFaq?: boolean }) {
   const { search, getDocumentContent } = useKnowledgeBasesStore();
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<NonNullable<KbSearchParams['mode']>>('hybrid');
@@ -58,6 +58,12 @@ export function KbSearchLab({ kbId }: { kbId: string }) {
   const openSource = async (hit: KbHit) => {
     if (source?.chunkId === hit.chunk_id) {
       setSource(null);
+      return;
+    }
+    // FAQ 分块的 content 是合成的问答文本，不是任何文档的切片——按字符偏移回源
+    // 只会切出容器文档里一段无关内容。所以这里直接取 content，不假装能回源。
+    if (isFaq) {
+      setSource({ chunkId: hit.chunk_id, text: hit.content });
       return;
     }
     try {
@@ -205,10 +211,20 @@ export function KbSearchLab({ kbId }: { kbId: string }) {
                 {source?.chunkId === h.chunk_id && (
                   <div className="text-xs border-t pt-1.5">
                     <div className="font-medium mb-1">
-                      原文切片：
-                      <span className={source.text === h.content ? 'text-emerald-600' : 'text-red-600'}>
-                        {source.text === h.content ? ' 与命中内容一致 ✓' : ' 与命中内容不一致 ✗'}
-                      </span>
+                      {isFaq ? (
+                        <span className="text-muted-foreground">
+                          FAQ 条目内容（合成文本，无原文可回源）
+                        </span>
+                      ) : (
+                        <>
+                          原文切片：
+                          <span
+                            className={source.text === h.content ? 'text-emerald-600' : 'text-red-600'}
+                          >
+                            {source.text === h.content ? ' 与命中内容一致 ✓' : ' 与命中内容不一致 ✗'}
+                          </span>
+                        </>
+                      )}
                     </div>
                     <pre className="whitespace-pre-wrap text-muted-foreground bg-muted/40 rounded p-2 max-h-40 overflow-auto">
                       {source.text}

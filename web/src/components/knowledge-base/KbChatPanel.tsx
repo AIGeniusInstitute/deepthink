@@ -16,7 +16,7 @@ import {
  * 回答里的 [1] [2] 是模型按参考资料编号写的，因此引用列表必须和本次回答一起
  * 呈现 —— 用户点开编号要能看到依据的原文，否则「有引用」只是装饰。
  */
-export function KbChatPanel({ kbId }: { kbId: string }) {
+export function KbChatPanel({ kbId, isFaq = false }: { kbId: string; isFaq?: boolean }) {
   const { getDocumentContent, clearChatSession } = useKnowledgeBasesStore();
   const [messages, setMessages] = useState<KbChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -82,6 +82,11 @@ export function KbChatPanel({ kbId }: { kbId: string }) {
       return;
     }
     setExpanded(citation.chunk_id);
+    // FAQ 条目的 content 是合成的问答文本，按偏移回源只会切出容器文档里的无关内容。
+    if (isFaq) {
+      setSource(citation.content);
+      return;
+    }
     try {
       setSource(await getDocumentContent(citation.doc_id, citation.start_at, citation.end_at));
     } catch {
@@ -142,10 +147,12 @@ export function KbChatPanel({ kbId }: { kbId: string }) {
                         <span className="font-mono mr-1">[{ci + 1}]</span>
                         <span className="font-medium">{c.filename}</span>
                         {c.heading_path && <span className="text-muted-foreground"> · {c.heading_path}</span>}
-                        <span className="text-muted-foreground font-mono">
-                          {' '}
-                          · [{c.start_at}, {c.end_at})
-                        </span>
+                        {!isFaq && (
+                          <span className="text-muted-foreground font-mono">
+                            {' '}
+                            · [{c.start_at}, {c.end_at})
+                          </span>
+                        )}
                         <div className="text-muted-foreground truncate">{c.content}</div>
                       </button>
                       {expanded === c.chunk_id && source !== null && (
