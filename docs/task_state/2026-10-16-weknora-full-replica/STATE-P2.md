@@ -95,8 +95,31 @@
 | 步骤 | 结果 |
 |---|---|
 | `npx tsc --noEmit` | 0 错 |
-| `npm run build` | ✅ |
+| `npm run build` + `npm run build:web` | ✅ |
 | 全量单测 | 187 文件：183 passed / 4 skipped；2493 条：2477 passed / 16 skipped |
-| e2e | 35/35 |
-| ff-merge → main | ✅ |
-| push `origin` | ✅（atomgit + github 双推） |
+| e2e（隔离实例 9922） | 35/35 |
+| ff-merge → main（`3b152e2` → `bce0b69`） | ✅ |
+| push `origin` | ✅（atomgit + github 双推，均在 `bce0b69`） |
+| 9999 生产实例重新部署（`make stop-prod` → `make start-prod PORT=9999`） | ✅ |
+| 9999 上线自检（真实点击） | ✅ **14/14** |
+
+---
+
+## 6. 9999 上线自检（`logs/e2e-kb-9999-livecheck/`）
+
+部署后打生产实例跑的一遍真机复核，脚本 `tests/e2e/kb-9999-livecheck.mjs`，
+截图留档 `docs/test_report/2026-10-16-weknora-full-replica/screenshots-9999-livecheck/`。
+
+| 断言 | 结果 |
+|---|---|
+| 登录 9999 | ✅ |
+| 打开**用户报的那个库**（`40585997-…`，只读） | ✅ |
+| 点「上传文档」弹出**原生文件选择框**（复核 16:18 那条"没反应"） | ✅ |
+| 新建自检库 → 手写 Markdown 入库 | ✅ |
+| 整包 zip：`解包后：入库 3 · 跳过 3 · 失败 0`（逐条给理由） | ✅ |
+| 目录上传：`3/3 · 成功 3`，保留 `dirtree/protocol/visit.md` 相对路径，隐藏项未入库 | ✅ |
+| 检索命中自写文档 | ✅ 5 条命中 |
+| 切到「检索测试台」再切回，`webkitdirectory` 仍在 | ✅ |
+
+**没有往用户的库里写任何数据**：用户那个库全程只读打开；所有写入动作都落在自检新建的
+`上线自检 <时间>` 库里（可随时删除）。上传进自检库的文档同理。

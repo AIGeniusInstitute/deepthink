@@ -1,0 +1,77 @@
+{
+  "base": "http://127.0.0.1:9999",
+  "total": 14,
+  "passed": 14,
+  "results": [
+    {
+      "name": "9999 登录成功",
+      "ok": true,
+      "detail": "http://127.0.0.1:9999/chat"
+    },
+    {
+      "name": "用户报的库页面可打开",
+      "ok": true,
+      "detail": "http://127.0.0.1:9999/knowledge-bases/40585997-0346-4468-bd71-8522134f7a1e"
+    },
+    {
+      "name": "详情页存在「上传文档」按钮",
+      "ok": true,
+      "detail": "data-testid=kb-upload-button ×1"
+    },
+    {
+      "name": "点「上传文档」弹出文件选择框（16:18 缺陷复核）",
+      "ok": true,
+      "detail": "原生 filechooser 已弹出，multiple=false"
+    },
+    {
+      "name": "新建自检库",
+      "ok": true,
+      "detail": "kb=eaf62b02-a49a-4ca2-9d82-c962769fffcd"
+    },
+    {
+      "name": "P2「手写 Markdown」入口存在",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "手写文档入库",
+      "ok": true,
+      "detail": "列表 1 行"
+    },
+    {
+      "name": "「上传目录」input 存在",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "webkitdirectory 属性存在（首屏）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "整包 zip 上传有回执",
+      "ok": true,
+      "detail": "解包后：入库 3 · 跳过 3 · 失败 0"
+    },
+    {
+      "name": "目录上传入库（含相对路径）",
+      "ok": true,
+      "detail": "7 行"
+    },
+    {
+      "name": "隐藏项未入库",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "检索命中自检文档",
+      "ok": true,
+      "detail": "5 条命中"
+    },
+    {
+      "name": "切页签回来后 webkitdirectory 仍在",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}
