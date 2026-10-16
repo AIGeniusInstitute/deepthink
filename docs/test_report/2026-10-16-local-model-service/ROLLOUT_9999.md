@@ -171,8 +171,10 @@ DT_KB=<知识库 id> DT_OUT=logs/probe-9999 \
   node tests/e2e/_probe-9999-verify.mjs
 ```
 
-> 探针脚本是一次性的现场复核工具，跑完即删；**可重复的回归保障是单测**
-> `tests/units/kb-rebuild-index-count.test.ts` 和 e2e `tests/e2e/kb-ocr-scan.mjs`。
+> 探针脚本保留在仓库里（`tests/e2e/_probe-9999-verify.mjs`，前缀 `_` 表示它不在常规
+> e2e 套件里）。它面向**已在运行的实例**做现场复核，需要自带 `DT_KB` 指向具体知识库，
+> 所以不适合当回归用例。**可重复的回归保障是单测** `tests/units/kb-rebuild-index-count.test.ts`
+> 和 e2e `tests/e2e/kb-ocr-scan.mjs`。
 
 ---
 
