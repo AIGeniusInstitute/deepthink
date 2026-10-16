@@ -10,13 +10,13 @@
 
 | 期 | 内容 | 状态 |
 |---|---|---|
-| **P1** | 知识库内核补全：父子分块 / FAQ 索引 / 预生成问题 / 查询改写 / 意图识别 | ✅ **已完成**：5/5 子项 + UI 验收 17/17 + test_report + 合并 |
+| **P1** | 知识库内核补全：父子分块 / FAQ 索引 / 预生成问题 / 查询改写 / 意图识别 | ✅ **已完成**：5/5 子项 + UI 验收 18/18 + test_report + 合并（含上线实例上报的 1 个修复） |
 | P2 | 文档接入扩展（xlsx/pptx、图片、整目录上传） | 未启动 |
 | P3 | 检索增强（rerank 深化、Wiki、GraphRAG） | 未启动 |
 | P4 | Agent 协作（fork/rewind、artifacts、steering） | 未启动 |
 | P5 | 平台化（SSO、多租户、Langfuse、小程序、扩展） | 未启动 |
 
-**P1 已完成**：UI 验收 17/17 通过（截图见 `docs/test_report/2026-10-16-weknora-full-replica/screenshots/`），
+**P1 已完成**：UI 验收 18/18 通过（截图见 `docs/test_report/2026-10-16-weknora-full-replica/screenshots/`），
 全量回归 174 文件 / 2386 条通过，5 个缺陷已按 issue 工作流修复并沉淀，
 报告见 `docs/test_report/2026-10-16-weknora-full-replica/TEST_REPORT.md`。P2–P5 未启动。
 
@@ -346,7 +346,7 @@ npx vitest run                          → Test Files  173 passed | 1 failed | 
 ```
 DT_BASE=http://localhost:9911 DT_USER=admin DT_PASS='******' DT_DATA_DIR=$HOME/.deepthink-9911 \
   node tests/e2e/kb-p1-ui.mjs
-→ 合计 17 项，通过 17，失败 0
+→ 合计 18 项，通过 18，失败 0
 → npx vitest run → Test Files 174 passed | 4 skipped (178)
                      Tests 2386 passed | 16 skipped (2402)
 ```
@@ -409,12 +409,13 @@ UI 验收过程中发现 5 个缺陷，全部走 issue 工作流修复（详见 
 | 15 | 切换「索引方式」（`question_answer`↔`question_only`、`combined`↔`separate`）会一次性作废全库向量，**没有重建入口**（toast 仍提示"需重新向量化"） | D4 只修了"新建/编辑即索引"，改配置这条路径仍无 UI 入口，同因同源，**未修** |
 | 16 | `make status` 未校验监听 pid 与 pidfile 是否一致、未在看门狗计数 > 1 时告警 | D2 的建议项，超出本次修复范围，**未改** |
 | 17 | `src/web.ts` 未在启动日志里打印实际的静态资源根目录 | D1 的建议项，下次同类问题可一眼看出，**未改** |
+| 18 | 上传按钮的 `<Button>` 未带 `type="button"`（全仓库其余按钮同样如此）。当前无 `<form>` 包裹所以无害，被放进 `<form>` 会退化成提交按钮 | 既存写法，不在 D6 因果链上，**未顺手改** |
 
 ---
 
 ## 6. 下一步
 
-1. ✅ P1 已完成：5 个子项实现（§2.1 / §2.2 / §2.3 / §2.4 / §2.5）+ Playwright UI 验收 17/17
+1. ✅ P1 已完成：5 个子项实现（§2.1 / §2.2 / §2.3 / §2.4 / §2.5）+ Playwright UI 验收 18/18
    + 5 篇 issue + test_report（含 9 张通过截图）+ 合并 worktree → main。
 2. P2–P5 未启动。启动 P2 前建议先处置 §5 里的 15（索引方式切换无重建入口）——
    它是目前唯一一个"UI 上明确提示了动作、但用户无路可走"的缺口。
