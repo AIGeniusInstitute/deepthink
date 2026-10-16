@@ -104,8 +104,10 @@ import {
   touchImContextBindingActivity,
   updateAgentContextInfo,
   backfillEmptyAllowlistsForUser,
-  hybridSearchKbDocuments,
   getKnowledgeBase,
+  listKnowledgeBases,
+  getKbDocument,
+  listKbDocuments,
   getLoopRun,
   listLoopIterations,
   migrateAgentTestWorkspaceNames,
@@ -313,6 +315,8 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_MAIN_JID = 'web:main';
 const DEFAULT_MAIN_NAME = 'Main';
 const SAFE_REQUEST_ID_RE = /^[A-Za-z0-9_-]+$/;
+/** Ceiling on a single kb_read_document response, so one call cannot flood context. */
+const MAX_KB_READ_CHARS = 20_000;
 const OOM_EXIT_RE = /code 137/;
 
 function buildWebTraceUrl(folder: string | undefined, turnId?: string): string | null {
@@ -6520,9 +6524,12 @@ async function processTaskIpc(
     // For discord_get_history
     limit?: number;
     before?: string;
-    // For kb_search
+    // For kb_search / kb_read_document / kb_list_documents
     kbIds?: string[];
     query?: string;
+    docId?: string;
+    start?: number;
+    end?: number;
   },
   sourceGroup: string, // Verified identity from IPC directory
   isAdminHome: boolean, // Whether source is admin home container
@@ -7481,14 +7488,32 @@ async function processTaskIpc(
           } catch (err) {
             logger.warn({ err, sourceGroup }, 'kb_search embedding failed — falling back to FTS5-only');
           }
-          const rows = hybridSearchKbDocuments(verified, query, limit, queryEmbedding);
-          const results = rows.map((r) => ({
-            kb_id: r.kb_id,
-            kb_name: kbNames[r.kb_id] ?? null,
-            doc_id: r.doc_id,
-            filename: r.filename,
-            snippet: r.snippet,
-            rank: r.rank,
+          // Chunk-level retrieval: a hit has to be a citable span, not a whole
+          // file, otherwise the Agent can only say "it's somewhere in here".
+          const { searchChunks } = await import('./kb/search.js');
+          const { hits } = await searchChunks({
+            kbIds: verified,
+            query,
+            limit,
+            mode: 'hybrid',
+            queryEmbedding,
+          });
+          const results = hits.map((h) => ({
+            kb_id: h.kbId,
+            kb_name: kbNames[h.kbId] ?? null,
+            doc_id: h.docId,
+            chunk_id: h.chunkId,
+            filename: h.filename,
+            heading_path: h.headingPath,
+            // Offsets are absolute character positions in the source document,
+            // so the Agent can quote the passage and cite where it came from.
+            start_at: h.startAt,
+            end_at: h.endAt,
+            content: h.content,
+            // Retained for callers written against the document-level shape.
+            snippet: h.content.slice(0, 200).replace(/\s+/g, ' ').trim(),
+            rank: h.score,
+            source: h.source,
           }));
           writeKbResult({ success: true, results });
         } catch (err) {
@@ -7497,6 +7522,127 @@ async function processTaskIpc(
         }
       }
       break;
+
+    case 'kb_read_document': {
+      // Cap a single read so an Agent cannot pull a whole book into context.
+
+      // Read a document (or a character range of it) that the group's owner has
+      // mounted. Range reads are what make a citation verifiable end to end.
+      const requestId = data.requestId;
+      if (!requestId || !SAFE_REQUEST_ID_RE.test(String(requestId))) {
+        logger.warn({ sourceGroup, requestId }, 'Rejected kb_read_document with invalid requestId');
+        break;
+      }
+      const tasksRoot = path.resolve(tasksDir);
+      const resultPath = path.resolve(tasksDir, `kb_read_result_${requestId}.json`);
+      if (!resultPath.startsWith(`${tasksRoot}${path.sep}`)) {
+        logger.warn({ sourceGroup, resultPath }, 'Rejected kb_read_document unsafe result path');
+        break;
+      }
+      const writeRaw = (payload: object) => {
+        fs.mkdirSync(path.dirname(resultPath), { recursive: true });
+        const tmpPath = `${resultPath}.tmp`;
+        fs.writeFileSync(tmpPath, JSON.stringify(payload));
+        fs.renameSync(tmpPath, resultPath);
+      };
+      try {
+        const ownerId = sourceGroupEntry?.created_by;
+        if (!ownerId) {
+          writeRaw({ success: false, error: 'Group has no owner — KB access denied' });
+          break;
+        }
+        const docId = typeof data.docId === 'string' ? data.docId : '';
+        if (!docId) {
+          writeRaw({ success: false, error: 'Missing docId' });
+          break;
+        }
+        const doc = getKbDocument(docId, ownerId);
+        if (!doc) {
+          writeRaw({ success: false, error: 'Document not found or not accessible' });
+          break;
+        }
+        // The document must live in a KB this group's owner actually owns —
+        // getKbDocument already scopes by user_id, and the KB check guards the
+        // case where a KB was detached after the document was added.
+        if (!getKnowledgeBase(doc.kb_id, ownerId)) {
+          writeRaw({ success: false, error: 'Knowledge base not accessible' });
+          break;
+        }
+        const content = doc.content ?? '';
+        const rawStart = Number(data.start);
+        const rawEnd = Number(data.end);
+        const start = Number.isFinite(rawStart) ? Math.max(0, Math.min(rawStart, content.length)) : 0;
+        const end = Number.isFinite(rawEnd)
+          ? Math.max(start, Math.min(rawEnd, content.length))
+          : Math.min(start + MAX_KB_READ_CHARS, content.length);
+        writeRaw({
+          success: true,
+          doc_id: doc.id,
+          kb_id: doc.kb_id,
+          filename: doc.filename,
+          total_chars: content.length,
+          start_at: start,
+          end_at: end,
+          truncated: end < content.length,
+          content: content.slice(start, end),
+        });
+      } catch (err) {
+        logger.error({ err, sourceGroup }, 'kb_read_document IPC failed');
+        writeRaw({ success: false, error: err instanceof Error ? err.message : String(err) });
+      }
+      break;
+    }
+
+    case 'kb_list_documents': {
+      const requestId = data.requestId;
+      if (!requestId || !SAFE_REQUEST_ID_RE.test(String(requestId))) {
+        logger.warn({ sourceGroup, requestId }, 'Rejected kb_list_documents with invalid requestId');
+        break;
+      }
+      const tasksRoot = path.resolve(tasksDir);
+      const resultPath = path.resolve(tasksDir, `kb_list_result_${requestId}.json`);
+      if (!resultPath.startsWith(`${tasksRoot}${path.sep}`)) {
+        logger.warn({ sourceGroup, resultPath }, 'Rejected kb_list_documents unsafe result path');
+        break;
+      }
+      const writeRaw = (payload: object) => {
+        fs.mkdirSync(path.dirname(resultPath), { recursive: true });
+        const tmpPath = `${resultPath}.tmp`;
+        fs.writeFileSync(tmpPath, JSON.stringify(payload));
+        fs.renameSync(tmpPath, resultPath);
+      };
+      try {
+        const ownerId = sourceGroupEntry?.created_by;
+        if (!ownerId) {
+          writeRaw({ success: false, error: 'Group has no owner — KB access denied' });
+          break;
+        }
+        const requestedKbIds = Array.isArray(data.kbIds) ? (data.kbIds as string[]) : [];
+        const kbList = requestedKbIds.length > 0
+          ? requestedKbIds
+              .map((kbId) => getKnowledgeBase(kbId, ownerId))
+              .filter((kb): kb is NonNullable<typeof kb> => kb !== null)
+          : listKnowledgeBases(ownerId);
+        const documents = kbList.flatMap((kb) =>
+          listKbDocuments(kb.id, ownerId).map((d) => ({
+            kb_id: kb.id,
+            kb_name: kb.name,
+            doc_id: d.id,
+            filename: d.filename,
+            size_bytes: d.size_bytes,
+            parser_type: d.parser_type ?? null,
+            parse_status: d.parse_status ?? 'ready',
+            chunk_count: d.chunk_count ?? 0,
+            created_at: d.created_at,
+          })),
+        );
+        writeRaw({ success: true, knowledge_bases: kbList.map((k) => ({ id: k.id, name: k.name })), documents });
+      } catch (err) {
+        logger.error({ err, sourceGroup }, 'kb_list_documents IPC failed');
+        writeRaw({ success: false, error: err instanceof Error ? err.message : String(err) });
+      }
+      break;
+    }
 
     case 'sandbox_run_code':
     case 'sandbox_browser_navigate':
