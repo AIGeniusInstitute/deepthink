@@ -35,7 +35,7 @@
 | `src/kb/rerank.ts` | 重排 |
 | `src/document-parser.ts` | 扩展 html / csv / json，新增文本嗅探 |
 | `src/db.ts` | `kb_chunks` / `kb_chunk_revisions` / `kb_chunks_fts` / `kb_chunks_vec` + chunk CRUD + FTS 查询构造 + 混合检索 |
-| `src/routes/paas-knowledge-bases.ts` | 30 个 HTTP 接口 |
+| `src/routes/paas-knowledge-bases.ts` | 28 个 HTTP 接口（路由注册条数，`grep -c` 实测） |
 | `src/index.ts` | MCP IPC：`kb_search` / `kb_read_document` / `kb_list_documents` |
 | `container/agent-runner/src/mcp-tools.ts` | 对应 3 个 MCP 工具 |
 

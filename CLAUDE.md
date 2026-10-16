@@ -405,6 +405,11 @@ scripts/                      # 构建辅助脚本
 | 文件 | `src/routes/files.ts` |
 | 记忆 | `src/routes/memory.ts` |
 | 知识库 | `src/routes/paas-knowledge-bases.ts`（`/api/paas/knowledge-bases`） |
+| Agent 定义（PaaS：挂载 / 版本 / 分享 / 协作者） | `src/routes/paas-agents.ts`（`/api/paas/agents`） |
+| 模板市场 | `src/routes/paas-marketplace.ts`（`/api/paas/marketplace`） |
+| PaaS 管理（配额 / 举报） | `src/routes/paas-admin.ts`（`/api/paas/admin`，admin only） |
+| 嵌入模型配置 | `src/routes/paas-embedding.ts`（`/api/paas/embedding-config`） |
+| 分享链接 | `src/routes/paas-share.ts`（`/api/paas/share`，`GET /:token` 公开） |
 | 配置（Claude / IM / 系统设置） | `src/routes/config.ts` |
 | 任务 | `src/routes/tasks.ts` |
 | 管理（用户 / 邀请码 / 审计） | `src/routes/admin.ts` |

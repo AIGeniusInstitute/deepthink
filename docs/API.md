@@ -56,6 +56,65 @@
 
 **检索语义注意**：关键词臂是**子串/短语**语义（FTS5 `trigram` 分词器 + 词项 OR，`<3` 字符的词走 `instr()` 降级）。中文整句在纯 `keyword` 模式下不命中——它不是文档里的连续子串；默认的 `hybrid` 模式由向量臂覆盖这类查询。详见 [`docs/issues/2026-10-16-kb-chinese-keyword-search-dead.md`](issues/2026-10-16-kb-chinese-keyword-search-dead.md)。
 
+## Agent PaaS（`/api/paas/*`）
+
+知识库之外的 5 个 paas 路由族。它们与知识库同属 Agent PaaS（Phase 1–3），挂载点集中在 `src/web.ts:335-340`。
+
+### Agent 定义
+
+路由文件 `src/routes/paas-agents.ts`，挂载于 `/api/paas/agents`。**用户级** Agent 定义实体（DB-backed），与 `/api/agent-definitions`（管理 `~/.claude/agents/*.md` 全局文件）是两套东西，别混。整组要求登录。
+
+- `GET /` · `GET /:id` · `POST /` · `PATCH /:id` · `DELETE /:id` — CRUD
+- `POST /generate` — 按描述 AI 生成 Agent 定义
+- `PATCH /:id/validation` — 配置结果校验策略（v58 开放平台）
+- `GET /resources/available` — 当前用户可挂载的资源：`mcp_servers` / `knowledge_bases` / `skills`
+- `POST /:id/mounts` · `DELETE /:id/mounts/:mountId` — 挂载资源
+- `GET /:id/workers` · `PUT /:id/workers` — 查看 / 设置该 Agent 的 worker 列表
+- `POST /:id/orchestrate` — 发起编排任务，**仅 `kind === 'orchestrator'` 的 Agent 可用**，body `{task, background?, acceptanceCriteria?, groupFolder?}`
+- `GET /:id/versions` · `GET /:id/versions/:vid/diff` · `POST /:id/versions/:vid/restore` — 版本快照、对比与回滚
+- `POST /:id/optimize` — 按反馈 AI 优化描述与 system_prompt，**只返回预览不落库**；`POST /:id/optimize/apply` 才写回（仅软字段）
+- `POST /:id/share` · `GET /:id/shares` · `DELETE /:id/shares/:shareId` — 分享链接
+- `GET /:id/collaborators` · `POST /:id/collaborators` · `DELETE /:id/collaborators/:userId` — 协作者
+- `POST /:id/test-chat` — 测试对话
+
+### 模板市场
+
+路由文件 `src/routes/paas-marketplace.ts`，挂载于 `/api/paas/marketplace`。四种 `item_type`：`agent_template` / `mcp_template` / `skill_template` / `kb_template`；安装 = 把 payload 复制为用户私有实例。整组要求登录。
+
+- `GET /?item_type=&status=` — 列表。**非 admin 恒为 `approved`**；admin 传 `?status=pending` 可看待审
+- `GET /mine` — 我提交的
+- `GET /:id` — 单条详情。**注意：不按 status 过滤**，拿到 id 即可读到 pending 条目
+- `POST /`（admin）— 直接发布
+- `POST /submit` — 用户提交，落库为 `pending` 待审
+- `POST /:id/approve`（admin） · `POST /:id/reject`（admin） — 审核
+- `POST /:id/reviews` · `GET /:id/reviews` — 评分与评论
+- `POST /:id/install` — 安装模板
+- `POST /reviews/:reviewId/report` — 举报评论
+
+### PaaS 管理
+
+路由文件 `src/routes/paas-admin.ts`，挂载于 `/api/paas/admin`。整组要求**登录 + admin**（`authMiddleware` + `adminRoleMiddleware`）。
+
+- `GET /quotas` — 全部用户的 Agent 配额与用量
+- `PUT /quotas/:userId` — 调整单个用户配额
+- `GET /review-reports` — 待处理举报
+- `POST /review-reports/:id/resolve` — 处理举报
+
+### 嵌入模型配置
+
+路由文件 `src/routes/paas-embedding.ts`，挂载于 `/api/paas/embedding-config`。整组要求登录。
+
+- `GET /` — 读取嵌入配置
+- `PUT /`（admin） — 写入嵌入配置（写入 `data/config/embedding.json`，知识库向量化用）
+- `POST /test`（admin） — 连通性自检
+
+### 分享链接
+
+路由文件 `src/routes/paas-share.ts`，挂载于 `/api/paas/share`。
+
+- `GET /:token` — **公开，无需认证**（分享页展示用，prompt 预览截断至 200 字符）
+- `POST /:token/install` — 需要登录，安装该分享的 Agent
+
 ## 配置
 
 - `GET|PUT /api/config/claude` · `PUT /api/config/claude/secrets`
