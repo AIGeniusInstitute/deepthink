@@ -267,8 +267,16 @@ async function main() {
 
     const tmpFile = path.join(os.tmpdir(), `kb-p1-e2e-${stamp}.md`);
     fs.writeFileSync(tmpFile, DOC_MD);
-    await page.getByTestId('kb-upload-input').setInputFiles(tmpFile);
+    // ⚠️ 必须**点按钮**走真实入口，不能用 setInputFiles 直接给 input 赋值 ——
+    // 那条路绕过了「点击按钮 → 转发给 input → 弹文件框」这一跳，而这一跳曾经真的坏过
+    // （<label> 包 <Button> 时规范禁止转发，点击被吞，文件框不弹）。
+    // 用 filechooser 事件则必须点得动按钮才能拿到句柄，坏掉时会在这里超时失败。
+    const chooserPromise = page.waitForEvent('filechooser', { timeout: 15_000 });
     await page.getByTestId('kb-upload-button').click();
+    const chooser = await chooserPromise.catch(() => null);
+    check('点「上传文档」能唤起文件选择框', chooser !== null);
+    if (!chooser) throw new Error('上传按钮点不动：filechooser 未触发');
+    await chooser.setFiles(tmpFile);
 
     // 等入库跑完（状态徽标跑到终态「就绪」）
     await page.getByTestId('kb-doc-row').first().waitFor({ timeout: 30_000 });

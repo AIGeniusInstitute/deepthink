@@ -80,6 +80,7 @@ export function KnowledgeBaseDetailPage() {
   const [chunkOverlap, setChunkOverlap] = useState(80);
   const [parentChild, setParentChild] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const kb = list.find((k) => k.id === id);
   const isFaq = kb?.type === 'faq';
@@ -272,8 +273,12 @@ export function KnowledgeBaseDetailPage() {
                   <RefreshCw className={`size-4 mr-1 ${rebuilding ? 'animate-spin' : ''}`} />
                   {rebuilding ? '重建中…' : '重建索引'}
                 </Button>
-                <label className="cursor-pointer">
+                {/* 不能用 <label> 包 <Button> 来触发文件选择：<button> 是 interactive content，
+                    规范要求 <label> 对它的点击「什么都不做」，于是点击被吞掉、文件框不弹。
+                    改用显式转发，与仓库其余 5 处 file input 写法一致。 */}
+                <div>
                   <input
+                    ref={fileInputRef}
                     type="file"
                     data-testid="kb-upload-input"
                     accept=".md,.markdown,.txt,.pdf,.docx,.html,.htm,.csv,.tsv,.json"
@@ -284,10 +289,14 @@ export function KnowledgeBaseDetailPage() {
                       e.target.value = '';
                     }}
                   />
-                  <Button size="sm" data-testid="kb-upload-button">
+                  <Button
+                    size="sm"
+                    data-testid="kb-upload-button"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
                     <Upload className="size-4 mr-1" /> 上传文档
                   </Button>
-                </label>
+                </div>
               </div>
 
               <div className="text-xs text-muted-foreground">
