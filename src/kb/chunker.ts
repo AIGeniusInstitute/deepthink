@@ -13,6 +13,9 @@
 
 export type ChunkStrategy = 'heading' | 'heuristic' | 'recursive';
 
+/** 'text' = 普通块（参与 embedding）；'parent_text' = 父块（只用于回溯，不参与 embedding）。 */
+export type ChunkType = 'text' | 'parent_text';
+
 export interface ChunkConfig {
   strategy: ChunkStrategy;
   /** Soft upper bound for a chunk, in characters. Oversized indivisible units may exceed it. */
@@ -30,6 +33,17 @@ export interface Chunk {
   startAt: number;
   /** Absolute end offset in the source text (exclusive). */
   endAt: number;
+  /**
+   * Chunk kind. `parent_text` rows exist only to be traced back to from a hit
+   * child; they are never embedded. Plain `chunkText()` output is all `text`.
+   */
+  chunkType: ChunkType;
+  /**
+   * Index of this chunk's parent in the same array, or -1 when there is none —
+   * either an ordinary chunk, or a lone child whose parent was not "truly
+   * split" and therefore produced no parent row.
+   */
+  parentIndex: number;
 }
 
 export const DEFAULT_CHUNK_CONFIG: ChunkConfig = {
@@ -138,6 +152,8 @@ function packSegments(
       headingPath: headingOf(startAt),
       startAt,
       endAt,
+      chunkType: 'text',
+      parentIndex: -1,
     });
     buf = [];
   };
@@ -317,9 +333,10 @@ export function chunkText(text: string, config?: Partial<ChunkConfig>): Chunk[] 
   if (!Number.isFinite(resolved.chunkOverlap) || resolved.chunkOverlap < 0) {
     resolved.chunkOverlap = 0;
   }
-  // An overlap at or above the chunk size would make the buffer never advance.
-  if (resolved.chunkOverlap >= resolved.chunkSize) {
-    resolved.chunkOverlap = Math.floor(resolved.chunkSize / 4);
+  // WeKnora's ensureDefaults caps overlap at chunkSize/2 — beyond that the
+  // buffer can barely advance and chunks balloon.
+  if (resolved.chunkOverlap > resolved.chunkSize / 2) {
+    resolved.chunkOverlap = Math.floor(resolved.chunkSize / 2);
   }
   if (!text || text.trim().length === 0) return [];
 
@@ -333,4 +350,116 @@ export function chunkText(text: string, config?: Partial<ChunkConfig>): Chunk[] 
     default:
       return chunkByHeuristic(text, resolved);
   }
+}
+
+// --- Parent-child -----------------------------------------------------------
+//
+// WeKnora 的 SplitParentChild（internal/infrastructure/chunker/strategy.go）。
+// 三条语义与直觉不同，实现时必须照做：
+//
+//   1. 父块 chunkType='parent_text'，**不参与 embedding**。父块是"回溯用的容器"，
+//      不是检索单元；把它向量化会用大块稀释召回。
+//   2. 父行**只在真分裂时创建**（len(subs) > 1 || subs[0].content !== parent.content）。
+//      短文档里父块与子块内容相同，再建一行父块纯属冗余。
+//   3. 面包屑（本文件的 headingPath，即 WeKnora 的 ContextHeader）**不进 content**，
+//      只在 embedding 时拼接。若把它写进 content，就破坏了
+//      `text.slice(startAt, endAt) === content` 这个引用可核验的核心不变式。
+
+/** 父块切分配置。chunkOverlap 见下方 chunkParentChild 的说明。 */
+export const DEFAULT_PARENT_CONFIG: ChunkConfig = {
+  strategy: 'heuristic',
+  chunkSize: 4096,
+  chunkOverlap: 0,
+};
+
+/** 子块切分配置。overlap = childSize / 5，取自 WeKnora DeriveParentChildConfigs。 */
+export const DEFAULT_CHILD_CONFIG: ChunkConfig = {
+  strategy: 'heuristic',
+  chunkSize: 384,
+  chunkOverlap: 76,
+};
+
+export interface ParentChildConfig {
+  parent?: Partial<ChunkConfig>;
+  child?: Partial<ChunkConfig>;
+}
+
+/**
+ * 把父块的面包屑并入子块，并丢掉子块开头与父块重复的那一段
+ * （WeKnora strategy.go:mergeBreadcrumbs）。子块自身没有面包屑时直接继承父块。
+ */
+function mergeBreadcrumbs(parentPath: string | null, childPath: string | null): string | null {
+  const parent = (parentPath ?? '').trim();
+  const child = (childPath ?? '').trim();
+  if (!parent) return child || null;
+  if (!child) return parent;
+
+  const parentParts = parent.split(' > ');
+  const childParts = child.split(' > ');
+  let shared = 0;
+  while (
+    shared < childParts.length &&
+    shared < parentParts.length &&
+    childParts[shared] === parentParts[shared]
+  ) {
+    shared++;
+  }
+  // 子块的面包屑整体是父块的子路径（或与之相同）——父块已足够描述。
+  if (shared === childParts.length) return parent;
+  const rest = childParts.slice(shared).join(' > ');
+  return rest ? `${parent} > ${rest}` : parent;
+}
+
+/**
+ * 父子分块。返回**扁平数组**——`parent_text` 行与其 `text` 子行混排，
+ * 子行通过 `parentIndex` 回指父行。调用方据此写库：
+ * 父行落 `kb_chunks` 但**不写向量表**，子行写向量表并用 `parent_chunk_id` 指向父行。
+ *
+ * 偏移量始终是**全文绝对偏移**：子块是在父块的切片内再切的，写回时会加上父块起点。
+ */
+export function chunkParentChild(text: string, cfg?: ParentChildConfig): Chunk[] {
+  if (!text || text.trim().length === 0) return [];
+
+  // 策略在全文上推断一次，父子两级共用——在父块局部推断会导致同一文档内
+  // 不同父块走不同策略，分块粒度无法预期。
+  const strategy = cfg?.parent?.strategy ?? cfg?.child?.strategy ?? recommendStrategy(text);
+  const parentCfg: ChunkConfig = { ...DEFAULT_PARENT_CONFIG, strategy, ...cfg?.parent };
+  const childCfg: ChunkConfig = { ...DEFAULT_CHILD_CONFIG, strategy, ...cfg?.child };
+
+  const out: Chunk[] = [];
+  for (const parent of chunkText(text, parentCfg)) {
+    const subs = chunkText(parent.content, childCfg);
+    if (subs.length === 0) continue;
+
+    // 语义 2：只有真的切出了多个子块、或唯一的子块与父块内容不同，父块才值得单独立行。
+    const trulySplit = subs.length > 1 || subs[0].content !== parent.content;
+    const parentIndex = trulySplit ? out.length : -1;
+
+    if (trulySplit) {
+      out.push({
+        index: parentIndex,
+        content: parent.content,
+        headingPath: parent.headingPath,
+        startAt: parent.startAt,
+        endAt: parent.endAt,
+        chunkType: 'parent_text',
+        parentIndex: -1,
+      });
+    }
+
+    for (const sub of subs) {
+      out.push({
+        index: out.length,
+        content: sub.content,
+        headingPath: mergeBreadcrumbs(parent.headingPath, sub.headingPath),
+        // 子块偏移是相对父块切片的，加回父块起点才是全文坐标。
+        startAt: parent.startAt + sub.startAt,
+        endAt: parent.startAt + sub.endAt,
+        chunkType: 'text',
+        parentIndex,
+      });
+    }
+  }
+
+  return out.map((c, i) => ({ ...c, index: i }));
 }
