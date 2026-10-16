@@ -1014,6 +1014,18 @@ paasKbRoute.post('/:id/rebuild-index', async (c) => {
   for (const d of stale) startIngestAsync(d.id);
 
   const stats = await embedAllChunksInKb(id, 200);
+
+  // `kb_documents.embedded_chunk_count` 是冗余计数列，平时由 ingest 管线在
+  // pipeline.ts 里维护。重建索引走的**不是**那条管线，于是没人更新它 ——
+  // 结果是库里 267/267 个分块都拿到向量了、检索也确实命中，列表上却还是
+  // 「已向量化 0」。用户据此判断"重建索引没生效"，而实际是生效了。
+  // 单文档的 embed 端点（上面那个）已经用同一个办法补过，这里对齐它的写法。
+  for (const d of listKbDocuments(id, user.id)) {
+    updateDocumentParseState(d.id, {
+      embedded_chunk_count: countEmbeddedChunksForDocument(d.id),
+    });
+  }
+
   return c.json({
     dimension_changed: dimensionChanged,
     rechunked_documents: stale.length,
