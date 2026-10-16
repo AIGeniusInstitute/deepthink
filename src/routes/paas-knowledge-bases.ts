@@ -112,7 +112,7 @@ export const paasKbRoute = new Hono<{ Variables: Variables }>();
 
 paasKbRoute.use('*', authMiddleware);
 
-const MAX_DOC_BYTES = 20 * 1024 * 1024; // 20MB — spreadsheets and decks need headroom
+const MAX_DOC_BYTES = 100 * 1024 * 1024; // 100MB — spreadsheets and decks need headroom
 
 function serializeKb(row: KnowledgeBaseRow): KnowledgeBase {
   const type = row.type === KB_TYPE_FAQ ? KB_TYPE_FAQ : 'document';
@@ -567,7 +567,7 @@ paasKbRoute.post('/:id/documents', async (c) => {
     return c.json({ error: 'Missing "file" field' }, 400);
   }
   if (file.size > MAX_DOC_BYTES) {
-    return c.json({ error: `File too large (max ${MAX_DOC_BYTES} bytes)` }, 400);
+    return c.json({ error: `File too large (max ${MAX_DOC_BYTES / 1024 / 1024}MB)` }, 400);
   }
   let buf: Buffer;
   try {

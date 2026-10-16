@@ -40,7 +40,7 @@
 
 - `GET|POST /` · `GET|PATCH|DELETE /:id` — 知识库 CRUD。知识库有 `type`：`document`（默认）| `faq`；FAQ 库额外回显 `faqConfig`，普通库该字段为 `null`。两种库都回显 `questionGenerationConfig`（Doc2Query，默认 `{enabled:false, questionCount:3, customInstructions:''}`）；创建/更新用 snake_case `question_generation_config: {enabled, question_count, custom_instructions}`，**PATCH 是部分更新**（只传 `enabled` 不会把 `question_count` 打回默认）
 - `POST /:id/chunker/preview` — 用给定分块配置预演切分，不落库
-- `GET|POST /:id/documents` — 文档列表 / 上传（multipart，单文件 ≤20MB；可选表单字段 `strategy` / `chunk_size` / `chunk_overlap`，省略则用默认 `heuristic` / 512 / 80）
+- `GET|POST /:id/documents` — 文档列表 / 上传（multipart，单文件 ≤100MB；可选表单字段 `strategy` / `chunk_size` / `chunk_overlap` / `parent_child`，省略则用默认 `heuristic` / 512 / 80 / 关）
 - `POST /:id/documents/url` — 从 URL 抓取正文入库（15s 超时，1MB 文本上限）
 - `GET /documents/:docId` — 单文档元数据（`parse_status` / `parse_stage` / `chunk_count` / `embedded_chunk_count` / `error_message` / `stages`）
 - `GET /documents/:docId/content?start&end` — 按字符区间取原文（引用回源核验、分块编辑预览用）

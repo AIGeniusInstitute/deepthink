@@ -300,7 +300,7 @@ export function KnowledgeBaseDetailPage() {
               </div>
 
               <div className="text-xs text-muted-foreground">
-                支持 .md / .txt / .pdf / .docx / .html / .csv / .json / URL，单文件 ≤ 20MB。
+                支持 .md / .txt / .pdf / .docx / .html / .csv / .json / URL，单文件 ≤ 100MB。
                 上传后先解析，再按上述配置切块并向量化，整个过程在后台进行。
                 勾选「父子分块」会先按小节切出父块、再在父块内切子块，检索单元是子块、
                 命中后可用父块补足上下文（父块本身不参与向量化）。
