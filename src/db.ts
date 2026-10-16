@@ -1233,6 +1233,9 @@ export function initDatabase(): void {
       end_at INTEGER NOT NULL,
       pre_chunk_id TEXT,
       next_chunk_id TEXT,
+      -- 父子分块：子块的 parent_chunk_id 指向同一文档内的 parent_text 行。
+      -- 父行 chunk_type='parent_text' 且不参与 embedding（embedding 保持 NULL）。
+      parent_chunk_id TEXT,
       is_enabled INTEGER NOT NULL DEFAULT 1,
       chunk_type TEXT NOT NULL DEFAULT 'text',
       embedding BLOB,
@@ -1243,6 +1246,10 @@ export function initDatabase(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks(doc_id);
     CREATE INDEX IF NOT EXISTS idx_kb_chunks_kb ON kb_chunks(kb_id);
+    -- 注意：parent_chunk_id 的索引**不能**建在这里。既有库的 kb_chunks 已存在，
+    -- CREATE TABLE IF NOT EXISTS 是空操作、不会补列，而本块在 ensureColumn 迁移
+    -- 之前执行 —— 在这里建索引会让既有库启动即 "no such column" 崩溃。
+    -- 它建在下方 kb_chunks 的 ensureColumn 之后。
 
     CREATE TABLE IF NOT EXISTS kb_chunk_revisions (
       id TEXT PRIMARY KEY,
@@ -1490,6 +1497,11 @@ export function initDatabase(): void {
   ensureColumn('kb_documents', 'processed_at', 'TEXT');
   ensureColumn('kb_documents', 'stages_json', 'TEXT');
   ensureColumn('kb_documents', 'chunk_config_json', 'TEXT');
+  // 父子分块（P1）。既有库的 kb_chunks 没有这一列，且存量 chunk 全部是普通块，
+  // 默认 NULL 即"无父块"，无需回填。
+  ensureColumn('kb_chunks', 'parent_chunk_id', 'TEXT');
+  // 索引必须等列真的存在之后再建（见上方 kb_chunks 建表块内的说明）。
+  db.exec('CREATE INDEX IF NOT EXISTS idx_kb_chunks_parent ON kb_chunks(parent_chunk_id)');
 
   // Vector index tables are dimension-dependent, so they are created here
   // rather than in the fixed-schema block above. A dimension change drops and
@@ -12200,6 +12212,7 @@ export type KbChunkRow = {
   end_at: number;
   pre_chunk_id: string | null;
   next_chunk_id: string | null;
+  parent_chunk_id: string | null;
   is_enabled: number;
   chunk_type: string;
   embedding?: Buffer | null;
@@ -12237,6 +12250,10 @@ export function replaceChunksForDocument(
     startAt: number;
     endAt: number;
     chunkIndex: number;
+    /** 默认 'text'；'parent_text' 为父块行，不参与 embedding。 */
+    chunkType?: 'text' | 'parent_text';
+    /** 同一数组内父块的下标；-1 或省略表示无父块。 */
+    parentIndex?: number;
   }>,
 ): KbChunkRow[] {
   const now = isoNow();
@@ -12253,14 +12270,27 @@ export function replaceChunksForDocument(
     db.prepare('DELETE FROM kb_chunks WHERE doc_id = ?').run(docId);
 
     const ids = chunks.map(() => crypto.randomUUID());
+    const isParent = chunks.map((c) => c.chunkType === 'parent_text');
+    // 兄弟链只在普通块之间建立：父块是回溯用的容器，若把它链进来，
+    // 从子块"下一块"会跳回自己的父块。
+    const textIdx = chunks.map((_, i) => i).filter((i) => !isParent[i]);
+    const preOf = new Map<number, string>();
+    const nextOf = new Map<number, string>();
+    textIdx.forEach((idx, k) => {
+      if (k > 0) preOf.set(idx, ids[textIdx[k - 1]]);
+      if (k + 1 < textIdx.length) nextOf.set(idx, ids[textIdx[k + 1]]);
+    });
+
     const insert = db.prepare(
       `INSERT INTO kb_chunks
        (id, kb_id, doc_id, user_id, chunk_index, content, content_hash, heading_path,
-        start_at, end_at, pre_chunk_id, next_chunk_id, is_enabled, chunk_type, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'text', ?, ?)`,
+        start_at, end_at, pre_chunk_id, next_chunk_id, parent_chunk_id, is_enabled,
+        chunk_type, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
     );
     chunks.forEach((c, i) => {
       const hash = crypto.createHash('sha256').update(c.content).digest('hex');
+      const parentIndex = c.parentIndex ?? -1;
       insert.run(
         ids[i],
         kbId,
@@ -12272,8 +12302,10 @@ export function replaceChunksForDocument(
         c.headingPath,
         c.startAt,
         c.endAt,
-        i > 0 ? ids[i - 1] : null,
-        i + 1 < ids.length ? ids[i + 1] : null,
+        preOf.get(i) ?? null,
+        nextOf.get(i) ?? null,
+        parentIndex >= 0 && parentIndex < ids.length ? ids[parentIndex] : null,
+        isParent[i] ? 'parent_text' : 'text',
         now,
         now,
       );
@@ -12425,8 +12457,11 @@ export function revertKbChunkRevision(
 export function listUnembeddedChunks(kbId: string, limit = 500): KbChunkRow[] {
   return db
     .prepare(
+      // 父块（chunk_type='parent_text'）的 embedding 永远为 NULL，必须排除，
+      // 否则每次补嵌入都会把它们重新捞出来重试一遍。它们本就不该被向量化。
       `SELECT * FROM kb_chunks
        WHERE kb_id = ? AND is_enabled = 1 AND embedding IS NULL
+         AND chunk_type <> 'parent_text'
        ORDER BY chunk_index ASC LIMIT ?`,
     )
     .all(kbId, limit) as KbChunkRow[];
@@ -12438,9 +12473,11 @@ export function listUnembeddedChunksForDocument(
 ): Array<KbChunkRow & { filename: string }> {
   return db
     .prepare(
+      // 同 listUnembeddedChunks：父块不参与 embedding。
       `SELECT c.*, d.filename AS filename
        FROM kb_chunks c JOIN kb_documents d ON d.id = c.doc_id
        WHERE c.doc_id = ? AND c.is_enabled = 1 AND c.embedding IS NULL
+         AND c.chunk_type <> 'parent_text'
        ORDER BY c.chunk_index ASC`,
     )
     .all(docId) as Array<KbChunkRow & { filename: string }>;

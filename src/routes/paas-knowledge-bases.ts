@@ -250,6 +250,8 @@ const ChunkerPreviewSchema = z.object({
   chunk_size: z.number().int().positive().max(8192).optional(),
   chunk_overlap: z.number().int().min(0).max(4096).optional(),
   strategy: z.enum(['heading', 'heuristic', 'recursive', 'auto']).optional(),
+  /** 启用父子分块（父块不参与 embedding，仅供命中后回溯上下文）。 */
+  parent_child: z.boolean().optional(),
 });
 
 paasKbRoute.post('/:id/chunker/preview', async (c) => {
@@ -345,6 +347,8 @@ paasKbRoute.post('/:id/documents', async (c) => {
   }
 
   const chunkConfig = readChunkConfig(formData);
+  // 父子分块按库显式开启；未传时保持既有的单层分块行为。
+  const parentChild = isTruthyFormFlag(formData.get('parent_child'));
 
   try {
     const result = addKbDocument(id, user.id, file.name, content);
@@ -358,7 +362,7 @@ paasKbRoute.post('/:id/documents', async (c) => {
     updateDocumentParseState(docId, { parse_status: 'pending', error_message: null });
     setDocumentParserType(docId, parserType);
     // Chunking + embedding run in the background; the client polls parse_status.
-    startIngestAsync(docId, { chunkConfig, parserType });
+    startIngestAsync(docId, { chunkConfig, parserType, parentChild });
     return c.json(
       { document: { ...serializeDocMeta(result.row), parser_type: parserType, parse_status: 'pending' } },
       201,
@@ -387,6 +391,11 @@ async function parseByType(parserType: string, filename: string, buf: Buffer): P
 }
 
 /** Optional per-upload chunking overrides, sent as form fields. */
+/** 表单布尔字段：接受 'true' / '1'。缺失或其它值一律视为关闭。 */
+function isTruthyFormFlag(value: unknown): boolean {
+  return value === 'true' || value === '1';
+}
+
 function readChunkConfig(formData: FormData): {
   chunkSize?: number;
   chunkOverlap?: number;
@@ -534,7 +543,7 @@ paasKbRoute.post('/documents/:docId/reparse', async (c) => {
       }
     : {};
   // Return immediately; the client polls parse_status for the outcome.
-  void reparseDocument(docId, { chunkConfig: cfg });
+  void reparseDocument(docId, { chunkConfig: cfg, parentChild: validation.data?.parent_child });
   return c.json({ success: true, doc_id: docId, parse_status: 'pending' }, 202);
 });
 

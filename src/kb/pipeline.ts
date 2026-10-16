@@ -22,6 +22,7 @@ import {
   resolveKbVecDimension,
 } from '../db.js';
 import {
+  chunkParentChild,
   chunkText,
   recommendStrategy,
   DEFAULT_CHUNK_CONFIG,
@@ -63,6 +64,12 @@ export interface IngestOptions {
     strategy?: ChunkStrategy | 'auto';
   };
   parserType?: string;
+  /**
+   * 启用父子分块。开启后产出的行里会有 chunk_type='parent_text' 的父块；
+   * 父块只用于检索命中后回溯上下文，**不参与 embedding**。
+   * 默认关闭——它对既有库会改变分块粒度，按库显式开启。
+   */
+  parentChild?: boolean;
 }
 
 /** In-flight ingestions, keyed by document. Value flags a requested cancel. */
@@ -174,7 +181,14 @@ export async function runIngestPipeline(
       strategy: !requested || requested === 'auto' ? recommendStrategy(content) : cfg.strategy,
     };
 
-    const chunks = chunkText(content, effectiveCfg);
+    // 父子分块使用自己的尺寸（父 4096 / 子 384），不走单层 chunkSize——
+    // 这与 WeKnora 一致：ParentChunkSize / ChildChunkSize 是独立配置。
+    const chunks = options.parentChild
+      ? chunkParentChild(content, {
+          parent: { strategy: effectiveCfg.strategy },
+          child: { strategy: effectiveCfg.strategy },
+        })
+      : chunkText(content, effectiveCfg);
     if (chunks.length === 0) {
       inFlight.delete(docId);
       return fail('chunk', 'Chunking produced no chunks');
@@ -190,13 +204,18 @@ export async function runIngestPipeline(
         startAt: c.startAt,
         endAt: c.endAt,
         chunkIndex: c.index,
+        chunkType: c.chunkType,
+        parentIndex: c.parentIndex,
       })),
     );
+    const parentCount = rows.filter((r) => r.chunk_type === 'parent_text').length;
     stages.push({
       stage: 'chunk',
       status: 'ok',
       ms: Date.now() - tChunk,
-      detail: `${rows.length} chunks via ${effectiveCfg.strategy}`,
+      detail: options.parentChild
+        ? `${rows.length} chunks（其中 ${parentCount} 个父块，不参与 embedding）via ${effectiveCfg.strategy}+parent-child`
+        : `${rows.length} chunks via ${effectiveCfg.strategy}`,
     });
 
     if (handle.cancelled) {

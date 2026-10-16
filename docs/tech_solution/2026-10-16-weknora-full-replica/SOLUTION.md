@@ -82,6 +82,18 @@ chunkParentChild(text, { parentCfg, childCfg }) -> Chunk[]
 
 **改动**：`Chunk` 接口新增两个字段，`chunkText` 默认填 `chunkType: 'text'` / `parentIndex: -1`，既有两个消费者（`kb/pipeline.ts:177`、`routes/paas-knowledge-bases.ts:266`）行为不变。
 
+**⚠️ 加列时的迁移顺序护栏（本轮实际踩到过）**
+
+`kb_chunks` 没有 `parent_chunk_id` 列，需要新增。加列本身简单，但**索引语句的位置**会让既有库启动即崩：
+
+- `CREATE TABLE IF NOT EXISTS kb_chunks (...)` 对既有库是**空操作**——它不会补列。
+- 固定 schema 块在 `ensureColumn()` 迁移**之前**执行。
+- 因此把 `CREATE INDEX ... ON kb_chunks(parent_chunk_id)` 写进建表块，既有库执行到这一句时列还不存在 → `SqliteError: no such column` → **initDatabase 崩溃，服务起不来**。
+
+**规则**：新增列的索引一律建在对应的 `ensureColumn()` 之后，不要放在建表块里。建表块里只放那些**从建表第一天就存在**的列的索引。
+
+这个 bug 只在用**持久化 DB 文件**的测试里暴露；全新临时库的测试全部通过（因为 CREATE TABLE 会带出新列）。回归测试 `tests/units/kb-parent-chunk-id-migration.test.ts` 手工造了一个缺列的旧库来锁住这条路径，并已验证：把索引挪回建表块后该测试确实失败。
+
 #### 2.1.5 护栏（`protectedPatterns`）
 
 WeKnora 保护 LaTeX `$...$`、markdown 链接/图片、表格块、围栏代码、行内代码不被切分。**P1 只实现围栏代码块与表格块**——这两者被切断会直接破坏可读性；LaTeX/链接的收益低而正则风险高，推迟到 P2 评估。
