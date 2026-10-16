@@ -321,12 +321,26 @@ export const QuestionGenerationConfigSchema = z.object({
   custom_instructions: z.string().optional(),
 });
 
+/**
+ * P2 §FR-P2-4：按文件类型指定解析通道。
+ *
+ * `file_types` 的写法刻意不收窄成枚举，也不在 schema 层去点号 —— 归一化交给
+ * `normalizeFileType()`，因为用户在界面上手填 `PDF` / `.pdf` 都会出现，
+ * 在这里拒绝反而会让他以为是格式写错了。数组上限 50 只是防呆。
+ */
+export const ParserEngineRuleSchema = z.object({
+  file_types: z.array(z.string().min(1).max(32)).min(1).max(50),
+  engine: z.enum(['builtin', 'ocr']),
+  xlsx_first_row_as_header: z.boolean().optional(),
+});
+
 export const KnowledgeBaseCreateSchema = z.object({
   name: z.string().min(1).max(80),
   description: z.string().max(500).optional(),
   type: z.enum(['document', 'faq']).optional(),
   faq_config: FaqConfigSchema.optional(),
   question_generation_config: QuestionGenerationConfigSchema.optional(),
+  parser_engine_rules: z.array(ParserEngineRuleSchema).max(50).optional(),
 });
 
 export const KnowledgeBasePatchSchema = z.object({
@@ -334,6 +348,13 @@ export const KnowledgeBasePatchSchema = z.object({
   description: z.string().max(500).optional(),
   faq_config: FaqConfigSchema.optional(),
   question_generation_config: QuestionGenerationConfigSchema.optional(),
+  parser_engine_rules: z.array(ParserEngineRuleSchema).max(50).optional(),
+});
+
+/** P2 §FR-P2-2：手写 Markdown 入库。标题是列表里的展示名，不能为空。 */
+export const KbTextDocumentSchema = z.object({
+  title: z.string().min(1).max(200),
+  content: z.string().min(1).max(20_000_000),
 });
 
 /** A FAQ entry. Field names mirror upstream's payload (`types/faq.go:302-322`). */

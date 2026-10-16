@@ -130,6 +130,66 @@ describe('chunkText — strategies', () => {
     expect(recommendStrategy(md)).toBe('heading');
     expect(recommendStrategy(longText(2_000))).toBe('heuristic');
   });
+
+  // ── 纯标题文档（大纲 / 思维导图）───────────────────────────
+  // 回归自 docs/issues/2026-10-16-heading-chunker-empty-chunks.md：
+  // section 的定义是「标题行之间的正文」，整篇只有标题时每一段都是空白，
+  // 全部被跳过 → 0 块 → 入库报 "Chunking produced no chunks"。
+  describe('outline documents (headings with no body at all)', () => {
+    const outline = '# 项目设计\n\n# 研究设计\n## 入组标准\n### 年龄 18-75 岁\n### ECOG 评分 0-1\n## 主要终点\n### 客观缓解率 ORR';
+
+    it('produces chunks instead of silently returning nothing', () => {
+      const chunks = chunkText(outline, { strategy: 'heading' });
+      expect(chunks.length).toBeGreaterThan(0);
+      // 标题行本身就是内容，一个字都不能丢。
+      const joined = chunks.map((c) => c.content).join('');
+      for (const line of outline.split('\n').filter((l) => l.trim())) {
+        expect(joined).toContain(line);
+      }
+    });
+
+    it('keeps the source offsets exact so citations still resolve', () => {
+      const chunks = chunkText(outline, { strategy: 'heading' });
+      for (const c of chunks) {
+        expect(outline.slice(c.startAt, c.endAt)).toBe(c.content);
+      }
+    });
+
+    it('still carries a heading trail on the chunks it emits', () => {
+      const chunks = chunkText(outline, { strategy: 'heading' });
+      // 整篇 110 字符，默认 chunkSize 下会打成一块，trail 取块首那个标题。
+      expect(chunks[0].headingPath).toBe('项目设计');
+    });
+
+    it('invariant: any non-blank text yields at least one chunk under every strategy', () => {
+      for (const strategy of ['heading', 'heuristic', 'recursive'] as const) {
+        expect(chunkText(outline, { strategy }).length).toBeGreaterThan(0);
+        expect(chunkText('### 只有一个标题', { strategy }).length).toBeGreaterThan(0);
+      }
+    });
+
+    it('splits a huge outline by chunkSize rather than emitting one giant chunk', () => {
+      const big = Array.from({ length: 400 }, (_, i) => `## 小节 ${i}\n`).join('');
+      const chunks = chunkText(big, { strategy: 'heading', chunkSize: 400, chunkOverlap: 0 });
+      expect(chunks.length).toBeGreaterThan(1);
+      for (const c of chunks) {
+        expect(big.slice(c.startAt, c.endAt)).toBe(c.content);
+      }
+    });
+
+    it('leaves documents that do have body text byte-for-byte unchanged', () => {
+      // 兜底只在「原本 0 块」时生效，所以这一组必须与本 issue 修复前的输出**逐字节相同**。
+      // 期望值取自 main（修复前）实跑：
+      //   [["\n正文一","One",6,10],["\n正文二","One > Two",19,23],["\n正文三","One > Three",34,38]]
+      const withBody = '# One\n\n正文一\n\n## Two\n\n正文二\n\n## Three\n\n正文三';
+      const chunks = chunkText(withBody, { strategy: 'heading' });
+      expect(chunks.map((c) => [c.content, c.headingPath, c.startAt, c.endAt])).toEqual([
+        ['\n正文一', 'One', 6, 10],
+        ['\n正文二', 'One > Two', 19, 23],
+        ['\n正文三', 'One > Three', 34, 38],
+      ]);
+    });
+  });
 });
 
 describe('chunkText — overlap and configuration', () => {

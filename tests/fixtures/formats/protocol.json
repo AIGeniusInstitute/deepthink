@@ -1,0 +1,9 @@
+{
+  "code": "JSONTOKEN-5512",
+  "title": "CIBI3026A101 研究方案摘要",
+  "endpoints": {
+    "primary": "客观缓解率 ORR",
+    "secondary": ["无进展生存期 PFS", "总生存期 OS"]
+  },
+  "sampleSize": 120
+}

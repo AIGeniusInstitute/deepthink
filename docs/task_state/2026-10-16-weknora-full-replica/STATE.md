@@ -11,14 +11,20 @@
 | 期 | 内容 | 状态 |
 |---|---|---|
 | **P1** | 知识库内核补全：父子分块 / FAQ 索引 / 预生成问题 / 查询改写 / 意图识别 | ✅ **已完成**：5/5 子项 + UI 验收 18/18 + PDF 上传验收 10/10 + test_report + 合并（含上线实例上报的 3 个修复） |
-| P2 | 文档接入扩展（xlsx/pptx、图片、整目录上传） | 未启动 |
-| P3 | 检索增强（rerank 深化、Wiki、GraphRAG） | 未启动 |
+| **P2** | 文档接入扩展（xlsx/pptx、图片、整目录上传） | ✅ **已完成**：A1–A6 全部落地 + 真机 e2e 35/35 + 全量回归 187 文件/2493 条 + test_report + 合并。详见 `STATE-P2.md`；**图片类入库未做**（P2 只做到"识别并拒绝/按文本吃下"，真正的图片通道属 P3） |
+| P3 | 检索增强（rerank 深化、Wiki、GraphRAG） | 部分提前：**B2 扫描件 OCR 已在 P1/P2 之间交付并验证**（9999 生产实例，本机 Ollama）；epub / xmind 解析随 P2 交付。其余未启动 |
 | P4 | Agent 协作（fork/rewind、artifacts、steering） | 未启动 |
 | P5 | 平台化（SSO、多租户、Langfuse、小程序、扩展） | 未启动 |
 
 **P1 已完成**：UI 验收 18/18 + PDF 上传验收 10/10 通过（截图见 `docs/test_report/2026-10-16-weknora-full-replica/screenshots/`），
 全量回归 175 文件 / 2390 条通过，8 个缺陷已按 issue 工作流修复并沉淀，
-报告见 `docs/test_report/2026-10-16-weknora-full-replica/TEST_REPORT.md`。P2–P5 未启动。
+报告见 `docs/test_report/2026-10-16-weknora-full-replica/TEST_REPORT.md`。
+
+**P2 已完成**（2026-10-16）：A1–A6 全部落地，真机 e2e **35/35**（打在 `dist` 产物上、逐项截图），
+全量回归 187 文件 / 2493 条（较 main +4 文件 / +54 条），3 个缺陷按 issue 工作流沉淀。
+执行状态见 `STATE-P2.md`，报告见 `TEST_REPORT-P2.md`，截图见 `screenshots-p2/`。
+**P3 的 B2（扫描件 OCR）已在本轮之前交付并在 9999 生产实例验证**，属越界提前完成，登记在此。
+P4/P5 未启动。
 
 ---
 

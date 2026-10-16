@@ -1,6 +1,21 @@
 import { create } from 'zustand';
 import { api, apiFetch } from '../api/client';
 
+/** 整包上传的单条回执。`skipped`/`failed` 一定有 `reason`。 */
+export interface KbArchiveEntry {
+  path: string;
+  doc_id?: string;
+  parser_type?: string;
+  reason?: string;
+}
+
+export interface KbArchiveResult {
+  added: KbArchiveEntry[];
+  skipped: KbArchiveEntry[];
+  failed: KbArchiveEntry[];
+  summary: { added: number; skipped: number; failed: number };
+}
+
 export interface KbDocumentMeta {
   id: string;
   kb_id: string;
@@ -188,6 +203,15 @@ interface KbState {
     cfg?: ChunkConfigInput,
   ) => Promise<{ ok: boolean; error?: string; ocr?: boolean }>;
   uploadFromUrl: (kbId: string, url: string) => Promise<{ ok: boolean; error?: string }>;
+  /** 手写 Markdown 入库（不经过文件）。 */
+  createTextDocument: (
+    kbId: string,
+    title: string,
+    content: string,
+    cfg?: ChunkConfigInput,
+  ) => Promise<{ ok: boolean; error?: string; docId?: string }>;
+  /** 整目录上传的 zip 通道：服务端解包，逐条回执。 */
+  uploadArchive: (kbId: string, file: File) => Promise<KbArchiveResult | null>;
   removeDocument: (kbId: string, docId: string) => Promise<boolean>;
   reparseDocument: (docId: string, cfg?: ChunkConfigInput) => Promise<boolean>;
   cancelIngest: (docId: string) => Promise<boolean>;
@@ -373,6 +397,32 @@ export const useKnowledgeBasesStore = create<KbState>((set, get) => ({
       return { ok: true };
     } catch (e: any) {
       return { ok: false, error: e?.message ?? 'URL 抓取失败' };
+    }
+  },
+  createTextDocument: async (kbId, title, content) => {
+    try {
+      const res = await api.post<{ document: KbDocumentMeta }>(
+        `${KB_API}/${kbId}/documents/text`,
+        { title, content },
+        60_000,
+      );
+      return { ok: true, docId: res?.document?.id };
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '保存失败' };
+    }
+  },
+  uploadArchive: async (kbId, file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      return await apiFetch<KbArchiveResult>(`${KB_API}/${kbId}/documents/archive`, {
+        method: 'POST',
+        body: fd,
+        // 解包 + 逐条解析是同步做的（批量走的是字符分块之外的真解析），给足时间。
+        timeoutMs: 600_000,
+      });
+    } catch (e: any) {
+      return { added: [], skipped: [], failed: [{ path: file.name, reason: e?.message ?? '解包失败' }], summary: { added: 0, skipped: 0, failed: 1 } };
     }
   },
   removeDocument: async (kbId, docId) => {

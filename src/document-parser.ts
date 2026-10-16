@@ -12,6 +12,10 @@ import { assertResolvesToPublicAddress, validateSafeHttpsUrl } from './url-safet
 export type ParserType =
   | 'pdf'
   | 'docx'
+  | 'pptx'
+  | 'xlsx'
+  | 'epub'
+  | 'xmind'
   | 'html'
   | 'csv'
   | 'json'
@@ -22,6 +26,10 @@ export type ParserType =
 export const SUPPORTED_PARSERS: ParserType[] = [
   'pdf',
   'docx',
+  'pptx',
+  'xlsx',
+  'epub',
+  'xmind',
   'html',
   'csv',
   'json',
@@ -29,28 +37,51 @@ export const SUPPORTED_PARSERS: ParserType[] = [
   'text',
 ];
 
+/** 文件扩展名 -> 解析器。集中一处，上传校验与错误提示共用同一份真相。 */
+const EXTENSION_PARSERS: Array<[string, ParserType]> = [
+  ['.pdf', 'pdf'],
+  ['.docx', 'docx'],
+  ['.pptx', 'pptx'],
+  ['.xlsx', 'xlsx'],
+  ['.epub', 'epub'],
+  ['.xmind', 'xmind'],
+  ['.html', 'html'],
+  ['.htm', 'html'],
+  ['.csv', 'csv'],
+  ['.tsv', 'csv'],
+  ['.json', 'json'],
+  ['.md', 'markdown'],
+  ['.markdown', 'markdown'],
+  ['.txt', 'text'],
+];
+
+/** mime -> 解析器（只在扩展名缺失/不认识时才轮到它）。 */
+const MIME_PARSERS: Array<[string, ParserType]> = [
+  ['application/pdf', 'pdf'],
+  ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'],
+  ['application/vnd.openxmlformats-officedocument.presentationml.presentation', 'pptx'],
+  ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'],
+  ['application/epub+zip', 'epub'],
+  ['text/html', 'html'],
+  ['text/csv', 'csv'],
+  ['text/tab-separated-values', 'csv'],
+  ['application/json', 'json'],
+  ['text/markdown', 'markdown'],
+  ['text/x-markdown', 'markdown'],
+  ['text/plain', 'text'],
+];
+
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46]; // %PDF
 const DOCX_MAGIC = [0x50, 0x4b, 0x03, 0x04]; // PK\x03\x04 (zip)
 
 export function detectParser(filename: string, mimeType?: string): ParserType | null {
   const lower = filename.toLowerCase();
-  if (lower.endsWith('.pdf') || mimeType === 'application/pdf') return 'pdf';
-  if (
-    lower.endsWith('.docx') ||
-    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  ) return 'docx';
-  if (lower.endsWith('.html') || lower.endsWith('.htm') || mimeType === 'text/html') return 'html';
-  if (lower.endsWith('.csv') || mimeType === 'text/csv') return 'csv';
-  if (lower.endsWith('.tsv') || mimeType === 'text/tab-separated-values') return 'csv';
-  if (lower.endsWith('.json') || mimeType === 'application/json') return 'json';
-  if (
-    lower.endsWith('.md') ||
-    lower.endsWith('.markdown') ||
-    mimeType === 'text/markdown' ||
-    mimeType === 'text/x-markdown'
-  ) return 'markdown';
-  if (lower.endsWith('.txt') || mimeType === 'text/plain') return 'text';
-  // Fallback: sniff magic bytes
+  for (const [ext, parser] of EXTENSION_PARSERS) {
+    if (lower.endsWith(ext)) return parser;
+  }
+  for (const [mime, parser] of MIME_PARSERS) {
+    if (mimeType === mime) return parser;
+  }
   return null;
 }
 
@@ -254,16 +285,27 @@ export async function fetchUrlContent(url: string, opts?: { timeoutMs?: number; 
   }
 }
 
-function stripHtml(html: string): string {
+/**
+ * 网页正文抽取。
+ *
+ * `import` 而不是 `require`：本仓库是 ESM（`package.json` 里 `"type": "module"`，
+ * 生产跑 `node dist/index.js`），`require` 在这里是**未定义标识符**，调用即抛
+ * `ReferenceError: require is not defined`。测试之所以没暴露它，是因为 vitest 的
+ * 模块转换给 ESM 注入了一个 `require` 兼容层 —— 测得过、线上跑不过。
+ * 动态 `import()` 与文件里 `parseDocx`/`parsePdf` 的写法保持一致。
+ */
+async function stripHtml(html: string): Promise<string> {
   // cheerio: extract article/main text, fallback to body
-  const cheerio = require('cheerio');
+  const cheerio = await import('cheerio');
   const $ = cheerio.load(html);
   $('script,style,nav,footer,header,aside,form,iframe').remove();
   const root = $('article').first().length ? $('article').first()
     : $('main').first().length ? $('main').first()
     : $('body').length ? $('body')
     : $.root();
-  const text = root.text().replace(/\s+/g, ' ').trim();
+  // `root` 可能是 Cheerio<Element> 也可能是 Cheerio<Document>（`$.root()` 那一支），
+  // 两者的 `text()` 签名不通用，所以经 `any` 调用 —— 运行时行为完全一致。
+  const text = (root as { text(): string }).text().replace(/\s+/g, ' ').trim();
   if (!text) throw new Error('No text content extracted from URL');
   return text;
 }

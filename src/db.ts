@@ -1551,6 +1551,9 @@ export function initDatabase(): void {
   // custom_instructions），未设置即"关闭"，与上游"零值即关"一致。
   ensureColumn('kb_chunks', 'content_revision', 'INTEGER NOT NULL DEFAULT 1');
   ensureColumn('knowledge_bases', 'question_generation_config', 'TEXT');
+  // P2 §FR-P2-4：按文件类型指定解析通道（JSON 数组）。空/NULL 即"全部走内置解析"，
+  // 也就是引入这个配置项之前的行为 —— 存量知识库不需要迁移语义。
+  ensureColumn('knowledge_bases', 'parser_engine_rules', 'TEXT');
   // 同上：索引必须等列存在之后再建。
   db.exec('CREATE INDEX IF NOT EXISTS idx_kb_kb_type ON knowledge_bases(type)');
 
@@ -11444,6 +11447,8 @@ export type KnowledgeBaseRow = {
   faq_config?: string | null;
   /** Doc2Query 配置的 JSON 文本；NULL 表示关闭（与上游"零值即关"一致）。 */
   question_generation_config?: string | null;
+  /** P2：按文件类型指定解析通道的 JSON 数组；NULL 表示全部走内置解析。 */
+  parser_engine_rules?: string | null;
 };
 
 export const KB_TYPE_DOCUMENT = 'document';
@@ -11500,7 +11505,12 @@ export function createKnowledgeBase(
   userId: string,
   name: string,
   description?: string,
-  options?: { type?: string; faqConfig?: string | null; questionGenerationConfig?: string | null },
+  options?: {
+    type?: string;
+    faqConfig?: string | null;
+    questionGenerationConfig?: string | null;
+    parserEngineRules?: string | null;
+  },
 ): KnowledgeBaseRow {
   const id = crypto.randomUUID();
   const now = isoNow();
@@ -11508,8 +11518,8 @@ export function createKnowledgeBase(
   db.prepare(
     `INSERT INTO knowledge_bases
        (id, user_id, name, description, doc_count, created_at, updated_at, type, faq_config,
-        question_generation_config)
-     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+        question_generation_config, parser_engine_rules)
+     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     userId,
@@ -11520,6 +11530,7 @@ export function createKnowledgeBase(
     type,
     options?.faqConfig ?? null,
     options?.questionGenerationConfig ?? null,
+    options?.parserEngineRules ?? null,
   );
   return getKnowledgeBase(id, userId)!;
 }
@@ -11536,6 +11547,13 @@ export function updateKnowledgeBaseQuestionGenerationConfig(id: string, config: 
   db.prepare(
     'UPDATE knowledge_bases SET question_generation_config = ?, updated_at = ? WHERE id = ?',
   ).run(config, isoNow(), id);
+}
+
+/** P2 §FR-P2-4：按文件类型指定解析通道。null 表示清空（= 全部内置解析）。 */
+export function updateKnowledgeBaseParserEngineRules(id: string, rules: string | null): void {
+  db.prepare(
+    'UPDATE knowledge_bases SET parser_engine_rules = ?, updated_at = ? WHERE id = ?',
+  ).run(rules, isoNow(), id);
 }
 
 

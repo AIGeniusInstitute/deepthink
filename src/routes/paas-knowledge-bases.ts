@@ -45,6 +45,7 @@ import {
   deleteFaqEntries,
   updateKnowledgeBaseFaqConfig,
   updateKnowledgeBaseQuestionGenerationConfig,
+  updateKnowledgeBaseParserEngineRules,
   type KnowledgeBaseRow,
   type KbDocumentRow,
   type KbChunkRow,
@@ -71,6 +72,7 @@ import {
   KbSearchSchema,
   FaqEntrySchema,
   FaqEntryDeleteSchema,
+  KbTextDocumentSchema,
 } from '../schemas.js';
 import type { KnowledgeBase, KbDocument } from '../types.js';
 import { logger } from '../logger.js';
@@ -87,6 +89,23 @@ import {
   SUPPORTED_PARSERS,
   PdfHasNoTextLayerError,
 } from '../document-parser.js';
+import {
+  parseZipDocument,
+  detectZipDocumentType,
+  isHiddenZipPath,
+  isLegacyOfficeBuffer,
+  legacyOfficeMessage,
+  openZipDocument,
+  ZipDocumentError,
+  type ZipDocumentType,
+} from '../document-parser-zip.js';
+import type JSZip from 'jszip';
+import {
+  parseParserEngineRules,
+  serializeParserEngineRules,
+  resolveParserEngine,
+  type ResolvedParserEngine,
+} from '../kb/parser-engines.js';
 import {
   startIngestAsync,
   reparseDocument,
@@ -119,6 +138,15 @@ paasKbRoute.use('*', authMiddleware);
 
 const MAX_DOC_BYTES = 100 * 1024 * 1024; // 100MB — spreadsheets and decks need headroom
 
+/** 整包上传时逐条回执的一行。`skipped`/`failed` 一定能看到 `reason`。 */
+interface ArchiveEntryResult {
+  /** 压缩包内的相对路径，也是入库后的 `filename`（保留目录信息，PRD FR-P2-3）。 */
+  path: string;
+  doc_id?: string;
+  parser_type?: string;
+  reason?: string;
+}
+
 function serializeKb(row: KnowledgeBaseRow): KnowledgeBase {
   const type = row.type === KB_TYPE_FAQ ? KB_TYPE_FAQ : 'document';
   return {
@@ -136,6 +164,8 @@ function serializeKb(row: KnowledgeBaseRow): KnowledgeBase {
     // Doc2Query 配置对两种库都存在（FAQ 库用不上，但上游也没对它做区分），
     // 所以这里总是回显，关着就是 `{enabled:false,...}`。
     questionGenerationConfig: parseQuestionGenerationConfig(row.question_generation_config),
+    // P2 §FR-P2-4：空数组 = 全部走内置解析，即引入该机制之前的行为。
+    parserEngineRules: parseParserEngineRules(row.parser_engine_rules),
   };
 }
 
@@ -290,9 +320,14 @@ paasKbRoute.post('/', async (c) => {
         })
       : null;
   const qgRequested = validation.data.question_generation_config;
+  const rulesRequested = validation.data.parser_engine_rules;
   const row = createKnowledgeBase(user.id, validation.data.name, validation.data.description, {
     type,
     faqConfig,
+    parserEngineRules:
+      rulesRequested && rulesRequested.length > 0
+        ? serializeParserEngineRules(rulesRequested)
+        : null,
     questionGenerationConfig: qgRequested
       ? serializeQuestionGenerationConfig({
           enabled: qgRequested.enabled === true,
@@ -350,6 +385,16 @@ paasKbRoute.patch('/:id', async (c) => {
         questionCount: clampQuestionCount(qgRequested.question_count ?? current.questionCount),
         customInstructions: qgRequested.custom_instructions ?? current.customInstructions,
       }),
+    );
+  }
+
+  // P2 §FR-P2-4：解析通道规则是**整体替换**语义（列表就是列表，不是增量开关），
+  // 但要能区分「没传」和「传了空数组」——前者不动，后者才是清空。
+  const rulesRequested = validation.data.parser_engine_rules;
+  if (rulesRequested !== undefined) {
+    updateKnowledgeBaseParserEngineRules(
+      id,
+      rulesRequested.length > 0 ? serializeParserEngineRules(rulesRequested) : null,
     );
   }
 
@@ -585,8 +630,20 @@ paasKbRoute.post('/:id/documents', async (c) => {
   // as mojibake.
   let parserType = detectParser(file.name, file.type);
   if (!parserType) parserType = sniffParserFromBuffer(buf);
+  // `sniffParserFromBuffer` 见到 `PK\x03\x04` 就返回 docx —— 那对 docx 是对的，
+  // 但 pptx/xlsx/epub/xmind 的开头**一模一样**。所以当扩展名没告诉我们是什么、
+  // 而 magic 说是 zip 时，再读一次包内结构定夺；认不出来才当 docx。
+  if (parserType === 'docx') {
+    const zipType = await detectZipDocumentType(buf);
+    if (zipType) parserType = zipType;
+  }
   if (!parserType) parserType = sniffTextFromBuffer(buf);
   if (!parserType) {
+    // 老版 Office 二进制（.doc/.xls/.ppt）能走到这里：扩展名不在表里、magic 也不是 zip。
+    // 单独给一句可执行的提示，别让用户以为是平台漏配了格式。
+    if (isLegacyOfficeBuffer(buf)) {
+      return c.json({ error: legacyOfficeMessage(file.name) }, 400);
+    }
     return c.json(
       { error: `Unsupported file type. Supported: ${SUPPORTED_PARSERS.join(', ')}` },
       400,
@@ -596,9 +653,25 @@ paasKbRoute.post('/:id/documents', async (c) => {
   // 父子分块按库显式开启；未传时保持既有的单层分块行为。
   const parentChild = isTruthyFormFlag(formData.get('parent_child'));
 
+  // P2 §FR-P2-4：按库配置决定走哪条解析通道。没有规则时是 builtin ——
+  // 与引入这套机制之前完全一致。
+  const resolved = resolveParserEngine(parseParserEngineRules(kb.parser_engine_rules), parserType);
+
   let content: string;
+  let engineWarning: string | undefined;
   try {
-    content = await parseByType(parserType, file.name, buf);
+    if (resolved.engine === 'ocr') {
+      // 人显式指定走 OCR：跳过文字层，直接进扫描件通道。
+      // 能走到这里说明 parserType==='pdf'（resolveParserEngine 已把其它类型挡下）。
+      return await startScannedPdfUpload(c, id, user.id, file.name, buf, {
+        chunkConfig,
+        parentChild,
+        forced: true,
+      });
+    }
+    content = await parseByType(parserType, file.name, buf, {
+      xlsxFirstRowAsHeader: resolved.xlsxFirstRowAsHeader,
+    });
   } catch (err) {
     // 扫描件走的是一条独立通道：OCR 要跑几十分钟，不能在这个请求里等。
     if (err instanceof PdfHasNoTextLayerError) {
@@ -613,6 +686,7 @@ paasKbRoute.post('/:id/documents', async (c) => {
       400,
     );
   }
+  engineWarning = resolved.warning;
   if (!content.trim()) {
     return c.json({ error: 'Parsed document is empty' }, 400);
   }
@@ -631,7 +705,12 @@ paasKbRoute.post('/:id/documents', async (c) => {
     // Chunking + embedding run in the background; the client polls parse_status.
     startIngestAsync(docId, { chunkConfig, parserType, parentChild });
     return c.json(
-      { document: { ...serializeDocMeta(result.row), parser_type: parserType, parse_status: 'pending' } },
+      {
+        document: { ...serializeDocMeta(result.row), parser_type: parserType, parse_status: 'pending' },
+        // 规则配了但没生效时如实回执。上传本身照常成功 —— 配置写错是管理员的事，
+        // 不该让用户传不了文档，但也不能让他以为配置生效了。
+        ...(engineWarning ? { engine_warning: engineWarning } : {}),
+      },
       201,
     );
   } catch (err) {
@@ -653,14 +732,25 @@ async function startScannedPdfUpload(
   userId: string,
   filename: string,
   buf: Buffer,
-  options: { chunkConfig: ReturnType<typeof readChunkConfig>; parentChild: boolean },
+  options: {
+    chunkConfig: ReturnType<typeof readChunkConfig>;
+    parentChild: boolean;
+    /**
+     * 是人显式指定走 OCR（解析通道规则），而不是"抽不出文字层"的自动降级。
+     * 只影响报错措辞：自动降级时该解释"为什么转 OCR"，人工指定时要解释
+     * "你配的规则为什么没生效" —— 后者说"该 PDF 没有文字层"是错的。
+     */
+    forced?: boolean;
+  },
 ): Promise<Response> {
+  const reason = options.forced
+    ? `该知识库的解析通道规则把 pdf 指向了 OCR 引擎，但 OCR 当前未启用。`
+    : '该 PDF 没有文字层（扫描件），需要 OCR，但 OCR 当前未启用。';
   const ocrCfg = getOcrConfig();
   if (!ocrCfg.enabled) {
     return c.json(
       {
-        error:
-          '该 PDF 没有文字层（扫描件），需要 OCR，但 OCR 当前未启用。请在「设置 → 本机模型服务」中启用扫描件 OCR 后重新上传。',
+        error: `${reason}请在「设置 → 本机模型服务」中启用扫描件 OCR 后重新上传。`,
         code: 'ocr_disabled',
       },
       400,
@@ -674,7 +764,7 @@ async function startScannedPdfUpload(
     if (!service.available) {
       return c.json(
         {
-          error: `该 PDF 没有文字层（扫描件），需要 OCR，但本机模型服务不可用（${service.baseUrl}）：${service.error ?? '未启动'}。请在「设置 → 本机模型服务」中一键启用。`,
+          error: `${reason}本机模型服务不可用（${service.baseUrl}）：${service.error ?? '未启动'}。请在「设置 → 本机模型服务」中一键启用。`,
           code: 'local_model_unavailable',
         },
         400,
@@ -683,7 +773,7 @@ async function startScannedPdfUpload(
     if (!isModelInstalled(service.models, ocrCfg.model)) {
       return c.json(
         {
-          error: `该 PDF 没有文字层（扫描件），需要 OCR，但视觉模型 ${ocrCfg.model} 尚未下载。请在「设置 → 本机模型服务」中下载后再上传。`,
+          error: `${reason}视觉模型 ${ocrCfg.model} 尚未下载。请在「设置 → 本机模型服务」中下载后再上传。`,
           code: 'ocr_model_missing',
         },
         400,
@@ -709,7 +799,24 @@ async function startScannedPdfUpload(
   );
 }
 
-async function parseByType(parserType: string, filename: string, buf: Buffer): Promise<string> {
+/**
+ * 解析分发。
+ *
+ * P2 起从「硬编码 switch」改成「zip 容器类交给统一模块，其余逐条列出」：
+ * 新增的 4 种格式（pptx/xlsx/epub/xmind）共用同一条路径，不必四个 case 各写一遍，
+ * 也不会漏掉其中某个忘了接。**既有 7 种走的分支一字未动。**
+ */
+async function parseByType(
+  parserType: string,
+  filename: string,
+  buf: Buffer,
+  options: { xlsxFirstRowAsHeader?: boolean } = {},
+): Promise<string> {
+  if (ZIP_DOCUMENT_TYPES.has(parserType)) {
+    return parseZipDocument(parserType as ZipDocumentType, buf, filename, {
+      firstRowAsHeader: options.xlsxFirstRowAsHeader !== false,
+    });
+  }
   switch (parserType) {
     case 'pdf':
       return parsePdf(buf);
@@ -725,6 +832,8 @@ async function parseByType(parserType: string, filename: string, buf: Buffer): P
       return buf.toString('utf8');
   }
 }
+
+const ZIP_DOCUMENT_TYPES = new Set<string>(['pptx', 'xlsx', 'epub', 'xmind']);
 
 /** Optional per-upload chunking overrides, sent as form fields. */
 /** 表单布尔字段：接受 'true' / '1'。缺失或其它值一律视为关闭。 */
@@ -810,6 +919,234 @@ paasKbRoute.post('/:id/documents/url', async (c) => {
     logger.error({ err }, 'Failed to add URL document');
     return c.json({ error: 'Failed to add document' }, 500);
   }
+});
+
+/**
+ * 手写 Markdown 入库（FR-P2-2）。
+ *
+ * 上游对应 `KbUploadSourceDropdown.vue` 的「在线编辑」，形态是弹个编辑器让用户
+ * 直接敲一份 Markdown。本端点**不落盘、不碰文件系统**：正文就在请求体里。
+ *
+ * 入库走的是和文件上传**同一条**管线（`addKbDocument` → chunk → embed），
+ * 所以分块策略、向量化、检索、引用都对它一视同仁 —— 差别只有 `parser_type`
+ * 被记为 `markdown`（而不是靠文件名猜）。这也意味着「heading」分块策略对它真的
+ * 生效，用户敲的几个 `##` 就是章节边界。
+ */
+paasKbRoute.post('/:id/documents/text', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const kb = requireKb(id, user.id);
+  if (!kb) {
+    return c.json({ error: 'Knowledge base not found' }, 404);
+  }
+  if (kb.type === KB_TYPE_FAQ) {
+    return c.json({ error: 'FAQ 知识库不支持文档入库，请使用 FAQ 条目接口' }, 422);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = KbTextDocumentSchema.safeParse(body);
+  if (!parsed.success) {
+    // 校验在 `addKbDocument` **之前**：标题或正文不合格时不该留下一行
+    // 「正文为空」的孤儿文档 —— 那种记录在列表里既删不掉（用户不知道它是什么）
+    // 又占着位置。合并成一句给用户，细节留给 issues。
+    const first = parsed.error.issues[0];
+    return c.json(
+      {
+        error: first?.message ?? 'Invalid request body',
+        issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+      },
+      400,
+    );
+  }
+  const title = parsed.data.title.trim();
+  const content = parsed.data.content;
+  if (!title) return c.json({ error: '标题不能为空' }, 400);
+  if (!content.trim()) return c.json({ error: '正文不能为空' }, 400);
+
+  try {
+    const result = addKbDocument(id, user.id, title, content);
+    if (result.duplicate) {
+      return c.json(
+        { error: '已存在内容完全相同的文档（正文哈希一致）', doc_id: result.row.id },
+        409,
+      );
+    }
+    const docId = result.row.id;
+    updateDocumentParseState(docId, { parse_status: 'pending', error_message: null });
+    setDocumentParserType(docId, 'markdown');
+    startIngestAsync(docId, { parserType: 'markdown' });
+    return c.json(
+      {
+        document: {
+          ...serializeDocMeta(result.row),
+          parser_type: 'markdown',
+          parse_status: 'pending',
+          source: 'text',
+        },
+      },
+      201,
+    );
+  } catch (err) {
+    logger.error({ err }, 'Failed to add manual Markdown document');
+    return c.json({ error: 'Failed to add document' }, 500);
+  }
+});
+
+/**
+ * 单次请求最多入库多少条 zip 内文档。
+ *
+ * 这不是存储配额，是**请求时长**的保护：解析是 CPU 密集的（xlsx/pptx 要解 zip），
+ * 几千条串行跑完，HTTP 连接早就超时了，而用户只会看到一个「失败」。
+ * 超出的条目不会被静默丢弃 —— 它们会出现在回执的 `skipped` 里并说明原因。
+ */
+const MAX_ARCHIVE_DOCUMENTS = 200;
+
+/**
+ * 整目录上传的 zip 通道（FR-P2-3 入口③）。
+ *
+ * 前端的两条入口（选目录 / 拖拽目录）复用既有单文件端点逐条上传 —— 那样重试天然
+ * 按文件粒度。只有 zip 走这里：500MB 的包不该在浏览器里解。
+ *
+ * 回执是**逐条**的（PRD FR-P2-3 明确要求）：200 个文件里坏了 3 个，用户得知道
+ * 是哪 3 个、为什么。所以响应体是 `added / skipped / failed` 三个数组，不是一个
+ * 笼统的成败标志。
+ */
+paasKbRoute.post('/:id/documents/archive', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const kb = requireKb(id, user.id);
+  if (!kb) {
+    return c.json({ error: 'Knowledge base not found' }, 404);
+  }
+  if (kb.type === KB_TYPE_FAQ) {
+    return c.json({ error: 'FAQ 知识库不支持文件上传，请使用 FAQ 条目接口' }, 422);
+  }
+  let formData: FormData;
+  try {
+    formData = await c.req.formData();
+  } catch {
+    return c.json({ error: 'Expected multipart form data with a file field' }, 400);
+  }
+  const file = formData.get('file');
+  if (!(file instanceof File)) {
+    return c.json({ error: 'Missing "file" field' }, 400);
+  }
+  if (file.size > MAX_DOC_BYTES) {
+    return c.json({ error: `压缩包过大（上限 ${MAX_DOC_BYTES / 1024 / 1024}MB）` }, 400);
+  }
+  const buf = Buffer.from(await file.arrayBuffer());
+
+  let zip: JSZip;
+  try {
+    zip = await openZipDocument(buf, file.name);
+  } catch (err) {
+    if (err instanceof ZipDocumentError) return c.json({ error: err.message }, 400);
+    logger.error({ err, filename: file.name }, 'Failed to open uploaded archive');
+    return c.json({ error: '压缩包解析失败' }, 400);
+  }
+
+  const chunkConfig = readChunkConfig(formData);
+  const parentChild = isTruthyFormFlag(formData.get('parent_child'));
+  const rules = parseParserEngineRules(kb.parser_engine_rules);
+
+  const added: ArchiveEntryResult[] = [];
+  const skipped: ArchiveEntryResult[] = [];
+  const failed: ArchiveEntryResult[] = [];
+
+  // 只取文件条目；目录条目（`entry.dir`）本身没有内容。
+  const entries = Object.values(zip.files).filter((e) => !e.dir);
+  let admitted = 0;
+
+  for (const entry of entries) {
+    const path = entry.name;
+    if (isHiddenZipPath(path)) {
+      skipped.push({ path, reason: '隐藏项' });
+      continue;
+    }
+    if (admitted >= MAX_ARCHIVE_DOCUMENTS) {
+      skipped.push({
+        path,
+        reason: `超出单次上限（${MAX_ARCHIVE_DOCUMENTS} 个），请拆分压缩包后重传`,
+      });
+      continue;
+    }
+
+    let entryBuf: Buffer;
+    try {
+      entryBuf = await entry.async('nodebuffer');
+    } catch {
+      failed.push({ path, reason: '条目读取失败，压缩包可能已损坏' });
+      continue;
+    }
+
+    // 判类型用**条目路径**（`docs/guide/intro.md` 的扩展名在最后一段上，
+    // `detectParser` 是 endsWith 匹配，带路径不影响）。
+    let parserType = detectParser(path);
+    if (!parserType) parserType = sniffParserFromBuffer(entryBuf);
+    if (parserType === 'docx') {
+      const zipType = await detectZipDocumentType(entryBuf).catch(() => null);
+      if (zipType) parserType = zipType;
+    }
+    if (!parserType) parserType = sniffTextFromBuffer(entryBuf);
+    if (!parserType) {
+      skipped.push({
+        path,
+        reason: isLegacyOfficeBuffer(entryBuf) ? legacyOfficeMessage(path) : '不支持的格式',
+      });
+      continue;
+    }
+
+    const resolved = resolveParserEngine(rules, parserType);
+    let content: string;
+    try {
+      if (resolved.engine === 'ocr') {
+        // 压缩包里的扫描件不在这里转 OCR：整包变成一次异步 OCR 任务，回执就没法
+        // 逐条给了。如实告知，让用户单独上传该文件。
+        skipped.push({ path, reason: '该类型被规则指定走 OCR，请单独上传此文件' });
+        continue;
+      }
+      content = await parseByType(parserType, path, entryBuf, {
+        xlsxFirstRowAsHeader: resolved.xlsxFirstRowAsHeader,
+      });
+    } catch (err) {
+      if (err instanceof PdfHasNoTextLayerError) {
+        skipped.push({ path, reason: '扫描件（无文字层），请单独上传以走 OCR 通道' });
+        continue;
+      }
+      failed.push({ path, reason: err instanceof Error ? err.message : '解析失败' });
+      continue;
+    }
+
+    if (!content.trim()) {
+      failed.push({ path, reason: '解析结果为空' });
+      continue;
+    }
+
+    try {
+      const result = addKbDocument(id, user.id, path, content);
+      if (result.duplicate) {
+        skipped.push({ path, reason: '与库内已有文档内容相同', doc_id: result.row.id });
+        continue;
+      }
+      admitted++;
+      updateDocumentParseState(result.row.id, { parse_status: 'pending', error_message: null });
+      setDocumentParserType(result.row.id, parserType);
+      startIngestAsync(result.row.id, { chunkConfig, parserType, parentChild });
+      added.push({ path, doc_id: result.row.id, parser_type: parserType });
+    } catch (err) {
+      logger.error({ err, path }, 'Failed to add archived document');
+      failed.push({ path, reason: '入库失败' });
+    }
+  }
+
+  return c.json(
+    {
+      added,
+      skipped,
+      failed,
+      summary: { added: added.length, skipped: skipped.length, failed: failed.length },
+    },
+    201,
+  );
 });
 
 // Static-prefixed document routes are registered before the `/:id/...` family

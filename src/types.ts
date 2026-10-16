@@ -1,4 +1,5 @@
 import type { StreamEvent } from './stream-event.types.js';
+import type { ParserEngineRule } from './kb/parser-engines.js';
 
 export interface AdditionalMount {
   hostPath: string; // Absolute path on host (supports ~ for home)
@@ -139,6 +140,8 @@ export interface KnowledgeBase {
     questionCount: number;
     customInstructions: string;
   };
+  /** 按文件类型指定解析通道；未配置即为空数组（走内置解析，与引入前一致）。 */
+  parserEngineRules?: ParserEngineRule[];
 }
 
 export interface KbDocument {

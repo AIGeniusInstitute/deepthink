@@ -1,0 +1,114 @@
+[
+  {
+    "flat": "dirtree/analysis/stats.csv 就绪 csv 0.1 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:18:02.827Z",
+    "status": "就绪",
+    "name": "dirtree/analysis/stats.csv",
+    "chunks": 1,
+    "embedded": 1,
+    "parser": ""
+  },
+  {
+    "flat": "dirtree/protocol/visit.md 就绪 markdown 0.1 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:18:02.823Z",
+    "status": "就绪",
+    "name": "dirtree/protocol/visit.md",
+    "chunks": 1,
+    "embedded": 1,
+    "parser": ""
+  },
+  {
+    "flat": "dirtree/readme.txt 就绪 text 0.1 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:18:02.820Z",
+    "status": "就绪",
+    "name": "dirtree/readme.txt",
+    "chunks": 1,
+    "embedded": 1,
+    "parser": ""
+  },
+  {
+    "flat": "text-layer.pdf 就绪 pdf 0.2 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:17:47.668Z",
+    "status": "就绪",
+    "name": "text-layer.pdf",
+    "chunks": 1,
+    "embedded": 1,
+    "parser": ""
+  },
+  {
+    "flat": "memo.txt 就绪 text 0.1 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:17:45.300Z",
+    "status": "就绪",
+    "name": "memo.txt",
+    "chunks": 1,
+    "embedded": 1,
+    "parser": ""
+  },
+  {
+    "flat": "README.md 就绪 markdown 0.1 KB · 分块 3 · 已向量化 3 · 2026-10-16T11:17:42.952Z",
+    "status": "就绪",
+    "name": "README.md",
+    "chunks": 3,
+    "embedded": 3,
+    "parser": ""
+  },
+  {
+    "flat": "protocol.json 就绪 json 0.2 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:17:40.607Z",
+    "status": "就绪",
+    "name": "protocol.json",
+    "chunks": 1,
+    "embedded": 1,
+    "parser": ""
+  },
+  {
+    "flat": "labs.csv 就绪 csv 0.1 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:17:38.253Z",
+    "status": "就绪",
+    "name": "labs.csv",
+    "chunks": 1,
+    "embedded": 1,
+    "parser": ""
+  },
+  {
+    "flat": "notes.html 就绪 html 0.1 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:17:35.906Z",
+    "status": "就绪",
+    "name": "notes.html",
+    "chunks": 1,
+    "embedded": 1,
+    "parser": ""
+  },
+  {
+    "flat": "design.xmind 就绪 xmind 0.2 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:17:33.551Z",
+    "status": "就绪",
+    "name": "design.xmind",
+    "chunks": 1,
+    "embedded": 1,
+    "parser": ""
+  },
+  {
+    "flat": "handbook.epub 就绪 epub 0.4 KB · 分块 3 · 已向量化 3 · 2026-10-16T11:17:31.212Z",
+    "status": "就绪",
+    "name": "handbook.epub",
+    "chunks": 3,
+    "embedded": 3,
+    "parser": ""
+  },
+  {
+    "flat": "dosing.xlsx 就绪 xlsx 0.2 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:17:28.855Z",
+    "status": "就绪",
+    "name": "dosing.xlsx",
+    "chunks": 1,
+    "embedded": 1,
+    "parser": ""
+  },
+  {
+    "flat": "slides.pptx 就绪 pptx 0.2 KB · 分块 2 · 已向量化 2 · 2026-10-16T11:17:26.504Z",
+    "status": "就绪",
+    "name": "slides.pptx",
+    "chunks": 2,
+    "embedded": 2,
+    "parser": ""
+  },
+  {
+    "flat": "手写备忘 HANDTOKEN-9182 就绪 markdown 0.1 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:17:21.646Z",
+    "status": "就绪",
+    "name": "手写备忘",
+    "chunks": 1,
+    "embedded": 1,
+    "parser": ""
+  }
+]

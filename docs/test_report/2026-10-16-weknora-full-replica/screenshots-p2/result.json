@@ -1,0 +1,177 @@
+[
+  {
+    "name": "登录成功",
+    "ok": true,
+    "detail": "http://127.0.0.1:9922/chat"
+  },
+  {
+    "name": "通过真实弹窗新建文档库",
+    "ok": true,
+    "detail": "kb=83df630b-a896-4292-a173-8f547be34ef9 「P2 验收 11:17:19」"
+  },
+  {
+    "name": "点「上传文档」弹出文件选择框（真实点击）",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "AC-4 手写空标题被拒且不留文档行",
+    "ok": true,
+    "detail": "弹窗仍开=true 行数 0→0"
+  },
+  {
+    "name": "AC-1 手写 Markdown 入库并到「就绪」",
+    "ok": true,
+    "detail": "手写备忘 HANDTOKEN-9182 就绪 markdown 0.1 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:17:21.646Z"
+  },
+  {
+    "name": "AC-5 同内容二次提交被判重（列表不新增）",
+    "ok": true,
+    "detail": "行数 1→1"
+  },
+  {
+    "name": "AC-1 格式矩阵 pptx 上传到「就绪」",
+    "ok": true,
+    "detail": "分块 2 / 已向量化 2"
+  },
+  {
+    "name": "AC-1 格式矩阵 xlsx 上传到「就绪」",
+    "ok": true,
+    "detail": "分块 1 / 已向量化 1"
+  },
+  {
+    "name": "AC-1 格式矩阵 epub 上传到「就绪」",
+    "ok": true,
+    "detail": "分块 3 / 已向量化 3"
+  },
+  {
+    "name": "AC-1 格式矩阵 xmind 上传到「就绪」",
+    "ok": true,
+    "detail": "分块 1 / 已向量化 1"
+  },
+  {
+    "name": "AC-1 格式矩阵 html 上传到「就绪」",
+    "ok": true,
+    "detail": "分块 1 / 已向量化 1"
+  },
+  {
+    "name": "AC-1 格式矩阵 csv 上传到「就绪」",
+    "ok": true,
+    "detail": "分块 1 / 已向量化 1"
+  },
+  {
+    "name": "AC-1 格式矩阵 json 上传到「就绪」",
+    "ok": true,
+    "detail": "分块 1 / 已向量化 1"
+  },
+  {
+    "name": "AC-1 格式矩阵 md 上传到「就绪」",
+    "ok": true,
+    "detail": "分块 3 / 已向量化 3"
+  },
+  {
+    "name": "AC-1 格式矩阵 txt 上传到「就绪」",
+    "ok": true,
+    "detail": "分块 1 / 已向量化 1"
+  },
+  {
+    "name": "AC-1 格式矩阵 pdf 上传到「就绪」",
+    "ok": true,
+    "detail": "分块 1 / 已向量化 1"
+  },
+  {
+    "name": "AC-3 检索「CHARLIE-9930」命中（pptx 正文）",
+    "ok": true,
+    "detail": "命中 5 条"
+  },
+  {
+    "name": "AC-3 检索「HTMLTOKEN-4471」命中（html 正文（require 缺陷的回归点））",
+    "ok": true,
+    "detail": "命中 5 条"
+  },
+  {
+    "name": "AC-3 检索「TXTTOKEN-7723」命中（txt 正文）",
+    "ok": true,
+    "detail": "命中 5 条"
+  },
+  {
+    "name": "点「上传目录」弹出文件选择框（真实点击，AC-14）",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "切页签回来后 webkitdirectory 仍在（目录上传没有静默退化）",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "AC-6 目录上传：隐藏文件未入库",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "AC-6 目录上传：隐藏目录未入库",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "AC-7 目录上传：相对路径保留（含 protocol/ 或 analysis/ 目录段）",
+    "ok": true,
+    "detail": "dirtree/analysis/stats.csv dirtree/protocol/visit.md dirtree/readme.txt"
+  },
+  {
+    "name": "AC-6 目录上传：回执逐条给出结果",
+    "ok": true,
+    "detail": "上传进度 3/3 · 成功 3 · 跳过 0 · 失败 0 收起 ✓ dirtree/readme.txt ✓ dirtree/protocol/visit.md ✓ dirtre"
+  },
+  {
+    "name": "AC-1 目录上传的子目录文件也到「就绪」",
+    "ok": true,
+    "detail": "dirtree/analysis/stats.csv 就绪 csv 0.1 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:18:02.827Z"
+  },
+  {
+    "name": "建第二个（空）文档库用于整包验收",
+    "ok": true,
+    "detail": "kb=bbc3389b-d316-4c5f-996d-08d76c065621"
+  },
+  {
+    "name": "AC-8 整包 zip 解出 3 份文档",
+    "ok": true,
+    "detail": "空库行数 3（期望 3）；回执「上传进度 1/1 · 成功 1 · 跳过 3 · 失败 0 收起 ✓ mixed-archive.zip — 解包后：入库 3 · 跳过 3 · 失败 0 ⊘ mixed-arch」"
+  },
+  {
+    "name": "AC-8 整包 zip：__MACOSX 未入库",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "AC-8 整包 zip：隐藏项与不支持格式未入库",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "AC-8 整包 zip：包内相对路径保留",
+    "ok": true,
+    "detail": "notes/plan.md protocol/dosing.xlsx protocol/slides.pptx"
+  },
+  {
+    "name": "AC-8 整包 zip：解出的文档到「就绪」",
+    "ok": true,
+    "detail": "notes/plan.md 就绪 markdown 0.1 KB · 分块 1 · 已向量化 1 · 2026-10-16T11:18:16.023Z"
+  },
+  {
+    "name": "AC-3 检索命中整包上传的 md",
+    "ok": true,
+    "detail": "526 字符命中文本"
+  },
+  {
+    "name": "AC-1 全量：所有文档均为「就绪」（无卡在解析中/失败）",
+    "ok": true,
+    "detail": "14 份全部就绪"
+  },
+  {
+    "name": "AC-2 全量：每份文档都有分块",
+    "ok": true,
+    "detail": "14 份均有分块"
+  }
+]

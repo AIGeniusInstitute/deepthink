@@ -243,6 +243,39 @@ function chunkByHeading(text: string, config: ChunkConfig): Chunk[] {
     }
     out.push(...packSegments(pieces, config, () => sec.trail, text));
   }
+
+  // 兜底：整篇只有标题、没有任何正文段落时，上面每个 section 的 body 都是空白，
+  // 会逐段被跳过 —— 一个块都不剩，调用方只能报「Chunking produced no chunks」，
+  // 把一份完全正常的文件说成坏文件。
+  //
+  // 这不是理论情况：xmind 解析出来的就是这个形状（层级即内容，`### 年龄 18-75 岁`
+  // 本身就是那条知识），纯目录型 Markdown 同理。丢掉标题等于把整篇文档丢空。
+  //
+  // 注意兜底**只在原本产出 0 块时生效**：以前能切出块的文档，切法逐字节不变。
+  if (out.length === 0 && marks.length > 0) {
+    const trailAt = (start: number): string | null => {
+      let lo = 0;
+      let hi = marks.length - 1;
+      let found = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (marks[mid].start <= start) {
+          found = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      return found >= 0 ? trails[found] || null : null;
+    };
+    const pieces: Seg[] = marks.map((mk) => ({
+      text: text.slice(mk.start, mk.end),
+      start: mk.start,
+      end: mk.end,
+    }));
+    return packSegments(pieces, config, trailAt, text);
+  }
+
   return out.map((c, i) => ({ ...c, index: i }));
 }
 
