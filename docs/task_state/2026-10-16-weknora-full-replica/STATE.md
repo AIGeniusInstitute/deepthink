@@ -251,12 +251,18 @@ e2e 中「父块不在向量表」最初是**平凡成立**的——测试环境
 
 ```
 make typecheck          → 通过（无 error 行）
-npx vitest run          → Test Files  170 passed | 4 skipped (174)
-                          Tests  2274 passed | 16 skipped (2290)
+npx vitest run          → Test Files  172 passed | 4 skipped (176)
+                          Tests  2332 passed | 16 skipped (2348)
                           0 failed
 ```
 
-历次基线：§2.1 交付 166 文件 / 2214 测试 → §2.4 交付 168 / 2239（+2 文件、+25 条）→ §2.5 交付 170 / 2274（+2 文件、+35 条）→ §2.2 交付 **172 / 2332**（+2 文件、+58 条）。每一步都是全量回归，不是只跑新用例。
+历次基线：§2.1 交付 166 文件 / 2214 测试 → §2.4 交付 168 / 2239（+2 文件、+25 条）→ §2.5 交付 170 / 2274（+2 文件、+35 条）→ §2.2 交付 **172+4 / 2348**（+2 文件、+58 条）。每一步都是全量回归，不是只跑新用例。
+
+**一个既存的偶发失败（不是本次引入，未修）**：`tests/feishu-card.test.ts` 的
+`buildInteractiveCard delegates to buildAgentReplyCard without default header` 是动态 import，
+默认 5s 超时，满负载并行跑时约 4 次里挂 1 次。**证据**：在 §2.2 之前那个 commit（`93df1ba`）上开
+独立 worktree 连跑 4 次，第 4 次复现同一条、同样 5007ms；§2.2 分支上连跑 3 次，同样只挂 1 次。
+两边同一速率 → 与 §2.2 无关。按"只清理自己弄脏的地方"不动它，此处登记。
 
 **尚未做的验证**（P1 完成前必须补）：
 - ⬜ Playwright UI 验收（上传开启 `parent_child` 的文档，看检索/引用是否正常）
@@ -275,11 +281,15 @@ npx vitest run          → Test Files  170 passed | 4 skipped (174)
 | 4 | `GET /api/paas/marketplace/:id` 不按 `status` 过滤，登录用户持 id 可读 `pending` 条目 | 已报告，**未改动**，等用户决策 |
 | 5 | 查询理解的开关**默认关**（对齐上游 `conversation.enable_rewrite`）。即复刻完成 ≠ 默认生效，需在 rag.json 或请求里显式打开 | 设计对齐，已记录 |
 | 6 | `image_only` / `doc_only` 两个意图**本仓库永远产不出**（不收附件），仅存在于意图表与提示词中 | 偏离 1 的直接后果，已在方案标注 |
+| 7 | FAQ 的 `separate` 模式变体向量走**精确线性扫描**，没有 ANN 索引 | 性能取舍非召回取舍，量级上来要重建索引 |
+| 8 | FAQ 库的 `doc_count` 会把内部那个 FAQ 容器文档算进去（对用户显示成"有 1 个文档"） | 未处理，等 UI 阶段一起看 |
+| 9 | 上游 FAQ 专用入口那条 **0.7 相似度阈值**未单独实现（当前走通用检索链路） | 未实现，需确认是否影响 FAQ 召回质量 |
+| 10 | `tests/feishu-card.test.ts` 有 1 条偶发超时（约 4 次挂 1 次），**已证明与本次改动无关**（父 commit 同样复现） | 既存问题，按"不动别人弄脏的地方"未修，见 §4 |
 
 ---
 
 ## 6. 下一步
 
-1. P1 剩余 2 项：§2.2 FAQ 索引 → §2.3 预生成问题（Doc2Query）
-   （顺序依据 SOLUTION.md §4 风险表：先做无外部依赖、不改数据模型的两项）
+1. P1 剩余 **1** 项：§2.3 预生成问题（Doc2Query）。
+   §2.2 FAQ 索引已完成（本轮），§2.3 的源码侦察已做完，尚未动代码。
 2. P1 全部子项完成后：Playwright UI 验收 → bugfix loop → test_report（含通过截图）→ 合并 main 并 push
