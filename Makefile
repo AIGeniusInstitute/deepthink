@@ -707,6 +707,9 @@ web-install: ## 安装 web/ 子项目依赖（仅在 package.json 变化或 node
 	fi
 	@touch web/node_modules
 
+agent-runner-install: ## 安装 container/agent-runner 依赖（每次都装，因为 claude-agent-sdk 用 "*" + 无 lock，取最新）
+	cd container/agent-runner && npm install --no-audit --no-fund $(NPM_FLAGS)
+
 root-install: ## 安装根目录后端依赖（仅在 package.json 变化或 node_modules 缺失时装）
 	@# --allow-git=all 同 install：@whiskeysockets/baileys 有 github: 依赖，npm 12 起默认 EALLOWGIT
 	@if [ ! -d node_modules ] || [ package.json -nt node_modules ]; then \
@@ -715,8 +718,9 @@ root-install: ## 安装根目录后端依赖（仅在 package.json 变化或 nod
 	fi
 	@touch node_modules
 
-desktop-build-deps: root-install build sync-types web-install ## 编译桌面版所需的所有产物（后端 + 前端 + agent-runner）
-	cd container/agent-runner && npm install --no-audit --no-fund $(NPM_FLAGS)
+desktop-build-deps: root-install web-install agent-runner-install sync-types build ## 编译桌面版所需的所有产物（后端 + 前端 + agent-runner）
+	@# build:all 会并发编译 backend+web+agent-runner，三者各自依赖的 node_modules 必须在 build 之前就位，
+	@# 否则 fresh 机器上 web/agent-runner 尚未 npm install 就跑 tsc，必因 "Cannot find module 'react'" 等失败。
 	cd container/agent-runner && npm run build $(NPM_FLAGS)
 
 desktop-build: desktop-build-deps desktop-install ## 编译桌面版 Electron 壳 TypeScript
