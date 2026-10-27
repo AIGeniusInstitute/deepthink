@@ -24,6 +24,8 @@
 #   - 端口占用检测用 Get-NetTCPConnection；「占用者是本项目旧实例」用 pidfile 比对 +
 #     祖先进程链含 deepthink-watchdog.ps1 判定（bash 版比对 cwd，Windows 拿不到 cwd）
 #   - 进程停止为强杀（TerminateProcess），详见 scripts\stop-prod.ps1 头注释
+#   - 看门狗自身日志写独立文件 logs\deepthink-<PORT>.watchdog.log（cmd 重定向句柄
+#     独占 node 日志文件，无法与看门狗共写同一文件）
 #   - shared/ 同步的文件清单必须与 scripts/sync-stream-event.sh 保持一致
 # ──────────────────────────────────────────────────────────────
 
@@ -93,6 +95,13 @@ function Show-LogTail {
   if (Test-Path -LiteralPath $LogFile) {
     Write-E ('──── {0} (最后 30 行) ────' -f $LogFile)
     Get-Content -LiteralPath $LogFile -Tail 30 -ErrorAction SilentlyContinue | ForEach-Object { Write-E $_ }
+    Write-E '────────────────────────────────'
+  }
+  # 看门狗日志与 node 日志分文件（cmd 重定向句柄独占写 node 日志，无法共写）
+  $wdLog = [System.IO.Path]::ChangeExtension($LogFile, '.watchdog.log')
+  if (Test-Path -LiteralPath $wdLog) {
+    Write-E ('──── {0} (最后 15 行) ────' -f $wdLog)
+    Get-Content -LiteralPath $wdLog -Tail 15 -ErrorAction SilentlyContinue | ForEach-Object { Write-E $_ }
     Write-E '────────────────────────────────'
   }
 }
@@ -187,6 +196,11 @@ function Sync-SharedTypes {
 function Build-Backend {
   Write-B '   [后端] npm run build ...'
   Invoke-Step 'npm' @('run', 'build')
+  # tsc 增量编译在内容无变化时不更新任何产物 mtime（连 .tsbuildinfo 也不动），会让
+  # mtime 比对永远误判「有变更」。成功编译后刷新 .tsbuildinfo 时间戳作为
+  # 「最近一次成功编译」标记。
+  $marker = Join-Path $Root 'dist\.tsbuildinfo'
+  if (Test-Path -LiteralPath $marker) { Touch-File $marker }
 }
 
 function Build-Web {
@@ -197,6 +211,8 @@ function Build-Web {
 function Build-AgentRunner {
   Write-B '   [agent-runner] npm --prefix container/agent-runner run build ...'
   Invoke-Step 'npm' @('--prefix', 'container/agent-runner', 'run', 'build')
+  $marker = Join-Path $Root 'container\agent-runner\dist\.tsbuildinfo'
+  if (Test-Path -LiteralPath $marker) { Touch-File $marker }
 }
 
 function Build-CodeAll {
@@ -206,12 +222,15 @@ function Build-CodeAll {
 }
 
 function Build-CodeStale {
-  # 后端
+  # 后端：比对标记用 dist\.tsbuildinfo（最近一次成功编译），不用 dist\index.js——
+  # tsc 增量编译只重写内容变化的产物，改了非 index.ts 时 dist\index.js 的 mtime 不动，
+  # 拿它比对会永远误判「有变更」（Makefile 的 _build-backend-if-stale 同款问题）
   $target = Join-Path $Root 'dist\index.js'
-  if (-not (Test-Path -LiteralPath $target)) {
+  $marker = Join-Path $Root 'dist\.tsbuildinfo'
+  if (-not (Test-Path -LiteralPath $target) -or -not (Test-Path -LiteralPath $marker)) {
     Build-Backend
   } else {
-    $t = (Get-Item -LiteralPath $target).LastWriteTime
+    $t = (Get-Item -LiteralPath $marker).LastWriteTime
     $refs = @((Join-Path $Root 'package.json'), (Join-Path $Root 'tsconfig.json'))
     if ((Test-AnyFileNewer $refs $t) -or (Test-TreeNewer (Join-Path $Root 'src') @('*.ts') $t)) {
       Build-Backend
@@ -472,7 +491,8 @@ if (Test-DockerReady) {
 # ── 后台守护启动 ─────────────────────────────────────────────
 New-Item -ItemType Directory -Force -Path $LogsDir | Out-Null
 Remove-Item -LiteralPath $StopFlag -Force -ErrorAction SilentlyContinue
-[System.IO.File]::WriteAllText($LogFile, '')
+# 截断 node 日志并写入 UTF-8 BOM（node 输出为 UTF-8；有 BOM 才能被 PS 5.1 Get-Content 正确解码）
+[System.IO.File]::WriteAllText($LogFile, '', [System.Text.UTF8Encoding]::new($true))
 Write-B ('🚀 后台守护启动（端口 {0}，watchdog 自动重启）...' -f $Port)
 Start-Watchdog
 
@@ -553,5 +573,6 @@ Write-G ' ✅ DeepThink 已重新编译、构建并部署'
 Write-B ('   Web UI  ：http://localhost:{0}' -f $Port)
 Write-B ('   数据目录：{0}' -f $DataDir)
 Write-B ('   日志    ：Get-Content -Wait {0}' -f $LogFile)
+Write-B ('   看门狗日志：Get-Content -Wait {0}' -f ([System.IO.Path]::ChangeExtension($LogFile, '.watchdog.log')))
 Write-B ('   停止    ：powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stop-prod.ps1 -Port {0}' -f $Port)
 Write-G '═══════════════════════════════════════════════'

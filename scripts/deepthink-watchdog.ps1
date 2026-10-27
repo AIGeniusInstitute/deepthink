@@ -22,6 +22,7 @@
 #     ParentProcessId 找到），不是 cmd 的。
 #   - Windows 无 SIGTERM，停子进程用 Stop-Process（强杀，SQLite WAL 可安全恢复）。
 #   - 看门狗被强杀时 node 可能变孤儿：stop-prod.ps1 会按端口补杀监听进程。
+#   - 看门狗自身日志写 logs\deepthink-<PORT>.watchdog.log（与 node 日志分文件，原因见下）。
 # ──────────────────────────────────────────────────────────────
 
 [CmdletBinding()]
@@ -39,9 +40,22 @@ $Root         = Split-Path -Parent $PSScriptRoot
 $RestartDelay = if ($env:RESTART_DELAY) { [int]$env:RESTART_DELAY } else { 3 }
 $FlagPoll     = if ($env:FLAG_POLL) { [int]$env:FLAG_POLL } else { 2 }
 
+# 看门狗自己的日志文件，不能与 node 的日志共用：node 经 cmd 的 `>>` 重定向持有的句柄
+# 是独占写（无 FILE_SHARE_WRITE），node 运行期间任何进程都无法打开该文件追加
+# （AppendAllText / Add-Content / FileShare.ReadWrite 实测均被拒）
+$WdLogFile = [System.IO.Path]::ChangeExtension($LogFile, '.watchdog.log')
+
 function Log([string]$msg) {
   $line = '[watchdog] {0} {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $msg
-  [System.IO.File]::AppendAllText($LogFile, $line + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
+  # UTF-8 带 BOM：StreamWriter 只在新建文件时写 preamble，之后纯追加；
+  # 有 BOM 才能被 PowerShell 5.1 的 Get-Content 正确按 UTF-8 解码（否则中文按 ANSI 误读）
+  [System.IO.File]::AppendAllText($WdLogFile, $line + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($true))
+}
+
+# 兜底：看门狗在隐藏窗口运行，stderr 不可见；任何未处理错误都写日志再退出
+trap {
+  Log ('看门狗致命错误: {0}' -f $_)
+  exit 1
 }
 
 function Remove-State {
