@@ -13,7 +13,7 @@
  * files, and bare specifiers would not resolve the same way in each.
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, type ExecFileException } from 'node:child_process';
 
 export type WebSearchProviderId = 'zhipu' | 'tavily' | 'bocha' | 'serper' | 'bing' | 'browser';
 
@@ -476,7 +476,7 @@ function withBrowserSearchLock<T>(run: () => Promise<T>): Promise<T> {
 
 function execAgentBrowser(args: string[], stdin: string, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    const finish = (err: (Error & { code?: string; killed?: boolean }) | null, stdout: string, stderr: string): void => {
+    const finish = (err: ExecFileException | null, stdout: string, stderr: string): void => {
       if (!err) return resolve(stdout);
       if (err.code === 'ENOENT') {
         return reject(
