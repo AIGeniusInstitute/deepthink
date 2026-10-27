@@ -23,6 +23,52 @@ fs.mkdirSync(bareHomeDir, { recursive: true });
 
 const CONFIG_PATH = path.join(dataDir, 'config', 'web-search.json');
 
+// The keyless browser backend shells out to agent-browser; stub it so these
+// tests never launch a real browser. Other child_process exports pass through.
+const cliCalls = vi.hoisted(() => [] as { args: string[]; stdin: string }[]);
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return {
+    ...actual,
+    execFile: (
+      _cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      cliCalls.push({ args, stdin: '' });
+      const entry = cliCalls[cliCalls.length - 1];
+      const stdin = {
+        on: () => stdin,
+        write: (chunk: string) => {
+          entry.stdin += chunk;
+          return true;
+        },
+        end: () => {
+          queueMicrotask(() =>
+            cb(
+              null,
+              JSON.stringify([
+                { command: ['open', 'x'], success: true, error: null, result: null },
+                {
+                  command: ['eval', 's'],
+                  success: true,
+                  error: null,
+                  result: { result: '[{"title":"T","url":"https://t.example/","snippet":"s"}]' },
+                },
+                { command: ['close'], success: true, error: null, result: null },
+              ]),
+              '',
+            ),
+          );
+        },
+      };
+      return { stdin };
+    },
+  };
+});
+
 const { logger } = await import('../../src/logger.js');
 const { getWebSearchConfig, resolveWebSearchEnv, saveWebSearchConfig, testWebSearchConnection } =
   await import('../../src/web-search-config.js');
@@ -66,11 +112,11 @@ afterAll(() => {
 // ── Provider selection ──────────────────────────────────────────────
 
 describe('resolveWebSearchEnv — provider selection', () => {
-  test('nothing configured anywhere falls back to the keyless bing backend', () => {
+  test('nothing configured anywhere falls back to the keyless browser backend', () => {
     const { provider, env } = resolveWebSearchEnv();
-    expect(provider).toBe('bing');
+    expect(provider).toBe('browser');
     expect(env).toEqual({
-      WEB_SEARCH_PROVIDER: 'bing',
+      WEB_SEARCH_PROVIDER: 'browser',
       WEB_SEARCH_BASE_URL: 'https://www.bing.com',
     });
     // No WEB_SEARCH_API_KEY at all — the keyless provider must not be handed an empty one.
@@ -215,11 +261,14 @@ function stubFetch(
 }
 
 describe('testWebSearchConnection', () => {
-  test('targets bing when nothing is configured', async () => {
-    const { calls } = stubFetch(() => ({ text: '<ol></ol>' }));
+  test('targets the browser backend when nothing is configured', async () => {
+    cliCalls.length = 0;
     const result = await testWebSearchConnection();
-    expect(result.provider).toBe('bing');
-    expect(calls[0].url).toContain('https://www.bing.com/search');
+    expect(result.provider).toBe('browser');
+    expect(result.status).toBe('ok');
+    expect(cliCalls[0].args.join(' ')).toContain('batch');
+    const commands = JSON.parse(cliCalls[0].stdin) as string[][];
+    expect(commands[0][1]).toContain('https://www.bing.com/search?q=');
   });
 
   test('targets the saved provider by default', async () => {

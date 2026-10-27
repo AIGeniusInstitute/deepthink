@@ -9,7 +9,7 @@
  *
  * When unconfigured, `resolveWebSearchEnv()` falls back to the legacy
  * ZHIPU_API_KEY discovery if one is available, and otherwise to the keyless
- * Bing backend — so web_search is never left with no backend at all.
+ * browser backend — so web_search is never left with no backend at all.
  */
 
 import fs from 'node:fs';
@@ -133,8 +133,9 @@ export function resolveWebSearchEnv(legacyZhipuApiKey?: string): WebSearchEnv {
     provider = 'zhipu';
     settings = { apiKey: legacyZhipuApiKey };
   } else {
-    // Nothing configured at all — the keyless backend keeps web_search usable.
-    provider = 'bing';
+    // Nothing configured at all — the keyless browser backend keeps web_search
+    // usable without any API key.
+    provider = 'browser';
     settings = { apiKey: '' };
   }
 
@@ -163,7 +164,7 @@ export async function testWebSearchConnection(
   overrides: { apiKey?: string; baseUrl?: string } = {},
 ): Promise<WebSearchResponse> {
   const config = getWebSearchConfig();
-  const target = provider ?? config?.active ?? 'bing';
+  const target = provider ?? config?.active ?? 'browser';
   const settings = config?.providers[target];
   return runWebSearch(
     target,

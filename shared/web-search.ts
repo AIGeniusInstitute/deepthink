@@ -8,11 +8,14 @@
  *   - src/routes/config.ts                     (settings-page connectivity self-test, on host)
  *   - src/container-runner.ts                  (picking which credentials to inject)
  *
- * Keep this file dependency-free (no imports): it is copied verbatim into projects
- * with different module layouts and package.json files.
+ * Keep this file free of third-party imports (node: builtins are fine): it is
+ * copied verbatim into projects with different module layouts and package.json
+ * files, and bare specifiers would not resolve the same way in each.
  */
 
-export type WebSearchProviderId = 'zhipu' | 'tavily' | 'bocha' | 'serper' | 'bing';
+import { execFile } from 'node:child_process';
+
+export type WebSearchProviderId = 'zhipu' | 'tavily' | 'bocha' | 'serper' | 'bing' | 'browser';
 
 export interface WebSearchProviderMeta {
   id: WebSearchProviderId;
@@ -58,6 +61,13 @@ export const WEB_SEARCH_PROVIDERS: WebSearchProviderMeta[] = [
     needsKey: false,
     defaultBaseUrl: 'https://www.bing.com',
     hint: '无需 key，国内可直连。爬虫式实现：Bing 改版或限流时可能失败。',
+  },
+  {
+    id: 'browser',
+    label: 'Bing 浏览器搜索（免费）',
+    needsKey: false,
+    defaultBaseUrl: 'https://www.bing.com',
+    hint: '免 key：驱动 agent-browser 打开 Bing 抓取结果，需已安装 agent-browser（容器内置；宿主机跑 scripts/install-host-tools.sh）。baseUrl 可改为 https://cn.bing.com。',
   },
 ];
 
@@ -161,6 +171,9 @@ export async function runWebSearch(
         break;
       case 'bing':
         raw = await searchBing(baseUrl, query, count, timeoutMs);
+        break;
+      case 'browser':
+        raw = await searchBrowser(baseUrl, query, count, timeoutMs);
         break;
       default:
         return fail(`unknown_provider: ${provider}`);
@@ -347,6 +360,188 @@ export function decodeBingRedirect(href: string): string {
   } catch {
     return href;
   }
+}
+
+// ── Browser-driven search (keyless) ─────────────────────────────────
+
+/**
+ * Drive the platform's `agent-browser` CLI (Chromium) to open a real Bing SERP
+ * and extract result cards from the rendered DOM — no API key, and unlike the
+ * fetch-based `bing` scrape it executes the page like a normal browser.
+ *
+ * One `batch --json` invocation carries open → extract → close via stdin JSON,
+ * so no search content ever appears on a command line (keeps Windows quoting
+ * out of the picture entirely). The run happens in a dedicated
+ * `websearch-<pid>` session so it never disturbs the agent's own browser
+ * session; calls inside one process are serialized because a session owns a
+ * single active tab.
+ */
+async function searchBrowser(
+  baseUrl: string,
+  query: string,
+  count: number,
+  timeoutMs: number,
+): Promise<Record<string, unknown>[]> {
+  return withBrowserSearchLock(async () => {
+    const session = `websearch-${process.pid}`;
+    const searchUrl = `${baseUrl.replace(/\/+$/, '')}/search?q=${encodeURIComponent(query)}`;
+    const commands: string[][] = [
+      ['open', searchUrl],
+      ['eval', bingExtractScript(count)],
+      ['close'],
+    ];
+
+    const stdout = await execAgentBrowser(
+      ['--session', session, 'batch', '--json'],
+      JSON.stringify(commands),
+      timeoutMs,
+    );
+    const entries = asBatchEntries(parseJsonTolerant(stdout, 'agent-browser batch'));
+
+    const openEntry = entries.find((e) => e.command?.[0] === 'open');
+    if (openEntry && (!openEntry.success || openEntry.error)) {
+      throw new Error(`browser_open_failed: ${summarizeBatchError(openEntry.error)}`);
+    }
+    const evalEntry = entries.find((e) => e.command?.[0] === 'eval');
+    if (!evalEntry || !evalEntry.success || evalEntry.error) {
+      throw new Error(`browser_eval_failed: ${summarizeBatchError(evalEntry?.error)}`);
+    }
+
+    // The eval script returns JSON.stringify(resultCards); the batch envelope
+    // carries it as a string, but tolerate a CLI that hands it back parsed.
+    const payload: unknown = evalEntry.result?.result;
+    const raw = Array.isArray(payload)
+      ? payload
+      : parseJsonTolerant(String(payload ?? ''), 'agent-browser eval');
+    if (!Array.isArray(raw)) {
+      throw new Error(`browser_eval_unexpected: ${String(payload).slice(0, 200)}`);
+    }
+
+    return raw
+      .filter((v): v is Record<string, unknown> => !!v && typeof v === 'object')
+      .map((r) => ({ ...r, url: decodeBingRedirect(asString(r.url)) }));
+  });
+}
+
+/** Page-context script: pull organic result cards out of a rendered Bing SERP. */
+function bingExtractScript(count: number): string {
+  // `count` is clamped to a number before interpolation — never raw user text.
+  return `(() => {
+  const out = [];
+  for (const card of document.querySelectorAll('li[class*="b_algo"]')) {
+    if (out.length >= ${count}) break;
+    const a = card.querySelector('h2 a');
+    if (!a || !a.href) continue;
+    const p = card.querySelector('.b_caption p') || card.querySelector('p');
+    out.push({
+      title: (a.textContent || '').trim(),
+      url: a.href,
+      snippet: ((p && p.textContent) || '').trim(),
+    });
+  }
+  return JSON.stringify(out);
+})()`;
+}
+
+interface BrowserBatchEntry {
+  command?: string[];
+  success?: boolean;
+  error?: unknown;
+  result?: { result?: unknown };
+}
+
+function asBatchEntries(value: unknown): BrowserBatchEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is BrowserBatchEntry => !!v && typeof v === 'object');
+}
+
+function summarizeBatchError(error: unknown): string {
+  if (typeof error === 'string') return error.slice(0, 300);
+  if (error && typeof error === 'object') {
+    const rec = error as Record<string, unknown>;
+    const message = asString(rec.message) || asString(rec.code) || JSON.stringify(rec);
+    return message.slice(0, 300);
+  }
+  return 'unknown_error';
+}
+
+let browserSearchQueue: Promise<unknown> = Promise.resolve();
+
+/** A session owns one active tab, so concurrent searches must not interleave. */
+function withBrowserSearchLock<T>(run: () => Promise<T>): Promise<T> {
+  const next = browserSearchQueue.then(run, run);
+  browserSearchQueue = next.catch(() => undefined);
+  return next;
+}
+
+function execAgentBrowser(args: string[], stdin: string, timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const finish = (err: (Error & { code?: string; killed?: boolean }) | null, stdout: string, stderr: string): void => {
+      if (!err) return resolve(stdout);
+      if (err.code === 'ENOENT') {
+        return reject(
+          new Error('agent-browser_not_installed: run scripts/install-host-tools.sh (or npm i -g agent-browser)'),
+        );
+      }
+      if (err.killed) return reject(new Error(`browser_timeout: batch exceeded ${timeoutMs}ms`));
+      reject(new Error(`browser_cli_failed: ${(stderr || err.message || '').trim().slice(0, 300)}`));
+    };
+    const opts = { timeout: timeoutMs, windowsHide: true, maxBuffer: 16 * 1024 * 1024 };
+
+    // Windows: npm ships agent-browser as a .cmd shim, which Node refuses to
+    // spawn directly (CVE-2024-27980), and `shell: true` with an args array is
+    // deprecated (DEP0190). Go through cmd.exe with a fully quoted, fully static
+    // command line — every dynamic byte (URL, eval script) travels via stdin
+    // JSON, so there is nothing here to quote-escape beyond `%` hygiene.
+    const child =
+      process.platform === 'win32'
+        ? execFile(
+            process.env.ComSpec || 'cmd.exe',
+            ['/d', '/s', '/c', ['agent-browser', ...args.map(quoteCmdArg)].join(' ')],
+            opts,
+            finish,
+          )
+        : execFile('agent-browser', args, opts, finish);
+
+    child.stdin?.on('error', () => undefined); // CLI may exit before stdin drains
+    child.stdin?.write(stdin);
+    child.stdin?.end();
+  });
+}
+
+/** cmd.exe expands `%VAR%` batch-style; double `%` so it stays literal. */
+function quoteCmdArg(arg: string): string {
+  return `"${arg.replace(/%/g, '%%')}"`;
+}
+
+/**
+ * Parse JSON that may carry log noise around it. Tolerant because the CLI's
+ * stdout contract is loose; anything unparsable is a tool error, not a crash.
+ */
+export function parseJsonTolerant(text: string, what: string): unknown {
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error(`${what}_empty: no output`);
+  const attempts = [trimmed];
+  const first = trimmed.search(/[[{]/);
+  const last = Math.max(trimmed.lastIndexOf(']'), trimmed.lastIndexOf('}'));
+  if (first >= 0 && last > first) attempts.push(trimmed.slice(first, last + 1));
+  for (const attempt of attempts) {
+    try {
+      let value: unknown = JSON.parse(attempt);
+      // Some CLI versions print the eval return value as a quoted string literal.
+      if (typeof value === 'string') {
+        try {
+          value = JSON.parse(value);
+        } catch {
+          /* keep the plain string */
+        }
+      }
+      return value;
+    } catch {
+      /* try the next shape */
+    }
+  }
+  throw new Error(`${what}_unparsable: ${trimmed.slice(0, 200)}`);
 }
 
 // ── Shared helpers ──────────────────────────────────────────────────

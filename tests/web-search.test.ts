@@ -15,8 +15,72 @@ import {
   getWebSearchProviderMeta,
   isWebSearchProviderId,
   parseBingHtml,
+  parseJsonTolerant,
   runWebSearch,
 } from '../src/web-search.js';
+
+// ── agent-browser CLI mocking (browser backend) ────────────────────
+
+const cli = vi.hoisted(() => {
+  const calls: { cmd: string; args: string[]; opts: Record<string, unknown>; stdin: string }[] = [];
+  let responder: (call: { cmd: string; args: string[]; opts: Record<string, unknown>; stdin: string }) => {
+    error?: Error & { code?: string; killed?: boolean };
+    stdout?: string;
+    stderr?: string;
+  } = () => ({ stdout: '[]' });
+  let active = 0;
+  let maxActive = 0;
+  return {
+    calls,
+    get maxActive() {
+      return maxActive;
+    },
+    setResponder(fn: typeof responder): void {
+      responder = fn;
+      calls.length = 0;
+      active = 0;
+      maxActive = 0;
+    },
+    respond(call: { cmd: string; args: string[]; opts: Record<string, unknown>; stdin: string }) {
+      return responder(call);
+    },
+    enter(): void {
+      active += 1;
+      if (active > maxActive) maxActive = active;
+    },
+    leave(): void {
+      active -= 1;
+    },
+  };
+});
+
+vi.mock('node:child_process', () => ({
+  execFile: (
+    cmd: string,
+    args: string[],
+    opts: Record<string, unknown>,
+    cb: (err: Error | null, stdout: string, stderr: string) => void,
+  ) => {
+    const call = { cmd, args, opts, stdin: '' };
+    cli.calls.push(call);
+    cli.enter();
+    const stdin = {
+      on: () => stdin,
+      write: (chunk: string) => {
+        call.stdin += chunk;
+        return true;
+      },
+      end: () => {
+        const outcome = cli.respond(call);
+        queueMicrotask(() => {
+          cli.leave();
+          cb(outcome.error ?? null, outcome.stdout ?? '', outcome.stderr ?? '');
+        });
+      },
+    };
+    return { stdin };
+  },
+}));
 
 interface FetchCall {
   url: string;
@@ -54,19 +118,20 @@ afterEach(() => {
 // ── Provider registry ───────────────────────────────────────────────
 
 describe('provider registry', () => {
-  test('exposes the five supported backends', () => {
+  test('exposes the six supported backends', () => {
     expect(WEB_SEARCH_PROVIDERS.map((p) => p.id)).toEqual([
       'zhipu',
       'tavily',
       'bocha',
       'serper',
       'bing',
+      'browser',
     ]);
   });
 
-  test('only bing is keyless', () => {
+  test('only the scrape backends are keyless', () => {
     const keyless = WEB_SEARCH_PROVIDERS.filter((p) => !p.needsKey).map((p) => p.id);
-    expect(keyless).toEqual(['bing']);
+    expect(keyless).toEqual(['bing', 'browser']);
   });
 
   test('isWebSearchProviderId accepts known ids only', () => {
@@ -420,5 +485,183 @@ describe('domain filtering', () => {
       { apiKey: 'k' },
     );
     expect(res.status).toBe('empty');
+  });
+});
+
+// ── Browser backend (agent-browser driven, keyless) ────────────────
+
+/** Shape a `batch --json` stdout envelope the way agent-browser prints it. */
+function batchStdout(entries: Record<string, unknown>[]): string {
+  return JSON.stringify(entries.map((e) => ({ success: true, error: null, result: null, ...e })));
+}
+
+function batchWithEvalCards(cards: string, extra: Record<string, unknown> = {}): string {
+  return batchStdout([
+    { command: ['open', 'https://www.bing.com/search?q=q'], ...extra },
+    { command: ['eval', 'script'], result: { result: cards } },
+    { command: ['close'] },
+  ]);
+}
+
+const RESULT_CARDS = JSON.stringify([
+  { title: 'Alpha', url: 'https://alpha.example/a', snippet: 'first' },
+  { title: 'Beta', url: 'https://beta.example/b', snippet: 'second' },
+]);
+
+describe('browser backend (agent-browser)', () => {
+  test('one batch call runs open → extract → close in an isolated session', async () => {
+    cli.setResponder(() => ({ stdout: batchWithEvalCards(RESULT_CARDS) }));
+
+    const res = await runWebSearch('browser', { query: 'deep think' });
+
+    expect(res.status).toBe('ok');
+    expect(res.error).toBeNull();
+    expect(cli.calls).toHaveLength(1);
+    const call = cli.calls[0];
+    // POSIX spawns agent-browser directly; win32 wraps it in `cmd.exe /d /s /c`
+    // (a .cmd shim cannot be spawned without a shell). Assert the invariants
+    // that hold for both shapes.
+    const spawnText = [call.cmd, ...call.args].join(' ');
+    expect(spawnText).toContain('agent-browser');
+    expect(spawnText).toContain(`websearch-${process.pid}`);
+    expect(spawnText).toContain('batch');
+    expect(spawnText).toContain('--json');
+    expect(call.opts.timeout).toBe(20_000);
+
+    const commands = JSON.parse(call.stdin) as string[][];
+    expect(commands[0]).toEqual(['open', 'https://www.bing.com/search?q=deep%20think']);
+    expect(commands[1][0]).toBe('eval');
+    expect(commands[1][1]).toContain('b_algo');
+    expect(commands[2]).toEqual(['close']);
+  });
+
+  test('honours a baseUrl override (e.g. cn.bing.com)', async () => {
+    cli.setResponder(() => ({ stdout: batchWithEvalCards(RESULT_CARDS) }));
+    await runWebSearch('browser', { query: 'q' }, { baseUrl: 'https://cn.bing.com/' });
+    const commands = JSON.parse(cli.calls[0].stdin) as string[][];
+    expect(commands[0][1]).toBe('https://cn.bing.com/search?q=q');
+  });
+
+  test('normalizes cards into WebSearchResultItem', async () => {
+    cli.setResponder(() => ({ stdout: batchWithEvalCards(RESULT_CARDS) }));
+
+    const res = await runWebSearch('browser', { query: 'q' });
+
+    expect(res.results).toEqual([
+      { title: 'Alpha', content: 'first', link: 'https://alpha.example/a', publish_date: '', media: 'alpha.example' },
+      { title: 'Beta', content: 'second', link: 'https://beta.example/b', publish_date: '', media: 'beta.example' },
+    ]);
+  });
+
+  test('decodes Bing /ck/a redirect links to the real URL', async () => {
+    const real = 'https://real.example/page';
+    const redirect = `https://www.bing.com/ck/a?u=a1${Buffer.from(real, 'utf8').toString('base64url')}`;
+    const cards = JSON.stringify([{ title: 'T', url: redirect, snippet: 's' }]);
+    cli.setResponder(() => ({ stdout: batchWithEvalCards(cards) }));
+
+    const res = await runWebSearch('browser', { query: 'q' });
+
+    expect(res.results[0].link).toBe(real);
+  });
+
+  test('injects the clamped count into the extraction script', async () => {
+    cli.setResponder(() => ({ stdout: batchWithEvalCards(RESULT_CARDS) }));
+    await runWebSearch('browser', { query: 'q', count: 100 });
+    const commands = JSON.parse(cli.calls[0].stdin) as string[][];
+    expect(commands[1][1]).toContain('length >= 50');
+  });
+
+  test('applies domain filters to browser results', async () => {
+    cli.setResponder(() => ({ stdout: batchWithEvalCards(RESULT_CARDS) }));
+    const res = await runWebSearch('browser', { query: 'q', allowed_domains: ['alpha.example'] });
+    expect(res.results.map((r) => r.link)).toEqual(['https://alpha.example/a']);
+  });
+
+  test('an empty result page reports status=empty', async () => {
+    cli.setResponder(() => ({ stdout: batchWithEvalCards('[]') }));
+    const res = await runWebSearch('browser', { query: 'q' });
+    expect(res.status).toBe('empty');
+    expect(res.results).toEqual([]);
+  });
+
+  test('a failed open surfaces the browser error', async () => {
+    cli.setResponder(() => ({
+      stdout: batchWithEvalCards(RESULT_CARDS, { success: false, error: { message: 'net::ERR_NAME_NOT_RESOLVED' } }),
+    }));
+    const res = await runWebSearch('browser', { query: 'q' });
+    expect(res.status).toBe('error');
+    expect(res.error).toContain('browser_open_failed');
+    expect(res.error).toContain('net::ERR_NAME_NOT_RESOLVED');
+  });
+
+  test('an unparsable eval payload is a tool error, not a crash', async () => {
+    cli.setResponder(() => ({ stdout: batchWithEvalCards('not-json') }));
+    const res = await runWebSearch('browser', { query: 'q' });
+    expect(res.status).toBe('error');
+    expect(res.error).toContain('unparsable');
+  });
+
+  test('a missing agent-browser explains how to install it', async () => {
+    cli.setResponder(() => ({ error: Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }) }));
+    const res = await runWebSearch('browser', { query: 'q' });
+    expect(res.status).toBe('error');
+    expect(res.error).toContain('agent-browser_not_installed');
+    expect(res.error).toContain('install-host-tools.sh');
+  });
+
+  test('a CLI failure reports stderr', async () => {
+    cli.setResponder(() => ({ error: new Error('exit 1'), stderr: 'browser crashed' }));
+    const res = await runWebSearch('browser', { query: 'q' });
+    expect(res.status).toBe('error');
+    expect(res.error).toContain('browser_cli_failed');
+    expect(res.error).toContain('browser crashed');
+  });
+
+  test('a hung browser times out within the budget', async () => {
+    cli.setResponder(() => ({ error: Object.assign(new Error('killed'), { killed: true }) }));
+    const res = await runWebSearch('browser', { query: 'q' }, {}, 1234);
+    expect(res.status).toBe('error');
+    expect(res.error).toContain('browser_timeout');
+    expect(res.error).toContain('1234ms');
+  });
+
+  test('tolerates log noise around the batch envelope', async () => {
+    cli.setResponder(() => ({
+      stdout: `daemon ready\n${batchWithEvalCards(RESULT_CARDS)}\ndone`,
+    }));
+    const res = await runWebSearch('browser', { query: 'q' });
+    expect(res.status).toBe('ok');
+    expect(res.results).toHaveLength(2);
+  });
+
+  test('runs concurrent searches one at a time (one session, one tab)', async () => {
+    cli.setResponder(() => ({ stdout: batchWithEvalCards(RESULT_CARDS) }));
+    const [a, b] = await Promise.all([
+      runWebSearch('browser', { query: 'one' }),
+      runWebSearch('browser', { query: 'two' }),
+    ]);
+    expect(a.status).toBe('ok');
+    expect(b.status).toBe('ok');
+    expect(cli.calls).toHaveLength(2);
+    expect(cli.maxActive).toBe(1);
+  });
+});
+
+describe('parseJsonTolerant', () => {
+  test('parses clean JSON as-is', () => {
+    expect(parseJsonTolerant('[1,2]', 'x')).toEqual([1, 2]);
+  });
+
+  test('unwraps a JSON-encoded string payload', () => {
+    expect(parseJsonTolerant('"{\\"a\\":1}"', 'x')).toEqual({ a: 1 });
+  });
+
+  test('slices out surrounding log noise', () => {
+    expect(parseJsonTolerant('noise [1,2] noise', 'x')).toEqual([1, 2]);
+  });
+
+  test('rejects garbage and empty output', () => {
+    expect(() => parseJsonTolerant('nope', 'x')).toThrow('x_unparsable');
+    expect(() => parseJsonTolerant('   ', 'x')).toThrow('x_empty');
   });
 });

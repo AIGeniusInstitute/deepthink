@@ -2664,7 +2664,7 @@ Use this when the user describes a reusable capability that should be persisted 
     // 内置 WebSearch/WebFetch 在中国国内不可用（US-only 搜索后端 / 抓取失败）。
     // 这里用 SDK tool() 注册两个进程内 MCP 工具，配合 index.ts 的 toolAliases
     // 把模型 emit 的 WebSearch/WebFetch 路由到本实现。详见 docs/tech_solution。
-    // 搜索后端可选（zhipu / tavily / bocha / serper / bing），由宿主注入的
+    // 搜索后端可选（zhipu / tavily / bocha / serper / bing / browser），由宿主注入的
     // WEB_SEARCH_PROVIDER 决定；实现见 shared/web-search.ts。
     tool(
       'web_search',
@@ -2719,11 +2719,17 @@ const BROWSER_UA =
 /**
  * 本次容器被配置使用哪个搜索后端，以及对应凭据。
  * 由宿主 `src/container-runner.ts` 注入；`ZHIPU_*` 是可插拔改造前的旧契约，
- * 对纯智谱部署仍然有效（未设 WEB_SEARCH_PROVIDER 时默认回落到智谱）。
+ * 对纯智谱部署仍然有效（未设 WEB_SEARCH_PROVIDER 但有 ZHIPU_API_KEY 时回落到智谱，
+ * 否则回落到免 key 的浏览器搜索）。
  */
 function resolveWebSearchProvider(): { provider: WebSearchProviderId; credentials: WebSearchCredentials } {
   const requested = (process.env.WEB_SEARCH_PROVIDER || '').trim();
-  const provider: WebSearchProviderId = isWebSearchProviderId(requested) ? requested : 'zhipu';
+  const legacyZhipuKey = (process.env.ZHIPU_API_KEY || '').trim();
+  const provider: WebSearchProviderId = isWebSearchProviderId(requested)
+    ? requested
+    : legacyZhipuKey
+      ? 'zhipu'
+      : 'browser';
   const legacy = provider === 'zhipu';
   return {
     provider,
