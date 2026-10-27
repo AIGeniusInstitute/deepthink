@@ -65,6 +65,7 @@ import { DEFAULT_LANGUAGE } from './i18n-languages.js';
 import { isApiError } from './agent-output-parser.js';
 import type { ClaudeProviderConfig } from './runtime-config.js';
 import { loadUserMcpServers } from './mcp-utils.js';
+import { wrapWinBatchServers } from './mcp-client.js';
 import { getSkillContentPath } from './skill-content-utils.js';
 import { parseFrontmatter } from './skill-utils.js';
 import {
@@ -2116,8 +2117,12 @@ export async function runHostAgent(
   // main server directly. Registry auto-injection still applies via
   // loadUserMcpServers (opts.baseUrl defaults to 127.0.0.1).
   const settingsFile = path.join(groupSessionsDir, 'settings.json');
-  const hostMcpServers = group.created_by ? loadUserMcpServers(group.created_by) : {};
-  ensureSettingsJson(settingsFile, hostMcpServers);
+  const hostMcpServers: Record<string, Record<string, unknown>> = group.created_by
+    ? loadUserMcpServers(group.created_by)
+    : {};
+  // Windows 批处理（.cmd/.bat）无法被 Node spawn 直接拉起（EINVAL），
+  // 宿主机模式下 MCP 由 Node spawn 执行，需改写为 cmd.exe /c 前缀。
+  ensureSettingsJson(settingsFile, wrapWinBatchServers(hostMcpServers));
 
   // 4. Skills / Rules / CLAUDE.md 自动链接到 session 目录
   // deepthinkMemoryActive：记忆层未禁用 + admin 原生 ~/.claude/CLAUDE.md 并存时触发 audit 告警。

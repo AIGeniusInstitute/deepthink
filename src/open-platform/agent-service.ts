@@ -24,6 +24,7 @@ import {
   type AgentDefinitionRow,
 } from '../db.js';
 import { loadUserMcpServers } from '../mcp-utils.js';
+import { wrapWinBatchCommand } from '../mcp-client.js';
 import { logger } from '../logger.js';
 import { billOpenPlatformUsage } from './billing.js';
 import { createRunRecorder, type RunMeta } from './run-recorder.js';
@@ -84,13 +85,15 @@ function resolveAgentMcpServers(userId: string, agentDefId: string): Record<stri
   for (const m of mounts) {
     const cfg = userMcp[m.resource_id];
     if (!cfg) continue;
-    out[m.resource_id] = {
+    // Windows 批处理（.cmd/.bat）无法被 Node spawn 直接拉起（EINVAL），
+    // query() 的 mcpServers 由 Node spawn 执行，需改写为 cmd.exe /c 前缀。
+    out[m.resource_id] = wrapWinBatchCommand({
       type: typeof cfg.type === 'string' ? cfg.type : 'stdio',
       ...(typeof cfg.command === 'string' ? { command: cfg.command } : {}),
       ...(Array.isArray(cfg.args) ? { args: cfg.args } : {}),
       ...(cfg.env && typeof cfg.env === 'object' ? { env: cfg.env } : {}),
       ...(typeof cfg.url === 'string' ? { url: cfg.url } : {}),
-    };
+    });
   }
   return out;
 }

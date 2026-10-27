@@ -84,12 +84,52 @@ export function buildTransport(cfg: McpServerConfig): Transport {
   }
   // Merge the server's custom env on top of a safe default environment
   // (PATH/HOME/etc). Passing env alone would drop PATH and the child fails.
+  const wrapped = wrapWinBatchCommand(cfg);
   return new StdioClientTransport({
-    command,
-    args: cfg.args ?? [],
+    command: wrapped.command as string,
+    args: wrapped.args ?? [],
     env: { ...getDefaultEnvironment(), ...(cfg.env ?? {}) },
     stderr: 'ignore',
   });
+}
+
+// --- Windows 批处理命令兼容 ---
+
+/**
+ * Windows 上 Node child_process.spawn 无法直接启动 .cmd/.bat（Node 的
+ * CVE-2024-27980 安全修复后报 spawn EINVAL），而 MCP stdio transport 底层
+ * 就是 spawn，用户侧症状是 "MCP error -32000: Connection closed"。
+ * 改写为 `cmd.exe /c <原命令> ...<原 args>` 前缀形式后可正常拉起。
+ *
+ * 仅适用于命令将在 Windows 宿主进程 spawn 的路径：本模块的工具列表/测试
+ * 调用、宿主机模式的 settings.json（container-runner）、开放平台 query 的
+ * mcpServers（open-platform/agent-service）。Docker 模式下命令在 Linux 容器
+ * 内执行，不要改写。
+ */
+export function wrapWinBatchCommand<T extends { command?: unknown; args?: unknown }>(
+  cfg: T,
+  platform: NodeJS.Platform = process.platform,
+): T {
+  if (platform !== 'win32') return cfg;
+  const raw = typeof cfg.command === 'string' ? cfg.command.trim().replace(/^"(.*)"$/, '$1') : '';
+  if (!/\.(cmd|bat)$/i.test(raw)) return cfg;
+  const args = Array.isArray(cfg.args)
+    ? (cfg.args as unknown[]).filter((a): a is string => typeof a === 'string')
+    : [];
+  return { ...cfg, command: process.env.ComSpec || 'cmd.exe', args: ['/c', raw, ...args] } as T;
+}
+
+/** 对整个 mcpServers 映射逐个应用 {@link wrapWinBatchCommand}。 */
+export function wrapWinBatchServers<T extends { command?: unknown; args?: unknown }>(
+  servers: Record<string, T>,
+  platform: NodeJS.Platform = process.platform,
+): Record<string, T> {
+  if (platform !== 'win32') return servers;
+  const out: Record<string, T> = {};
+  for (const [name, entry] of Object.entries(servers)) {
+    out[name] = wrapWinBatchCommand(entry, platform);
+  }
+  return out;
 }
 
 /** Convert an unknown thrown value into a clean, user-readable message. */
@@ -99,6 +139,10 @@ export function toErrorMessage(err: unknown): string {
     // ENOENT (stdio spawn failure) surfaces via onerror / connect rejection.
     if (code === 'ENOENT') {
       return `命令不存在或无法执行：${err.message}`;
+    }
+    // EINVAL：Node 拒绝直接启动 Windows 批处理（.cmd/.bat），需经 cmd /c。
+    if (code === 'EINVAL') {
+      return `命令无法被直接启动：${err.message}（Windows 批处理 .cmd/.bat 需通过 cmd /c 执行）`;
     }
     return err.message;
   }
