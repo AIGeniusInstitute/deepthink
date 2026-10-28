@@ -33,6 +33,9 @@ import { AutonomySection } from '../components/settings/AutonomySection';
 import { EmbeddingSettingsSection } from '../components/settings/EmbeddingSettingsSection';
 import { WebSearchSettingsSection } from '../components/settings/WebSearchSettingsSection';
 import { TeamPage } from './TeamPage';
+import { AgentGroupsListPage } from './AgentGroupsListPage';
+import { StaffEmployeesPage } from './StaffEmployeesPage';
+import { StaffTeamsPage } from './StaffTeamsPage';
 import { CollaborationPage } from './CollaborationPage';
 import { WorkflowEditorPage } from './WorkflowEditorPage';
 import { OpcPage } from './OpcPage';
@@ -46,9 +49,9 @@ import { LoopsPage } from './LoopsPage';
 import BillingPage from './BillingPage';
 import type { SettingsTab } from '../components/settings/types';
 
-const VALID_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'about', 'bindings', 'usage', 'monitor', 'language', 'atomcode', 'codex', 'opencode', 'pi', 'embedding', 'web-search', 'autonomy', 'team', 'collaborations', 'opc', 'workflows', 'marketplace', 'engines', 'sandbox', 'tasks', 'loops', 'supervisor', 'harness', 'billing'];
+const VALID_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'about', 'bindings', 'usage', 'monitor', 'language', 'atomcode', 'codex', 'opencode', 'pi', 'embedding', 'web-search', 'autonomy', 'agent-groups', 'staff-employees', 'staff-teams', 'team', 'collaborations', 'opc', 'workflows', 'marketplace', 'engines', 'sandbox', 'tasks', 'loops', 'supervisor', 'harness', 'billing'];
 const SYSTEM_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'atomcode', 'codex', 'opencode', 'pi', 'autonomy', 'embedding', 'web-search'];
-const FULLPAGE_TABS: SettingsTab[] = ['groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'bindings', 'usage', 'monitor', 'team', 'collaborations', 'opc', 'workflows', 'marketplace', 'engines', 'sandbox', 'tasks', 'loops', 'supervisor', 'harness', 'billing'];
+const FULLPAGE_TABS: SettingsTab[] = ['groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'bindings', 'usage', 'monitor', 'agent-groups', 'staff-employees', 'staff-teams', 'team', 'collaborations', 'opc', 'workflows', 'marketplace', 'engines', 'sandbox', 'tasks', 'loops', 'supervisor', 'harness', 'billing'];
 
 export function SettingsPage() {
   const { user: currentUser } = useAuthStore();
@@ -118,6 +121,9 @@ export function SettingsPage() {
     if (canManageUsers) {
       tabs.push({ key: 'users', label: '用户' });
     }
+    tabs.push({ key: 'agent-groups', label: 'Agent群组' });
+    tabs.push({ key: 'staff-employees', label: '数字员工' });
+    tabs.push({ key: 'staff-teams', label: '协作团队' });
     tabs.push({ key: 'team', label: '团队' });
     tabs.push({ key: 'collaborations', label: '协作' });
     tabs.push({ key: 'opc', label: 'OPC' });
@@ -174,6 +180,9 @@ export function SettingsPage() {
     autonomy: '自主性中枢',
     embedding: 'Embedding 配置',
     'web-search': '联网搜索',
+    'agent-groups': 'Agent群组',
+    'staff-employees': '数字员工',
+    'staff-teams': '协作团队',
     team: '团队',
     collaborations: '协作',
     opc: 'OPC',
@@ -257,6 +266,9 @@ export function SettingsPage() {
             {activeTab === 'bindings' && <BindingsSection />}
             {activeTab === 'usage' && <UsagePage />}
             {activeTab === 'monitor' && <MonitorPage />}
+            {activeTab === 'agent-groups' && <AgentGroupsListPage />}
+            {activeTab === 'staff-employees' && <StaffEmployeesPage />}
+            {activeTab === 'staff-teams' && <StaffTeamsPage />}
             {activeTab === 'team' && <TeamPage />}
             {activeTab === 'collaborations' && <CollaborationPage />}
             {activeTab === 'opc' && <OpcPage />}

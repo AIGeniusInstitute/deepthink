@@ -20,6 +20,9 @@ import {
   Cpu,
   Activity,
   Users,
+  UsersRound,
+  Network,
+  Briefcase,
   Handshake,
   Building2,
   Workflow,
@@ -77,6 +80,9 @@ const featureItems: NavItem[] = [
 
 // 收纳自原一级菜单的应用入口（应用功能页）
 const appItems: NavItem[] = [
+  { key: 'agent-groups', label: 'Agent群组', icon: <Network className="w-4 h-4" />, group: 'apps' },
+  { key: 'staff-employees', label: '数字员工', icon: <Briefcase className="w-4 h-4" />, group: 'apps' },
+  { key: 'staff-teams', label: '协作团队', icon: <UsersRound className="w-4 h-4" />, group: 'apps' },
   { key: 'team', label: '团队', icon: <Users className="w-4 h-4" />, group: 'apps' },
   { key: 'collaborations', label: '协作', icon: <Handshake className="w-4 h-4" />, group: 'apps' },
   { key: 'opc', label: 'OPC', icon: <Building2 className="w-4 h-4" />, group: 'apps' },

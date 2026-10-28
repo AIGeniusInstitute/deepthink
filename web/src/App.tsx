@@ -43,12 +43,9 @@ const SandboxPage = lazy(() => import('./pages/SandboxPage').then(m => ({ defaul
 const EnginesPage = lazy(() => import('./pages/EnginesPage').then(m => ({ default: m.EnginesPage })));
 const ToolsOverviewPage = lazy(() => import('./pages/ToolsOverviewPage').then(m => ({ default: m.ToolsOverviewPage })));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
-const StaffEmployeesPage = lazy(() => import('./pages/StaffEmployeesPage').then(m => ({ default: m.StaffEmployeesPage })));
-const StaffTeamsPage = lazy(() => import('./pages/StaffTeamsPage').then(m => ({ default: m.StaffTeamsPage })));
 const StaffTeamDetailPage = lazy(() => import('./pages/StaffTeamDetailPage').then(m => ({ default: m.StaffTeamDetailPage })));
 const AgentDetailPage = lazy(() => import('./pages/AgentDetailPage').then(m => ({ default: m.AgentDetailPage })));
 const DiskPage = lazy(() => import('./pages/DiskPage').then(m => ({ default: m.DiskPage })));
-const AgentGroupsListPage = lazy(() => import('./pages/AgentGroupsListPage').then(m => ({ default: m.AgentGroupsListPage })));
 const AgentGroupChatPage = lazy(() => import('./pages/AgentGroupChatPage').then(m => ({ default: m.AgentGroupChatPage })));
 const EvalCenterPage = lazy(() => import('./pages/EvalCenterPage').then(m => ({ default: m.EvalCenterPage })));
 const FeedbackLearningPage = lazy(() => import('./pages/FeedbackLearningPage').then(m => ({ default: m.FeedbackLearningPage })));
@@ -95,7 +92,7 @@ export function App() {
           <Route path="/chat/agent/:agentId" element={<Suspense fallback={<PageLoader />}><ChatPage /></Suspense>} />
           <Route path="/chat/:groupFolder?" element={<Suspense fallback={<PageLoader />}><ChatPage /></Suspense>} />
           <Route path="/disk" element={<Suspense fallback={<PageLoader />}><DiskPage /></Suspense>} />
-          <Route path="/agent-groups" element={<Suspense fallback={<PageLoader />}><AgentGroupsListPage /></Suspense>} />
+          <Route path="/agent-groups" element={<Navigate to="/settings?tab=agent-groups" replace />} />
           <Route path="/agent-groups/:jid" element={<Suspense fallback={<PageLoader />}><AgentGroupChatPage /></Suspense>} />
           <Route path="/eval-center" element={<Suspense fallback={<PageLoader />}><EvalCenterPage /></Suspense>} />
           <Route path="/feedback-learning" element={<Suspense fallback={<PageLoader />}><FeedbackLearningPage /></Suspense>} />
@@ -129,8 +126,8 @@ export function App() {
           <Route path="/sandbox" element={<Suspense fallback={<PageLoader />}><SandboxPage /></Suspense>} />
           <Route path="/engines" element={<Suspense fallback={<PageLoader />}><EnginesPage /></Suspense>} />
           <Route path="/tools" element={<Suspense fallback={<PageLoader />}><ToolsOverviewPage /></Suspense>} />
-          <Route path="/staff-employees" element={<Suspense fallback={<PageLoader />}><StaffEmployeesPage /></Suspense>} />
-          <Route path="/staff-teams" element={<Suspense fallback={<PageLoader />}><StaffTeamsPage /></Suspense>} />
+          <Route path="/staff-employees" element={<Navigate to="/settings?tab=staff-employees" replace />} />
+          <Route path="/staff-teams" element={<Navigate to="/settings?tab=staff-teams" replace />} />
           <Route path="/staff-teams/:id" element={<Suspense fallback={<PageLoader />}><StaffTeamDetailPage /></Suspense>} />
           <Route path="/settings" element={<Suspense fallback={<PageLoader />}><SettingsPage /></Suspense>} />
           <Route
