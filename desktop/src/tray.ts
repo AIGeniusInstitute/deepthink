@@ -1,6 +1,8 @@
 import { Tray, Menu, nativeImage, shell } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { __dirname } from './meta.js';
+import { logDir } from './paths.js';
 
 export interface TrayHandlers {
   onShow: () => void;
@@ -12,20 +14,18 @@ export interface TrayHandlers {
 
 let tray: Tray | null = null;
 
-export function createTray(handlers: TrayHandlers): Tray {
-  // 1x1 transparent placeholder; replaced with real icon once assets ready
-  const iconPath = path.join(__dirname, '..', 'resources', trayIconName());
-  let image: Electron.NativeImage;
+const DEBUG_LOG = `${logDir}/main.log`;
+function debug(line: string): void {
   try {
-    image = nativeImage.createFromPath(iconPath);
-    if (process.platform === 'darwin') {
-      image.setTemplateImage(true);
-    }
-  } catch {
-    image = nativeImage.createEmpty();
-  }
+    fs.appendFileSync(DEBUG_LOG, `${new Date().toISOString()} ${line}\n`);
+  } catch { /* best-effort */ }
+}
 
-  tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image);
+export function createTray(handlers: TrayHandlers): Tray {
+  const { image, source } = loadTrayImage();
+  debug(`tray: icon loaded from ${source}`);
+
+  tray = new Tray(image);
   tray.setToolTip('DeepThink');
 
   const menu = Menu.buildFromTemplate([
@@ -53,4 +53,32 @@ function trayIconName(): string {
     default:
       return 'tray.png';
   }
+}
+
+/**
+ * 托盘图标按「平台首选 → 应用图标 → 空图」回退。
+ *
+ * 平台首选的 tray.ico / tray.png / trayTemplate.png 由 scripts/generate-tray-icons.sh
+ * 生成，但那需要 ImageMagick、缺失时静默跳过，且打包/CI 流程从不调它——结果是生产包里
+ * 根本没有这几个文件，createFromPath 拿到空图，托盘与"显示隐藏的图标"面板里就是一个
+ * 空白项。回退到随包必有的 icon.ico / icon.png（win.json 的 files 含 resources/**）。
+ */
+function loadTrayImage(): { image: Electron.NativeImage; source: string } {
+  const resourcesDir = path.join(__dirname, '..', 'resources');
+  const preferred = path.join(resourcesDir, trayIconName());
+  const fallback = path.join(resourcesDir, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+
+  for (const candidate of [preferred, fallback]) {
+    if (!fs.existsSync(candidate)) continue;
+    const image = nativeImage.createFromPath(candidate);
+    if (image.isEmpty()) continue;
+    // 只有平台首选（macOS template）才设模板图；回退到彩色应用图标时设模板会变成黑剪影
+    if (candidate === preferred && process.platform === 'darwin') {
+      image.setTemplateImage(true);
+    }
+    return { image, source: path.basename(candidate) };
+  }
+
+  debug('tray: no icon asset found (tray.* and icon.* all missing), using empty image');
+  return { image: nativeImage.createEmpty(), source: 'empty' };
 }
