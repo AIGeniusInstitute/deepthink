@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
 
+// AI 生成/优化走后端 LLM 调用（src/agent-ai.ts 的 GENERATION_TIMEOUT_MS / OPTIMIZATION_TIMEOUT_MS = 90s）。
+// apiFetch 默认 8s 会提前 abort 掉仍在跑的生成请求（实测整链约 27s），必须显式放宽，
+// 与 skills 的 AI 生成（150s）保持同一约定。
+const AI_GENERATE_TIMEOUT_MS = 150_000;
+
 export type ResourceType = 'mcp_server' | 'skill' | 'knowledge_base';
 
 export interface AgentMount {
@@ -337,23 +342,22 @@ export const useAgentsPaasStore = create<AgentsState>((set, get) => ({
     }
   },
   generateAgent: async (data) => {
-    try {
-      const res = await api.post<{ fields: GeneratedAgentFields }>('/api/paas/agents/generate', data);
-      return res.fields ?? null;
-    } catch {
-      return null;
-    }
+    // 不吞掉 ApiError：502 body.error 带着后端真实原因（provider 不可用 / 返回非 JSON 等），
+    // 吞掉后 UI 只能报「provider 可能不可用或超时」这种无法定位的笼统文案。
+    const res = await api.post<{ fields: GeneratedAgentFields }>(
+      '/api/paas/agents/generate',
+      data,
+      AI_GENERATE_TIMEOUT_MS,
+    );
+    return res.fields ?? null;
   },
   optimizeAgent: async (agentId, feedback) => {
-    try {
-      const res = await api.post<OptimizedAgentPreview>(
-        `/api/paas/agents/${agentId}/optimize`,
-        feedback ? { feedback } : {},
-      );
-      return res;
-    } catch {
-      return null;
-    }
+    const res = await api.post<OptimizedAgentPreview>(
+      `/api/paas/agents/${agentId}/optimize`,
+      feedback ? { feedback } : {},
+      AI_GENERATE_TIMEOUT_MS,
+    );
+    return res;
   },
   applyOptimizedAgent: async (agentId, patch) => {
     try {

@@ -60,11 +60,14 @@ export function AgentStudioPage() {
     try {
       const fields = await generateAgent({ name: name.trim() || undefined, description: description.trim() });
       if (!fields) {
-        toast.error('AI 生成失败（provider 可能不可用或超时）');
+        toast.error('AI 生成失败：返回结果为空');
         return;
       }
       applyGeneratedFields(fields);
       toast.success('已填入 AI 生成结果，可继续编辑后创建');
+    } catch (err) {
+      // api.post 抛出的 ApiError.message 已是后端 502 body.error 的真实原因
+      toast.error(`AI 生成失败：${err instanceof Error && err.message ? err.message : '未知错误'}`);
     } finally {
       setGenerating(false);
     }

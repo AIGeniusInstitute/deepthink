@@ -141,6 +141,8 @@ paasAgentsRoute.post('/generate', async (c) => {
 
   const result = await generateAgentContent(description, suggestedName);
   if ('error' in result) {
+    // 502 此前不落日志，线上只能看到前端一句「provider 可能不可用或超时」无从定位
+    logger.warn({ userId: user.id, err: result.error }, 'Agent AI generate failed');
     return c.json({ error: result.error }, 502);
   }
   return c.json({ fields: result.fields });
@@ -854,6 +856,7 @@ paasAgentsRoute.post('/:id/optimize', async (c) => {
     feedback,
   );
   if ('error' in result) {
+    logger.warn({ userId: user.id, agentId: id, err: result.error }, 'Agent AI optimize failed');
     return c.json({ error: result.error }, 502);
   }
   return c.json({

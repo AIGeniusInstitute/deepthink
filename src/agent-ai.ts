@@ -11,9 +11,15 @@
  * fields.
  */
 import { sdkQuery } from './sdk-query.js';
+import { logger } from './logger.js';
 
 const GENERATION_TIMEOUT_MS = 90_000;
 const OPTIMIZATION_TIMEOUT_MS = 90_000;
+
+// 模型偶发在 JSON 字符串值里输出未转义的 ASCII 引号（如 问题清单填写"…"），JSON.parse
+// 直接失败。这类坏样本是随机的（实测约 1/6），重试一次即可大概率拿到合法 JSON。
+// 只对「有响应但解析失败」重试：provider 真不可用时（空响应/超时）不要把等待时间翻倍。
+const PARSE_RETRY_ATTEMPTS = 2;
 
 const VALID_ENGINES = new Set(['claude', 'atomcode', 'codex', 'opencode', 'pi']);
 
@@ -132,6 +138,47 @@ function coerceEngine(v: unknown): AgentEngine {
   return 'claude';
 }
 
+/**
+ * 从模型回复中解析出 JSON 对象；解析不出返回 null（不抛异常）。
+ */
+function tryParseJsonObject(result: string): Record<string, unknown> | null {
+  const jsonText = extractJsonObject(stripCodeFences(result));
+  try {
+    const parsed: unknown = JSON.parse(jsonText);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+/**
+ * 调模型并解析 JSON 对象，解析失败时重试一次（见 PARSE_RETRY_ATTEMPTS 注释）。
+ * 返回 error 仅两种：'empty'（无响应，不重试）与 'invalid'（响应不可解析，已重试）。
+ */
+async function queryAndParseJson(
+  prompt: string,
+  timeoutMs: number,
+): Promise<{ obj: Record<string, unknown> } | { error: 'empty' | 'invalid' }> {
+  let last: { error: 'empty' | 'invalid' } = { error: 'empty' };
+  for (let attempt = 1; attempt <= PARSE_RETRY_ATTEMPTS; attempt++) {
+    const result = await sdkQuery(prompt, { timeout: timeoutMs });
+    if (!result || result.trim().length === 0) return { error: 'empty' };
+    const obj = tryParseJsonObject(result);
+    if (obj) return { obj };
+    last = { error: 'invalid' };
+    if (attempt < PARSE_RETRY_ATTEMPTS) {
+      logger.warn(
+        { attempt, snippet: result.slice(0, 200) },
+        'agent-ai: LLM returned unparseable JSON, retrying',
+      );
+    }
+  }
+  return last;
+}
+
 function coerceString(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
@@ -168,23 +215,16 @@ export async function generateAgentContent(
     DESCRIPTION: description.trim(),
   });
 
-  const result = await sdkQuery(prompt, { timeout: GENERATION_TIMEOUT_MS });
-  if (!result || result.trim().length === 0) {
-    return { error: 'AI generation returned empty content (provider may be unavailable)' };
+  const queried = await queryAndParseJson(prompt, GENERATION_TIMEOUT_MS);
+  if ('error' in queried) {
+    return {
+      error:
+        queried.error === 'empty'
+          ? 'AI generation returned empty content (provider may be unavailable)'
+          : 'AI generated invalid JSON (model output not parseable)',
+    };
   }
-
-  const cleaned = stripCodeFences(result);
-  const jsonText = extractJsonObject(cleaned);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    return { error: 'AI generated invalid JSON (provider may be unavailable or misconfigured)' };
-  }
-  if (!parsed || typeof parsed !== 'object') {
-    return { error: 'AI generated invalid JSON (provider may be unavailable or misconfigured)' };
-  }
-  const obj = parsed as Record<string, unknown>;
+  const obj = queried.obj;
 
   const fields: GeneratedAgentFields = {
     name: (() => {
@@ -225,23 +265,16 @@ export async function optimizeAgentContent(
     FEEDBACK_LINE: feedbackLine,
   });
 
-  const result = await sdkQuery(prompt, { timeout: OPTIMIZATION_TIMEOUT_MS });
-  if (!result || result.trim().length === 0) {
-    return { error: 'AI optimization returned empty content (provider may be unavailable)' };
+  const queried = await queryAndParseJson(prompt, OPTIMIZATION_TIMEOUT_MS);
+  if ('error' in queried) {
+    return {
+      error:
+        queried.error === 'empty'
+          ? 'AI optimization returned empty content (provider may be unavailable)'
+          : 'AI optimized content is invalid JSON (model output not parseable)',
+    };
   }
-
-  const cleaned = stripCodeFences(result);
-  const jsonText = extractJsonObject(cleaned);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    return { error: 'AI optimized content is invalid JSON (provider may be unavailable or misconfigured)' };
-  }
-  if (!parsed || typeof parsed !== 'object') {
-    return { error: 'AI optimized content is invalid JSON (provider may be unavailable or misconfigured)' };
-  }
-  const obj = parsed as Record<string, unknown>;
+  const obj = queried.obj;
 
   return {
     fields: {

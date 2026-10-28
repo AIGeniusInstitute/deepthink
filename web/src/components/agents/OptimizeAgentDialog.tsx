@@ -76,7 +76,7 @@ export function OptimizeAgentDialog({
     try {
       const result = await optimizeAgent(agentId, feedback.trim() || undefined);
       if (!result) {
-        toast.error('AI 优化失败（provider 可能不可用或超时）');
+        toast.error('AI 优化失败：返回结果为空');
       } else {
         setOptimizedPrompt(result.optimized_system_prompt);
         setOriginalPrompt(result.original_system_prompt);
@@ -84,7 +84,8 @@ export function OptimizeAgentDialog({
         setOriginalDesc(result.original_description);
       }
     } catch (err: any) {
-      toast.error(err?.message || 'AI 优化失败');
+      // api.post 抛出的 ApiError.message 已是后端 502 body.error 的真实原因
+      toast.error(`AI 优化失败：${err?.message || '未知错误'}`);
     } finally {
       setOptimizing(false);
     }
