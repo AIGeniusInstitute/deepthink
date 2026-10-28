@@ -1,6 +1,6 @@
 {
   "name": "deepthink-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "DeepThink desktop shell — Electron wrapper for DeepThink backend",
   "homepage": "https://github.com/AIGeniusInstitute/deepthink",
   "author": "DeepThink",

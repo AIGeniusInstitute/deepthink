@@ -4,15 +4,30 @@
 # 在没有 make 的 Windows 机器上打出 NSIS 安装包（desktop\release\*.exe）。
 #
 # 流程（复刻 Makefile 的 desktop-pack-win 链路）：
-#   依赖检查/安装（root / web / agent-runner / desktop）
+#   自动提升 desktop/package.json 版本号（+1 patch，可用 -Version / -NoBump 覆盖）
+#   → 依赖检查/安装（root / web / agent-runner / desktop）
 #   → shared/ 单向真相源同步 → 编译后端 / 前端 / agent-runner / Electron 壳
 #   → 拉取内置 Node 二进制（dev-resources\node\）
 #   → 原生模块（better-sqlite3 等）按内置 Node ABI 重建并校验
 #   → electron-builder 打包（build\win.json，--publish never）
 #
+# 版本号策略：
+#   electron-builder 与自动更新元数据（latest.yml / app-update.yml）都取
+#   desktop/package.json 的 version。本地每次打包默认 +1 patch（1.0.0 → 1.0.1），
+#   否则同版本覆盖安装时 electron-updater 识别不出新版本。改动后记得把
+#   desktop/package.json 一并 commit。
+#   CI 发布（.github/workflows/release.yml）不走本脚本：它按 git tag 回写版本号后
+#   跑 make desktop-pack-*，因此 Makefile 侧**不要**再加自动 bump，否则与 tag 打架。
+#
 # 用法：
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pack-win.ps1
+#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pack-win.ps1 -Version 1.2.0
+#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pack-win.ps1 -NoBump
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pack-win.ps1 -Help
+#
+# 参数：
+#   -Version x.y.z   显式指定版本号（跳过自动 +1）
+#   -NoBump          保持 desktop/package.json 现有版本号
 #
 # 环境变量：
 #   DESKTOP_NODE_VERSION  内置 Node 版本（默认 v22.11.0，与 Makefile 一致）
@@ -28,7 +43,9 @@
 [CmdletBinding()]
 param(
   [Alias('h')]
-  [switch]$Help
+  [switch]$Help,
+  [string]$Version,
+  [switch]$NoBump
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,6 +63,12 @@ function Show-Usage {
   Write-Host ''
   Write-Host '用法:'
   Write-Host '  powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pack-win.ps1'
+  Write-Host '  powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pack-win.ps1 -Version 1.2.0'
+  Write-Host '  powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pack-win.ps1 -NoBump'
+  Write-Host ''
+  Write-Host '参数:'
+  Write-Host '  -Version x.y.z   显式指定 desktop/package.json 版本号（跳过自动 +1 patch）'
+  Write-Host '  -NoBump          保持现有版本号（同版本重打包）'
   Write-Host ''
   Write-Host '环境变量:'
   Write-Host '  DESKTOP_NODE_VERSION  内置 Node 版本（默认 v22.11.0）'
@@ -98,6 +121,44 @@ function Sync-SharedTypes {
       Write-Y ('   🔄 同步 {0} → {1}' -f $pair[0], $pair[1])
     }
   }
+}
+
+# ── 版本号（electron-builder / latest.yml 取 desktop/package.json 的 version）──
+# 默认 +1 patch：同版本覆盖安装时 electron-updater 识别不出新版本。
+# 只改 version 值那一小段，其余字节（含缩进与换行符）保持原样；用 WriteAllText
+# 写回 UTF-8 无 BOM（PS5.1 的 Set-Content -Encoding utf8 会加 BOM，JSON 解析器会炸）。
+# 返回实际生效的版本号（-NoBump 时返回现有值）。
+function Set-DesktopVersion {
+  if ($Version -and $NoBump) { Die '-Version 与 -NoBump 不能同时使用' }
+  $pkgPath = Join-Path $Root 'desktop\package.json'
+  if (-not (Test-Path -LiteralPath $pkgPath)) { Die ('找不到 {0}' -f $pkgPath) }
+  $raw = [System.IO.File]::ReadAllText($pkgPath)
+  $m = [regex]::Match($raw, '"version"\s*:\s*"([^"]+)"')
+  if (-not $m.Success) { Die 'desktop/package.json 中找不到 version 字段' }
+  $current = $m.Groups[1].Value
+
+  if ($NoBump) {
+    Write-G ('   🔖 版本号保持 {0}（-NoBump）' -f $current)
+    return $current
+  }
+
+  if ($Version) {
+    if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+      Die ('-Version 需为 x.y.z 形式（如 1.2.0），收到: {0}' -f $Version)
+    }
+    $next = $Version
+  } else {
+    if ($current -notmatch '^(\d+)\.(\d+)\.(\d+)$') {
+      Die ('版本号 {0} 不是纯 x.y.z，无法自动 +1 patch；请用 -Version x.y.z 显式指定' -f $current)
+    }
+    $next = '{0}.{1}.{2}' -f $Matches[1], $Matches[2], ([int]$Matches[3] + 1)
+  }
+
+  $value = $m.Groups[1]
+  $newRaw = $raw.Substring(0, $value.Index) + $next + $raw.Substring($value.Index + $value.Length)
+  [System.IO.File]::WriteAllText($pkgPath, $newRaw)
+  Write-G ('   🔖 版本号: {0} → {1}（installer / latest.yml 将使用 {1}）' -f $current, $next)
+  return $next
 }
 
 # ── 依赖安装（对应 Makefile 的 root-install / web-install / agent-runner-install / desktop-install）──
@@ -177,7 +238,10 @@ Write-G ('✅ 项目根目录: {0}' -f $Root)
 Write-G ('✅ 内置 Node 版本: {0}' -f $NodeVer)
 
 # ── 打包流程 ─────────────────────────────────────────────────
-Write-B '▶ [1/6] 安装依赖 ...'
+Write-B '▶ [1/7] 版本号 ...'
+$PackedVersion = Set-DesktopVersion
+
+Write-B '▶ [2/7] 安装依赖 ...'
 Install-IfStale '.' $true
 Install-IfStale 'web' $false
 # agent-runner 每次都装：claude-agent-sdk 用 "*" + 无 lock file，取最新
@@ -185,23 +249,23 @@ Write-B '   📦 安装 container/agent-runner 依赖 ...'
 Invoke-Step 'npm' (@('--prefix', 'container/agent-runner', 'install', '--no-audit', '--no-fund') + $Reg)
 Install-IfStale 'desktop' $false
 
-Write-B '▶ [2/6] 同步 shared/ 类型真相源 ...'
+Write-B '▶ [3/7] 同步 shared/ 类型真相源 ...'
 Sync-SharedTypes
 
-Write-B '▶ [3/6] 编译后端 / 前端 / agent-runner ...'
+Write-B '▶ [4/7] 编译后端 / 前端 / agent-runner ...'
 Build-Backend
 Build-Web
 Build-AgentRunner
 
-Write-B '▶ [4/6] 编译 Electron 壳 ...'
+Write-B '▶ [5/7] 编译 Electron 壳 ...'
 Build-DesktopShell
 
-Write-B '▶ [5/6] 拉取内置 Node 二进制 + 原生模块 ABI 重建 ...'
+Write-B '▶ [6/7] 拉取内置 Node 二进制 + 原生模块 ABI 重建 ...'
 $env:NODE_VERSION = $NodeVer
 Invoke-Step 'node' @('scripts\fetch-node-binary.js')
 Rebuild-Natives
 
-Write-B '▶ [6/6] electron-builder 打包（win / nsis）...'
+Write-B '▶ [7/7] electron-builder 打包（win / nsis）...'
 # 重新按 TARGET_PLATFORM=win ARCH=x64 取内置 Node（打包进安装包的那份）
 $env:TARGET_PLATFORM = 'win'
 $env:ARCH = 'x64'
@@ -226,4 +290,8 @@ if (Test-Path -LiteralPath $releaseDir) {
   }
 }
 Write-B ('   产物目录：{0}' -f $releaseDir)
+Write-B ('   版本号：{0}' -f $PackedVersion)
+if (-not $NoBump) {
+  Write-Y '   ⚠ desktop/package.json 版本号已更新，记得一并 commit（CI 发布按 git tag 回写版本，勿用本脚本产出的号推 tag）'
+}
 Write-G '═══════════════════════════════════════════════'
