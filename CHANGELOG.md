@@ -4,6 +4,22 @@ All notable changes to DeepThink are documented here. For the full release notes
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.8.1] — 2026-10-28
+
+A **fix & desktop-experience** release: it closes two defects users hit every day, and packages the Windows tooling that had been missing from the release line.
+
+- **Agent Studio「AI 生成」误报失败** — The button always failed after **exactly 8 seconds** with `AI 生成失败（provider 可能不可用或超时）` while the provider was healthy and the backend generation completed fine in **22~30s**. Root cause: the frontend never passed a timeout, so `api/client.ts`'s 8s default aborted a request whose backend LLM budget is 90s. A second, intermittent defect rode along: the model emits unescaped ASCII quotes inside JSON string values (~1 in 6), `JSON.parse` fails and the 502 was **completely silent in logs**. Fixed by passing an explicit 150s timeout (matching the Skills AI-generate convention), retrying unparseable JSON exactly once (empty/timeout responses are not retried, so a dead provider doesn't double the wait), surfacing the backend's real error in the toast, and logging every 502 and parse retry. Verified end-to-end on an isolated instance: 3/3 `HTTP=200` in 23.5~26.0s, while `curl --max-time 8` reproduces the old client abort (exit 28).
+- **Desktop auto-update is now fully silent** — Per product expectation ("don't pop anything; just update silently in the background"), the "发现新版本" dialog is gone, and the backup-failure prompt is gone too (install proceeds and logs the failure; `userData` lives in `%APPDATA%\DeepThink` and NSIS never overwrites it — the backup is belt-and-braces). Install timing is unchanged (backup → auto-restart to install). Silence is not invisibility: every update event lands in `logs/main.log`.
+- **Blank tray icon** — The Windows hidden-icons overflow panel showed an empty item: `tray.ico` had never been generated (`generate-tray-icons.sh` needs ImageMagick and silently skips; nothing in the pack/CI flow calls it) and `nativeImage.createFromPath` returns an **empty image** for a missing file. Icons now fall back `tray.*` → `icon.*` (always shipped) → empty, on all three platforms.
+- **Windows platform round-up** — `scripts/pack-win.ps1` (make-free one-shot desktop packaging, with automatic version bump so `electron-updater` can tell builds apart), `rebuild-restart.ps1` / `stop-prod.ps1` / watchdog fixes (silent exit, log mojibake, incremental-build misjudgement), stdio MCP servers launched via `.cmd`/`.bat` failing to connect (`spawn EINVAL`), `desktop-build-deps` ordering breaking fresh-machine builds, `shared/web-search.ts` `execFile` typing breaking agent-runner compilation, and a new no-API-key **WebSearch** browser search backend (single source of truth in `shared/web-search.ts`).
+- **Navigation** — Agent groups / digital employees / collaboration teams moved into Settings; net disk moved to the end of the top-level menu.
+
+> **Version-line note**: v1.8.0 (Knowledge Base subsystem) was tagged but never became the published `latest` (the update feed has been at v1.7.0), so users upgrading from v1.7.0 receive **v1.8.0's knowledge-base subsystem together with this release** — see the v1.8.0 notes for that feature set.
+
+Schema unchanged; no breaking API changes. 12 commits since v1.8.0. Test baseline: 189 files / 2530 cases — 1882 passed, 18 failed (all pre-existing Windows environment noise, byte-identical to a clean-HEAD control run), 630 skipped; `make typecheck` clean; +11 regression tests.
+
+📖 Full notes: [docs/release_notes/v1.8.1.md](docs/release_notes/v1.8.1.md)
+
 ## [v1.7.0] — 2026-10-13
 
 An **observability close-out** release whose axis is the new **Agent Runtime Monitor** — eight agent execution paths that each wrote to their own table and exposed their own read API are collapsed into one "run" abstraction with KPIs, trends, a cross-source run list and a per-run trace timeline. The open-platform AaaS path was the worst offender: every call wrote a single `usage_records` row and nothing else — no status, no error, no trace — so the platform's outward-facing "agent service" had no run history at all.
