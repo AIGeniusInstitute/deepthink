@@ -32,6 +32,7 @@ import {
   Repeat,
   GitBranch,
   Wallet,
+  Sparkles,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import type { SettingsTab } from './types';
@@ -94,6 +95,7 @@ const appItems: NavItem[] = [
   { key: 'loops', label: '循环', icon: <Repeat className="w-4 h-4" />, group: 'apps' },
   { key: 'supervisor', label: '监督者', icon: <ShieldCheck className="w-4 h-4" />, group: 'apps' },
   { key: 'harness', label: 'Harness', icon: <GitBranch className="w-4 h-4" />, group: 'apps' },
+  { key: 'feedback-learning', label: '自进化', icon: <Sparkles className="w-4 h-4" />, group: 'apps' },
   { key: 'billing', label: '账单', icon: <Wallet className="w-4 h-4" />, group: 'apps' },
 ];
 

@@ -46,12 +46,13 @@ import { EnginesPage } from './EnginesPage';
 import { MarketplacePage } from './MarketplacePage';
 import { TasksPage } from './TasksPage';
 import { LoopsPage } from './LoopsPage';
+import { FeedbackLearningPage } from './FeedbackLearningPage';
 import BillingPage from './BillingPage';
 import type { SettingsTab } from '../components/settings/types';
 
-const VALID_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'about', 'bindings', 'usage', 'monitor', 'language', 'atomcode', 'codex', 'opencode', 'pi', 'embedding', 'web-search', 'autonomy', 'agent-groups', 'staff-employees', 'staff-teams', 'team', 'collaborations', 'opc', 'workflows', 'marketplace', 'engines', 'sandbox', 'tasks', 'loops', 'supervisor', 'harness', 'billing'];
+const VALID_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'about', 'bindings', 'usage', 'monitor', 'language', 'atomcode', 'codex', 'opencode', 'pi', 'embedding', 'web-search', 'autonomy', 'agent-groups', 'staff-employees', 'staff-teams', 'team', 'collaborations', 'opc', 'workflows', 'marketplace', 'engines', 'sandbox', 'tasks', 'loops', 'supervisor', 'harness', 'feedback-learning', 'billing'];
 const SYSTEM_TABS: SettingsTab[] = ['claude', 'registration', 'appearance', 'system', 'atomcode', 'codex', 'opencode', 'pi', 'autonomy', 'embedding', 'web-search'];
-const FULLPAGE_TABS: SettingsTab[] = ['groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'bindings', 'usage', 'monitor', 'agent-groups', 'staff-employees', 'staff-teams', 'team', 'collaborations', 'opc', 'workflows', 'marketplace', 'engines', 'sandbox', 'tasks', 'loops', 'supervisor', 'harness', 'billing'];
+const FULLPAGE_TABS: SettingsTab[] = ['groups', 'memory', 'skills', 'mcp-servers', 'plugins', 'agent-definitions', 'users', 'bindings', 'usage', 'monitor', 'agent-groups', 'staff-employees', 'staff-teams', 'team', 'collaborations', 'opc', 'workflows', 'marketplace', 'engines', 'sandbox', 'tasks', 'loops', 'supervisor', 'harness', 'feedback-learning', 'billing'];
 
 export function SettingsPage() {
   const { user: currentUser } = useAuthStore();
@@ -135,6 +136,7 @@ export function SettingsPage() {
     tabs.push({ key: 'loops', label: '循环' });
     tabs.push({ key: 'supervisor', label: '监督者' });
     tabs.push({ key: 'harness', label: 'Harness' });
+    tabs.push({ key: 'feedback-learning', label: '自进化' });
     if (billingEnabled) {
       tabs.push({ key: 'billing', label: '账单' });
     }
@@ -194,6 +196,7 @@ export function SettingsPage() {
     loops: '循环',
     supervisor: '监督者',
     harness: 'Harness',
+    'feedback-learning': '自进化',
     billing: '账单',
   };
 
@@ -280,6 +283,7 @@ export function SettingsPage() {
             {activeTab === 'loops' && <LoopsPage />}
             {activeTab === 'supervisor' && <SupervisorPage />}
             {activeTab === 'harness' && <HarnessPage />}
+            {activeTab === 'feedback-learning' && <FeedbackLearningPage />}
             {activeTab === 'billing' && <BillingPage />}
           </>
         ) : (
