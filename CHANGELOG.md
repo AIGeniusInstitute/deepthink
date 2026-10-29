@@ -4,6 +4,17 @@ All notable changes to DeepThink are documented here. For the full release notes
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.8.2] — 2026-10-29
+
+An **information-architecture close-out** release: no new modules, no backend changes — it collapses two long-cluttered entry points in the UI, the top-level navigation and the engine switcher in the workbench chat header.
+
+- **Top-level menu re-cut; "Self-Evolving" folded into Settings** — The top-level nav goes from **11 items to 10**, re-ordered into build capabilities (Skill / MCP / Knowledge Base) → observation & governance (Eval Center / Runtime Monitor) → resources and external surface (Net Disk / Open Platform). 「自进化」leaves the top level and joins the Settings page's 「应用入口」(app entries) group — the same pattern already proven by `/groups` and `/agent-groups`. The old `/feedback-learning` path redirects to `/settings?tab=feedback-learning`, so bookmarks and browser history keep working. **The drill-down data and page logic are untouched**: `FeedbackLearningPage` is reused verbatim and merely registered as a `SettingsTab` (type union + `VALID_TABS` + `FULLPAGE_TABS`) instead of owning a route in `App.tsx`.
+- **Engine switcher hidden from the workbench** — The five-button engine switcher (Claude / AtomCode / Codex / OpenCode / pi) in the chat header is gone, and the `EngineSwitcher` component (99 lines) is deleted with its `ChatView` reference. Engine configuration now lives only in the Settings submenus. **The group engine path is untouched**: the chat store's `switchEngine` stays, and the backend `RegisteredGroup.engine` dispatch across the five adapters has zero changes — which engine a group actually runs is still read from the `registered_groups` row.
+
+Schema unchanged; no breaking API changes; no backend logic changed. 1 commit since v1.8.1, entirely in `web/` (7 files, +14/−112). Test baseline: 189 files / 2530 cases — 2501 passed, 15 failed (all pre-existing Windows environment noise, byte-matching the known local baseline: POSIX mode bits, `os.homedir()` on Windows, symlink semantics, PATH node resolution, and the known `feishu-card` 5s timeout flake), 14 skipped; `make typecheck` clean.
+
+📖 Full notes: [docs/release_notes/v1.8.2.md](docs/release_notes/v1.8.2.md)
+
 ## [v1.8.1] — 2026-10-28
 
 A **fix & desktop-experience** release: it closes two defects users hit every day, and packages the Windows tooling that had been missing from the release line.
