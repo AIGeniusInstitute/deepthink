@@ -4,6 +4,19 @@ All notable changes to DeepThink are documented here. For the full release notes
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.8.3] — 2026-10-29
+
+A **capability close-out** release: it promotes "point a workspace at a real local directory" from a host-mode-only half-feature to a first-class capability **shared by both execution modes and changeable after creation** — in container mode the Agent now works directly in the real project directory (e.g. `~/projects/my-app`) instead of a one-shot copied snapshot.
+
+- **`custom_cwd` works in container mode, and can be changed any time** — Previously the workspace was pinned to `data/groups/{folder}` (bind-mounted to `/workspace/group`) in container mode and `custom_cwd` could only be set at creation time, host mode only. Now `POST`/`PATCH /api/groups` set and clear `custom_cwd` for both modes (admin-only, unchanged): container mode bind-mounts the chosen directory to `/workspace/group`, host mode uses it as the process cwd, and `PATCH` accepts `null`/`''` to restore the default. The create dialog gains a "use local directory" source — explicitly **mutually exclusive** with "copy local directory" (`init_source_path`), since one *is* the workspace and the other is a snapshot copied into it — and the workspace menu gains a "working directory" dialog (view / change / restore, with a rebuild warning that local-directory files are never deleted). This also unblocks the "disable DeepThink memory layer" setting, whose precondition requires a `custom_cwd` on `web:main` that was previously impossible to configure.
+- **Safety boundary unchanged, validation collapsed into one module** — `src/workspace-root.ts` is now the single source for both `resolveWorkspaceRoot` and `validateCustomCwd` (absolute path + existing directory + `config/mount-allowlist.json` mount allowlist + sensitive-path blocklist such as `.ssh` + **platform data directory forbidden**), consumed at three points: create/update validation, a runtime re-check before container launch (guards against DB injection / post-hoc allowlist tightening), and `buildVolumeMounts`. Member isolation is not relaxed — `custom_cwd` stays admin-only.
+- **Five scattered workspace-root resolutions unified, fixing a latent bug** — `customCwd || data/groups/{folder}` was duplicated across 5 backend sites, and `src/script-runner.ts` hard-coded `data/groups/{folder}`, so **scheduled script tasks in a custom-directory workspace ran with the wrong cwd**. All consumers (script-runner / files panel / workspace-config) now go through `resolveWorkspaceRoot`.
+- **Tests** — New `tests/workspace-custom-dir.test.ts`, 21/21 passing, added to the `make test-smoke` CI gate; full regression shows the failure set is byte-identical to the pre-change baseline (stash control run).
+
+Schema unchanged; API change is additive only (`custom_cwd` on `POST`/`PATCH /api/groups`); no breaking changes. 1 commit since v1.8.2 (21 files, +1277/−135). Test baseline: 190 files / 2551 cases — 2522 passed, 15 failed (all pre-existing Windows environment noise, matching the known local baseline), 14 skipped; `make typecheck` clean.
+
+📖 Full notes: [docs/release_notes/v1.8.3.md](docs/release_notes/v1.8.3.md)
+
 ## [v1.8.2] — 2026-10-29
 
 An **information-architecture close-out** release: no new modules, no backend changes — it collapses two long-cluttered entry points in the UI, the top-level navigation and the engine switcher in the workbench chat header.
