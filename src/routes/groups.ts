@@ -70,6 +70,7 @@ import {
   findAllowedRoot,
   matchesBlockedPattern,
 } from '../mount-security.js';
+import { validateCustomCwd } from '../workspace-root.js';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -376,62 +377,32 @@ groupRoutes.post('/', authMiddleware, async (c) => {
         403,
       );
     }
-    if (customCwd) {
-      if (!path.isAbsolute(customCwd)) {
-        return c.json({ error: 'custom_cwd must be an absolute path' }, 400);
-      }
+  }
 
-      // 检查路径是否存在
-      let realPath: string;
-      try {
-        const stat = fs.statSync(customCwd);
-        if (!stat.isDirectory()) {
-          return c.json(
-            { error: 'custom_cwd must be an existing directory' },
-            400,
-          );
-        }
-        realPath = fs.realpathSync(customCwd);
-      } catch {
-        return c.json({ error: 'custom_cwd directory does not exist' }, 400);
-      }
-
-      // 白名单校验：检查路径是否在允许的根目录下，并过滤敏感路径
-      // （与 init_source_path 对齐：之前缺少 matchesBlockedPattern，可把
-      // .ssh / .aws / .gnupg 等敏感目录挂进容器）
-      const allowlist = loadMountAllowlist();
-      if (
-        allowlist &&
-        allowlist.allowedRoots &&
-        allowlist.allowedRoots.length > 0
-      ) {
-        const allowedRoot = findAllowedRoot(realPath, allowlist.allowedRoots);
-        if (!allowedRoot) {
-          const allowedPaths = allowlist.allowedRoots
-            .map((r) => r.path)
-            .join(', ');
-          return c.json(
-            {
-              error: `custom_cwd must be under an allowed root. Allowed roots: ${allowedPaths}. Check config/mount-allowlist.json`,
-            },
-            403,
-          );
-        }
-
-        const blockedMatch = matchesBlockedPattern(
-          realPath,
-          allowlist.blockedPatterns,
-        );
-        if (blockedMatch) {
-          return c.json(
-            { error: `custom_cwd matches blocked pattern "${blockedMatch}"` },
-            403,
-          );
-        }
-      }
+  // custom_cwd：host 与 container 模式通用（container 模式下 bind-mount 到
+  // /workspace/group）。校验收敛在 validateCustomCwd()，与 PATCH 修改共用。
+  if (customCwd) {
+    if (!hasHostExecutionPermission(authUser)) {
+      return c.json(
+        { error: 'Insufficient permissions: custom_cwd requires admin' },
+        403,
+      );
     }
-  } else if (customCwd) {
-    return c.json({ error: 'custom_cwd is only valid for host mode' }, 400);
+    // 互斥：init_source_path / init_git_url 的初始化目标是默认工作区目录，
+    // 与「以本机目录为工作区」语义冲突。
+    if (initSourcePath || initGitUrl) {
+      return c.json(
+        {
+          error:
+            'custom_cwd is mutually exclusive with init_source_path and init_git_url',
+        },
+        400,
+      );
+    }
+    const cwdCheck = validateCustomCwd(customCwd);
+    if (!cwdCheck.ok) {
+      return c.json({ error: cwdCheck.error }, cwdCheck.status);
+    }
   }
 
   // 验证 init_source_path
@@ -558,7 +529,7 @@ groupRoutes.post('/', authMiddleware, async (c) => {
     folder,
     added_at: now,
     executionMode: executionMode as ExecutionMode,
-    customCwd: executionMode === 'host' ? customCwd : undefined,
+    customCwd: customCwd,
     initSourcePath: executionMode !== 'host' ? initSourcePath : undefined,
     initGitUrl: executionMode !== 'host' ? initGitUrl : undefined,
     created_by: authUser.id,
@@ -677,9 +648,16 @@ groupRoutes.patch('/:jid', authMiddleware, async (c) => {
     execution_mode,
     engine,
     agent_def_id,
+    custom_cwd: rawCustomCwd,
     autonomous,
   } = validation.data;
   const name = rawName ? normalizeGroupName(rawName) : undefined;
+
+  // custom_cwd：undefined = 不修改；null / 空串 = 清除恢复默认目录；其余走校验
+  const customCwdProvided = rawCustomCwd !== undefined;
+  const customCwdCleared =
+    customCwdProvided && (rawCustomCwd === null || rawCustomCwd.trim() === '');
+  const customCwdValue = customCwdProvided && !customCwdCleared ? rawCustomCwd.trim() : undefined;
 
   // 至少需要提供一个字段
   if (
@@ -689,9 +667,24 @@ groupRoutes.patch('/:jid', authMiddleware, async (c) => {
     execution_mode === undefined &&
     engine === undefined &&
     agent_def_id === undefined &&
+    !customCwdProvided &&
     autonomous === undefined
   ) {
     return c.json({ error: 'No fields to update' }, 400);
+  }
+
+  // 修改工作区目录：admin 专属（与创建时同级安全门槛）
+  if (customCwdProvided && !hasHostExecutionPermission(authUser)) {
+    return c.json(
+      { error: 'Insufficient permissions: custom_cwd requires admin' },
+      403,
+    );
+  }
+  if (customCwdValue) {
+    const cwdCheck = validateCustomCwd(customCwdValue);
+    if (!cwdCheck.ok) {
+      return c.json({ error: cwdCheck.error }, cwdCheck.status);
+    }
   }
 
   // 不允许修改 is_home=true 的主容器执行模式（主容器由 loadState 强制管理）
@@ -718,6 +711,7 @@ groupRoutes.patch('/:jid', authMiddleware, async (c) => {
     execution_mode === undefined &&
     engine === undefined &&
     agent_def_id === undefined &&
+    !customCwdProvided &&
     autonomous === undefined;
   if (isPinOnly) {
     if (
@@ -760,8 +754,16 @@ groupRoutes.patch('/:jid', authMiddleware, async (c) => {
     unpinGroup(authUser.id, jid);
   }
 
-  // Update registered group if name, activation_mode, execution_mode, engine, or agent_def_id changed
-  if (name || activation_mode !== undefined || execution_mode !== undefined || engine !== undefined || agent_def_id !== undefined) {
+  // Update registered group if name, activation_mode, execution_mode, engine,
+  // agent_def_id or custom_cwd changed
+  if (
+    name ||
+    activation_mode !== undefined ||
+    execution_mode !== undefined ||
+    engine !== undefined ||
+    agent_def_id !== undefined ||
+    customCwdProvided
+  ) {
     // Spread `...existing` instead of rebuilding from an explicit field list.
     // setRegisteredGroup is INSERT OR REPLACE (full-row overwrite), so every
     // field omitted from the object gets silently nulled. The old explicit list
@@ -783,6 +785,8 @@ groupRoutes.patch('/:jid', authMiddleware, async (c) => {
           : existing.activation_mode,
       engine: engine !== undefined ? engine : existing.engine ?? 'claude',
       agentDefId: agent_def_id !== undefined ? agent_def_id : (existing.agentDefId ?? null),
+      // custom_cwd：新值 / 清除（undefined）显式覆盖；未提供时保留 existing
+      ...(customCwdProvided ? { customCwd: customCwdValue } : {}),
     };
 
     setRegisteredGroup(jid, updated);

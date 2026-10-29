@@ -273,7 +273,7 @@ export function ChatPage() {
         onClose={closeClear}
         onConfirm={handleClearConfirm}
         title="重建工作区"
-        message={`确认重建工作区「${clearState.name}」吗？这会清除全部聊天记录、上下文、所有子对话及其消息，并删除工作目录中的所有文件。持久化目录 (data/extra/) 保留；定时任务本身保留但与本工作区的绑定会断开。此操作不可撤销。`}
+        message={`确认重建工作区「${clearState.name}」吗？这会清除全部聊天记录、上下文、所有子对话及其消息，并删除工作目录中的所有文件。${groups[clearState.jid]?.custom_cwd ? '工作目录为本机目录，其中的文件不会被删除。' : ''}持久化目录 (data/extra/) 保留；定时任务本身保留但与本工作区的绑定会断开。此操作不可撤销。`}
         confirmText="确认重建"
         cancelText="取消"
         confirmVariant="danger"

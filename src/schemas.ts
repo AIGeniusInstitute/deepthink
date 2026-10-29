@@ -263,6 +263,9 @@ export const GroupPatchSchema = z.object({
   execution_mode: z.enum(['container', 'host']).optional(),
   engine: z.enum(['claude', 'atomcode', 'codex', 'opencode', 'pi']).optional(),
   agent_def_id: z.string().max(200).nullable().optional(),
+  /** 工作区目录（绝对路径，host 与 container 模式通用）。
+   *  undefined = 不修改；null 或空串 = 清除，恢复默认 data/groups/{folder}。 */
+  custom_cwd: z.string().max(2048).nullable().optional(),
   /** 全托管模式开关：true 时该 group 的所有后续消息按全托管执行
    *  （agent 不主动停下询问用户，硬刹车自动触发）。 */
   autonomous: z.boolean().optional(),

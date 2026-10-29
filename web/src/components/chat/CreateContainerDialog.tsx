@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Monitor,
   Box,
+  Folder,
   FolderInput,
   GitBranch,
   Loader2,
@@ -39,7 +40,7 @@ export function CreateContainerDialog({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [executionMode, setExecutionMode] = useState<'container' | 'host'>('container');
   const [customCwd, setCustomCwd] = useState('');
-  const [initMode, setInitMode] = useState<'empty' | 'local' | 'git'>('empty');
+  const [initMode, setInitMode] = useState<'empty' | 'local' | 'git' | 'localdir'>('empty');
   const [initSourcePath, setInitSourcePath] = useState('');
   const [initGitUrl, setInitGitUrl] = useState('');
 
@@ -72,7 +73,9 @@ export function CreateContainerDialog({
         options.execution_mode = 'host';
         if (customCwd.trim()) options.custom_cwd = customCwd.trim();
       } else {
-        if (initMode === 'local' && initSourcePath.trim()) {
+        if (initMode === 'localdir' && customCwd.trim()) {
+          options.custom_cwd = customCwd.trim();
+        } else if (initMode === 'local' && initSourcePath.trim()) {
           options.init_source_path = initSourcePath.trim();
         } else if (initMode === 'git' && initGitUrl.trim()) {
           options.init_git_url = initGitUrl.trim();
@@ -175,7 +178,7 @@ export function CreateContainerDialog({
                     <label className="block text-sm font-medium mb-2">工作区来源</label>
                     <div className="space-y-2">
                       <label className="flex items-start gap-3 p-2 rounded-lg border cursor-pointer hover:bg-accent/50 transition-colors">
-                        <input type="radio" name="init_mode" value="empty" checked={initMode === 'empty'} onChange={() => setInitMode('empty')} className="mt-0.5 accent-primary" />
+                        <input type="radio" name="init_mode" value="empty" checked={initMode === 'empty'} onChange={() => { setInitMode('empty'); setCustomCwd(''); }} className="mt-0.5 accent-primary" />
                         <div>
                           <span className="text-sm font-medium">空白工作区</span>
                           <p className="text-xs text-muted-foreground mt-0.5">从空目录开始</p>
@@ -183,7 +186,7 @@ export function CreateContainerDialog({
                       </label>
                       {canHostExec && (
                         <label className="flex items-start gap-3 p-2 rounded-lg border cursor-pointer hover:bg-accent/50 transition-colors">
-                          <input type="radio" name="init_mode" value="local" checked={initMode === 'local'} onChange={() => setInitMode('local')} className="mt-0.5 accent-primary" />
+                          <input type="radio" name="init_mode" value="local" checked={initMode === 'local'} onChange={() => { setInitMode('local'); setCustomCwd(''); }} className="mt-0.5 accent-primary" />
                           <div className="flex-1">
                             <div className="flex items-center gap-1.5">
                               <FolderInput className="w-4 h-4 text-muted-foreground" />
@@ -199,7 +202,7 @@ export function CreateContainerDialog({
                         </div>
                       )}
                       <label className="flex items-start gap-3 p-2 rounded-lg border cursor-pointer hover:bg-accent/50 transition-colors">
-                        <input type="radio" name="init_mode" value="git" checked={initMode === 'git'} onChange={() => setInitMode('git')} className="mt-0.5 accent-primary" />
+                        <input type="radio" name="init_mode" value="git" checked={initMode === 'git'} onChange={() => { setInitMode('git'); setCustomCwd(''); }} className="mt-0.5 accent-primary" />
                         <div className="flex-1">
                           <div className="flex items-center gap-1.5">
                             <GitBranch className="w-4 h-4 text-muted-foreground" />
@@ -215,6 +218,24 @@ export function CreateContainerDialog({
                             onChange={(e) => setInitGitUrl(e.target.value)}
                             placeholder="https://github.com/user/repo"
                           />
+                        </div>
+                      )}
+                      {canHostExec && (
+                        <label className="flex items-start gap-3 p-2 rounded-lg border cursor-pointer hover:bg-accent/50 transition-colors">
+                          <input type="radio" name="init_mode" value="localdir" checked={initMode === 'localdir'} onChange={() => { setInitMode('localdir'); setInitSourcePath(''); setInitGitUrl(''); }} className="mt-0.5 accent-primary" />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <Folder className="w-4 h-4 text-muted-foreground" />
+                              <span className="text-sm font-medium">使用本机目录</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">直接以宿主机上的目录作为工作区（读写目录本身，非副本）</p>
+                          </div>
+                        </label>
+                      )}
+                      {initMode === 'localdir' && canHostExec && (
+                        <div className="ml-6">
+                          <DirectoryBrowser value={customCwd} onChange={setCustomCwd} placeholder="默认: data/groups/{folder}/" />
+                          <p className="text-xs text-muted-foreground mt-1">Agent 将直接读写该目录，所有修改落在目录本身。</p>
                         </div>
                       )}
                     </div>

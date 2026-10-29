@@ -2,8 +2,10 @@ import { exec } from 'child_process';
 import path from 'path';
 
 import { GROUPS_DIR } from './config.js';
+import { getJidsByFolder, getRegisteredGroup } from './db.js';
 import { logger } from './logger.js';
 import { getSystemSettings } from './runtime-config.js';
+import { resolveWorkspaceRoot } from './workspace-root.js';
 
 export interface ScriptRunResult {
   stdout: string;
@@ -26,12 +28,24 @@ export function hasScriptCapacity(): boolean {
 
 const MAX_BUFFER = 1024 * 1024; // 1MB
 
+/**
+ * 脚本任务的工作目录 = 该 group 的工作区根（customCwd 优先）。
+ * 之前固定用 data/groups/{folder}，自定义工作区目录的组跑脚本会落在错误 cwd。
+ */
+export function resolveScriptCwd(groupFolder: string): string {
+  for (const jid of getJidsByFolder(groupFolder)) {
+    const group = getRegisteredGroup(jid);
+    if (group) return resolveWorkspaceRoot(group);
+  }
+  return path.join(GROUPS_DIR, groupFolder);
+}
+
 export async function runScript(
   command: string,
   groupFolder: string,
 ): Promise<ScriptRunResult> {
   const { scriptTimeout } = getSystemSettings();
-  const cwd = path.join(GROUPS_DIR, groupFolder);
+  const cwd = resolveScriptCwd(groupFolder);
   const startTime = Date.now();
 
   activeScriptCount++;

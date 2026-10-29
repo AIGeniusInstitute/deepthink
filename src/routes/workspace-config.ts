@@ -16,7 +16,7 @@ import { promisify } from 'util';
 import type { Variables } from '../web-context.js';
 import type { AuthUser, RegisteredGroup } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { GROUPS_DIR } from '../config.js';
+import { resolveWorkspaceRoot } from '../workspace-root.js';
 import {
   assertResolvesToPublicAddress,
   validateSafeHttpsUrl,
@@ -39,14 +39,11 @@ const workspaceConfigRoutes = new Hono<{ Variables: Variables }>();
 
 /**
  * Resolve the workspace root directory for a registered group.
- * Host mode with customCwd uses the real project directory;
- * otherwise falls back to data/groups/{folder}/.
+ * Delegates to workspace-root.resolveWorkspaceRoot (customCwd 优先，
+ * host 与 container 模式通用) — 该规则的唯一真相源在那里。
  */
 function getWorkspaceRoot(group: RegisteredGroup & { jid: string }): string {
-  if (group.executionMode === 'host' && group.customCwd) {
-    return group.customCwd;
-  }
-  return path.join(GROUPS_DIR, group.folder);
+  return resolveWorkspaceRoot(group);
 }
 
 function getWorkspaceClaudeDir(

@@ -270,12 +270,11 @@ const SAFE_PREVIEW_MIME_TYPES = new Set(
 
 /**
  * 获取文件操作的根目录覆盖。
- * 宿主机模式下设置了 customCwd 时，文件面板以 customCwd 为根。
+ * 设置了 customCwd（本机目录工作区，host 与 container 模式通用）时，
+ * 文件面板以 customCwd 为根；否则回落 data/groups/{folder}。
  */
 function getFileRootOverride(group: RegisteredGroup): string | undefined {
-  return group.executionMode === 'host' && group.customCwd
-    ? group.customCwd
-    : undefined;
+  return group.customCwd ? group.customCwd : undefined;
 }
 
 /**

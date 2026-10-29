@@ -1,4 +1,5 @@
-import { MoreHorizontal, Pencil, Trash2, RotateCcw, Star, Pin, Timer } from 'lucide-react';
+import { useState } from 'react';
+import { MoreHorizontal, Pencil, Trash2, RotateCcw, Star, Pin, Timer, FolderOpen } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7,6 +8,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '../../stores/auth';
+import { useChatStore } from '../../stores/chat';
+import { WorkspaceDirDialog } from './WorkspaceDirDialog';
 
 export interface ChatGroupItemProps {
   jid: string;
@@ -50,6 +53,8 @@ export function ChatGroupItem({
   onTogglePin,
 }: ChatGroupItemProps) {
   const currentUser = useAuthStore((s) => s.user);
+  const customCwd = useChatStore((s) => s.groups[jid]?.custom_cwd);
+  const [dirDialogOpen, setDirDialogOpen] = useState(false);
   const defaultHomeName = '我的工作区';
   // Use actual name if it's been renamed, otherwise fall back to default
   const isDefaultName = !name || name === 'Main' || name === `${currentUser?.username} Home`;
@@ -143,6 +148,12 @@ export function ChatGroupItem({
                 重命名
               </DropdownMenuItem>
             )}
+            {canModify && currentUser?.role === 'admin' && (
+              <DropdownMenuItem onClick={() => setDirDialogOpen(true)}>
+                <FolderOpen className="w-4 h-4" />
+                工作目录
+              </DropdownMenuItem>
+            )}
             {canModify && (
               <DropdownMenuItem
                 onClick={() => onClearHistory(jid, displayName)}
@@ -164,6 +175,14 @@ export function ChatGroupItem({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      <WorkspaceDirDialog
+        open={dirDialogOpen}
+        jid={jid}
+        folder={folder}
+        currentCustomCwd={customCwd}
+        onClose={() => setDirDialogOpen(false)}
+      />
     </div>
   );
 }

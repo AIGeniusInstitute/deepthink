@@ -16,10 +16,11 @@ import path from 'path';
 import { CONTAINER_IMAGE, DATA_DIR, GROUPS_DIR, TIMEZONE, WEB_PORT } from './config.js';
 import { logger } from './logger.js';
 import { resolveHostNodeBinary } from './node-resolver.js';
+import { validateAdditionalMounts } from './mount-security.js';
 import {
-  loadMountAllowlist,
-  validateAdditionalMounts,
-} from './mount-security.js';
+  checkCustomCwdAllowedAtRuntime,
+  resolveWorkspaceRoot,
+} from './workspace-root.js';
 import {
   buildContainerEnvLines,
   getClaudeProviderConfig,
@@ -690,17 +691,18 @@ export function buildVolumeMounts(
       containerPath: '/workspace/project',
       readonly: false,
     });
+  }
 
-    // Admin home also gets its group folder as the working directory
+  // Workspace as working directory: customCwd (user-selected local dir) or the
+  // platform-managed data/groups/{folder}. Same rule for admin home, member home
+  // and non-home groups — resolveWorkspaceRoot is the single source of truth.
+  {
+    const workspaceRoot = resolveWorkspaceRoot(group);
+    if (!group.customCwd) {
+      mkdirForContainer(workspaceRoot);
+    }
     mounts.push({
-      hostPath: path.join(GROUPS_DIR, group.folder),
-      containerPath: '/workspace/group',
-      readonly: false,
-    });
-  } else {
-    // Member home and non-home groups only get their own folder
-    mounts.push({
-      hostPath: path.join(GROUPS_DIR, group.folder),
+      hostPath: workspaceRoot,
       containerPath: '/workspace/group',
       readonly: false,
     });
@@ -1486,9 +1488,36 @@ function writeAgentProjectClaudeMd(
   ) {
     return;
   }
-  const groupDir = path.join(GROUPS_DIR, group.folder);
-  mkdirForContainer(groupDir);
-  const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
+  // 项目记忆 CLAUDE.md 必须落在 Agent 的工作区根（SDK 从 cwd 读项目记忆），
+  // customCwd 工作区写到用户本机目录，默认工作区写到 data/groups/{folder}。
+  const workspaceRoot = resolveWorkspaceRoot(group);
+  if (!group.customCwd) {
+    mkdirForContainer(workspaceRoot);
+  }
+  const claudeMdPath = path.join(workspaceRoot, 'CLAUDE.md');
+  // customCwd 是用户的真实项目目录：绝不能覆盖用户自己的 CLAUDE.md。
+  // 仅当文件不存在、或确为本函数此前写入（含系统 marker）时才写。
+  if (group.customCwd && fs.existsSync(claudeMdPath)) {
+    try {
+      const existingContent = fs.readFileSync(claudeMdPath, 'utf8');
+      const isManaged =
+        existingContent.includes('（由 Agent Studio 注入）') ||
+        existingContent.includes('（系统注入');
+      if (!isManaged) {
+        logger.info(
+          { folder: group.folder, claudeMdPath },
+          'Skip agent project CLAUDE.md write: customCwd workspace has a user-owned CLAUDE.md',
+        );
+        return;
+      }
+    } catch (err) {
+      logger.warn(
+        { err, folder: group.folder },
+        'Failed to inspect customCwd CLAUDE.md, skipping write to avoid clobbering',
+      );
+      return;
+    }
+  }
   const content = buildAgentProjectClaudeMdContent(agentDef, autonomous);
   try {
     const tmp = `${claudeMdPath}.tmp`;
@@ -1558,6 +1587,31 @@ export async function runContainerAgent(
 
   const groupDir = path.join(GROUPS_DIR, group.folder);
   mkdirForContainer(groupDir);
+
+  // customCwd 工作区：挂载前做运行时二次校验（防 DB 注入 / 白名单收紧，
+  // 与 runHostAgent 共用同一套规则）。默认工作区目录不做白名单约束。
+  if (group.customCwd) {
+    const containerSetupError = (message: string): ContainerOutput => ({
+      status: 'error',
+      result: `容器模式启动失败：${message}`,
+      error: message,
+    });
+    let workspaceRoot: string;
+    try {
+      workspaceRoot = fs.realpathSync(resolveWorkspaceRoot(group));
+      if (!fs.statSync(workspaceRoot).isDirectory()) {
+        return containerSetupError(`工作区目录不是目录：${workspaceRoot}`);
+      }
+    } catch {
+      return containerSetupError(
+        `工作区目录不存在或无法解析：${group.customCwd}`,
+      );
+    }
+    const allowed = checkCustomCwdAllowedAtRuntime(workspaceRoot);
+    if (!allowed.ok) {
+      return containerSetupError(allowed.error);
+    }
+  }
 
   // ─── Provider Pool selection ───
   const poolResult = trySelectPoolProvider(group.folder, input.agentId);
@@ -2008,7 +2062,7 @@ export async function runHostAgent(
       }
     }
   }
-  let groupDir = group.customCwd || defaultGroupDir;
+  let groupDir = resolveWorkspaceRoot(group);
   if (!path.isAbsolute(groupDir)) {
     return hostModeSetupError(`工作目录必须是绝对路径：${groupDir}`);
   }
@@ -2022,43 +2076,13 @@ export async function runHostAgent(
     return hostModeSetupError(`工作目录不是目录：${groupDir}`);
   }
 
-  // Runtime allowlist validation for custom CWD (defense-in-depth: web.ts validates at creation,
-  // but re-check here in case allowlist was tightened or path was injected via DB)
+  // Runtime allowlist validation for custom CWD (defense-in-depth: web routes
+  // validate at creation/modification, but re-check here in case allowlist was
+  // tightened or path was injected via DB). Shared with runContainerAgent.
   if (group.customCwd) {
-    const allowlist = loadMountAllowlist();
-    if (
-      allowlist &&
-      allowlist.allowedRoots &&
-      allowlist.allowedRoots.length > 0
-    ) {
-      let allowed = false;
-      for (const root of allowlist.allowedRoots) {
-        const expandedRoot = root.path.startsWith('~')
-          ? path.join(
-              process.env.HOME || os.homedir(),
-              root.path.slice(root.path.startsWith('~/') ? 2 : 1),
-            )
-          : path.resolve(root.path);
-
-        let realRoot: string;
-        try {
-          realRoot = fs.realpathSync(expandedRoot);
-        } catch {
-          continue;
-        }
-
-        const relative = path.relative(realRoot, groupDir);
-        if (!relative.startsWith('..') && !path.isAbsolute(relative)) {
-          allowed = true;
-          break;
-        }
-      }
-
-      if (!allowed) {
-        return hostModeSetupError(
-          `工作目录 ${groupDir} 不在允许的根目录下，请检查 mount-allowlist.json`,
-        );
-      }
+    const allowed = checkCustomCwdAllowedAtRuntime(groupDir);
+    if (!allowed.ok) {
+      return hostModeSetupError(allowed.error);
     }
   }
 

@@ -362,6 +362,7 @@ interface ChatState {
   deleteMessage: (jid: string, messageId: string) => Promise<boolean>;
   createFlow: (name: string, options?: { execution_mode?: 'container' | 'host'; custom_cwd?: string; init_source_path?: string; init_git_url?: string }) => Promise<{ jid: string; folder: string } | null>;
   renameFlow: (jid: string, name: string) => Promise<void>;
+  updateWorkspaceDir: (jid: string, customCwd: string | null) => Promise<void>;
   togglePin: (jid: string) => Promise<void>;
   switchEngine: (jid: string, engine: 'claude' | 'atomcode' | 'codex' | 'opencode' | 'pi') => Promise<void>;
   deleteFlow: (jid: string) => Promise<void>;
@@ -1882,6 +1883,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err) });
     }
+  },
+
+  updateWorkspaceDir: async (jid: string, customCwd: string | null) => {
+    // 失败向上抛（对话框负责 toast）；成功后更新本地 group 状态
+    await api.patch<{ success: boolean }>(`/api/groups/${encodeURIComponent(jid)}`, {
+      custom_cwd: customCwd,
+    });
+    set((s) => {
+      const group = s.groups[jid];
+      if (!group) return s;
+      return {
+        groups: {
+          ...s.groups,
+          [jid]: {
+            ...group,
+            custom_cwd: customCwd || undefined,
+          },
+        },
+        error: null,
+      };
+    });
   },
 
   togglePin: async (jid: string) => {

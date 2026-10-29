@@ -54,7 +54,7 @@ export interface RegisteredGroup {
   added_at: string;
   containerConfig?: ContainerConfig;
   executionMode?: ExecutionMode; // 默认 'container'
-  customCwd?: string; // 宿主机模式的自定义工作目录（绝对路径）
+  customCwd?: string; // 自定义工作区目录（绝对路径），host 与 container 模式通用：host 模式作为进程 cwd，container 模式 bind-mount 到 /workspace/group
   initSourcePath?: string; // 容器模式下复制来源的宿主机绝对路径
   initGitUrl?: string; // 容器模式下 clone 来源的 Git URL
   created_by?: string;

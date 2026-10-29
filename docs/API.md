@@ -14,8 +14,8 @@
 
 ## 群组
 
-- `GET /api/groups` · `POST /api/groups`（创建 Web 会话）
-- `PATCH /api/groups/:jid`（重命名） · `DELETE /api/groups/:jid`
+- `GET /api/groups` · `POST /api/groups`（创建 Web 会话；`custom_cwd` 可选本机目录作为工作区，host/container 两模式通用、admin 专属，与 `init_source_path`/`init_git_url` 互斥，走 `config/mount-allowlist.json` 白名单校验）
+- `PATCH /api/groups/:jid`（重命名 / `custom_cwd` 修改或清除：`null`/空串 = 恢复默认 `data/groups/{folder}`，admin 专属，下一次运行生效） · `DELETE /api/groups/:jid`
 - `POST /api/groups/:jid/reset-session`（重建工作区）
 - `GET /api/groups/:jid/messages`（分页 + 轮询，支持多 JID 查询）
 - `POST /api/messages`（向工作区发送消息；首字符 `/clear` 触发会话重置，返回 `{ success: true, cleared: true }`）

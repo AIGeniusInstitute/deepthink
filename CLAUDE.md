@@ -141,7 +141,7 @@ Agent Runner（`container/agent-runner/`）在 Docker 容器或宿主机进程�
 
 宿主机模式通过 `node container/agent-runner/dist/index.js` 启动 agent-runner 进程，agent-runner 内部调用 `@anthropic-ai/claude-agent-sdk`，SDK 内置了完整的 Claude Code CLI 运行时（`cli.js`），无需全局安装。
 
-宿主机模式支持 `customCwd` 自定义工作目录，使用 `MAX_CONCURRENT_HOST_PROCESSES`（默认 5）作为独立的并发限制。
+host 与 container 模式均支持 `customCwd` 自定义工作区目录（用户本机目录）：host 模式作为进程 cwd，container 模式 bind-mount 到 `/workspace/group`；创建与 PATCH 均可设置/清除，经 `src/workspace-root.ts` 的 `validateCustomCwd` 校验（挂载白名单 + 屏蔽模式 + 禁止平台数据目录）。host 模式使用 `MAX_CONCURRENT_HOST_PROCESSES`（默认 5）作为独立的并发限制。
 
 ### 2.5 Docker 容器构建
 
@@ -225,7 +225,7 @@ StreamEvent 类型以 `shared/stream-event.ts` 为单一真相源，构建时通
 
 | 资源 | 容器路径 | admin 主容器 | member 主容器/其他 |
 |------|---------|-------------|-------------------|
-| 工作目录 `data/groups/{folder}/` | `/workspace/group` | 读写 | 读写（仅自己） |
+| 工作目录 `data/groups/{folder}/`（`custom_cwd` 设置后替换为该本机目录，挂载源经白名单校验，见 `src/workspace-root.ts`） | `/workspace/group` | 读写 | 读写（仅自己） |
 | 项目根目录 | `/workspace/project` | 读写 | 不可访问 |
 | 用户全局记忆 `data/groups/user-global/{userId}/` | `/workspace/global` | 读写 | 读写（仅自己） |
 | Claude 会话 `data/sessions/{folder}/.claude/` | `/home/node/.claude` | 读写 | 读写（仅自己） |

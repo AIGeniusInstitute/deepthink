@@ -416,7 +416,8 @@ test-smoke: ## 最小回归测试集（CI 门禁，< 60s）
 	  tests/units/runtime-monitor-time.test.ts \
 	  tests/units/open-platform-run-recorder.test.ts \
 	  tests/web-search.test.ts \
-	  tests/units/web-search-config.test.ts
+	  tests/units/web-search-config.test.ts \
+	  tests/workspace-custom-dir.test.ts
 
 format: ## 格式化代码
 	$(PKG) run format
