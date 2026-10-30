@@ -3,6 +3,7 @@
  *
  * Pure utility functions with no side effects or state dependencies.
  */
+import path from 'path';
 
 /**
  * Shorten a string to maxLen, appending "..." if truncated.
@@ -363,4 +364,81 @@ export function formatIsoLocal(iso: string | null | undefined): string {
   const tz = currentTimeZone();
   const { date, time, offset } = localDateTimeParts(d, tz);
   return `${date} ${time} (${offset})`;
+}
+
+/** Task workspace paths as seen by the agent-runner process. */
+export interface TaskWorkspacePaths {
+  /** 用户工作区根（Agent 的 cwd）：customCwd 本机目录或 data/groups/{folder}。 */
+  group: string;
+  /** 用户全局记忆目录。 */
+  global: string;
+  /** 日期记忆目录。 */
+  memory: string;
+  /** IPC 目录（可能含 agents/{agentId} / tasks-run/{taskRunId} 子命名空间）。 */
+  ipc: string;
+}
+
+/**
+ * 工作区四路径解析（group / global / memory / ipc）。
+ *
+ * 优先级：launcher 显式下发（ContainerInput payload）> launcher 注入的 env >
+ * 分布式共享 PVC 布局推导（DEEPTHINK_DATA_DIR）> 容器默认路径。
+ *
+ * PVC 推导只兜底「旧 host + 分布式 pod」的空缺，**绝不覆盖显式值**。此前
+ * processOneTask 的 PVC 分支只要 DEEPTHINK_DATA_DIR 非空就用
+ * `DATA_DIR/groups/{groupFolder}` 无条件重算 WORKSPACE_GROUP（连同其它三个
+ * 一并覆盖），而桌面版 BackendSupervisor / start-prod / bootstrap 都会给主
+ * 服务注入 DEEPTHINK_DATA_DIR 并被 host 模式的 agent-runner 子进程继承——
+ * customCwd 工作区于是每次都被重算回 data/groups/{folder}，Agent 实际跑在
+ * 默认目录而非用户指定的本机目录。见
+ * docs/issues/2026-10-30-workspace-custom-cwd-ignored-by-agent.md。
+ */
+export function resolveTaskWorkspaces(
+  input: {
+    workspaceGroup?: string;
+    workspaceGlobal?: string;
+    workspaceMemory?: string;
+    groupFolder: string;
+  },
+  opts: {
+    /** launcher 通过 env 注入的路径（DEEPTHINK_WORKSPACE_*），未设置即 undefined。 */
+    env?: Partial<Pick<TaskWorkspacePaths, 'group' | 'global' | 'memory' | 'ipc'>>;
+    /** DEEPTHINK_DATA_DIR；空/缺省表示非分布式，不做 PVC 推导。 */
+    dataDir?: string;
+    /** 无任何显式值与推导时的容器默认路径。 */
+    defaults?: Partial<TaskWorkspacePaths>;
+  } = {},
+): TaskWorkspacePaths {
+  const env = opts.env ?? {};
+  const defaults = opts.defaults ?? {};
+  const derived =
+    opts.dataDir && input.groupFolder
+      ? {
+          group: path.join(opts.dataDir, 'groups', input.groupFolder),
+          global: path.join(opts.dataDir, 'groups', 'global'),
+          memory: path.join(opts.dataDir, 'memory', input.groupFolder),
+          ipc: path.join(opts.dataDir, 'ipc', input.groupFolder),
+        }
+      : null;
+  return {
+    group:
+      input.workspaceGroup ||
+      env.group ||
+      derived?.group ||
+      defaults.group ||
+      '/workspace/group',
+    global:
+      input.workspaceGlobal ||
+      env.global ||
+      derived?.global ||
+      defaults.global ||
+      '/workspace/global',
+    memory:
+      input.workspaceMemory ||
+      env.memory ||
+      derived?.memory ||
+      defaults.memory ||
+      '/workspace/memory',
+    ipc: env.ipc || derived?.ipc || defaults.ipc || '/workspace/ipc',
+  };
 }

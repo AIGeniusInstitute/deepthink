@@ -103,6 +103,12 @@ export interface ContainerInput {
   maxTurns?: number;
   /** 全托管硬刹车上限：累计 token 用量到 maxTokens 即停止。默认 1,000,000。 */
   maxTokens?: number;
+  /** Workspace root the agent must work in (its cwd), as resolved by the host
+   *  launcher: `customCwd || data/groups/{folder}` (host mode: absolute host
+   *  path; container mode: `/workspace/group`, the mount target). Authoritative
+   *  — the runner must NOT re-derive it from groupFolder + DEEPTHINK_DATA_DIR
+   *  when this is present (see resolveTaskWorkspaces in utils.ts). */
+  workspaceGroup?: string;
   /** Distributed-mode per-user workspace paths. The host resolves these with
    *  owner context (group.created_by for per-user global, ownerHomeFolder for
    *  non-home-group memory) and passes them in the payload, because a long-

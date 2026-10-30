@@ -10,12 +10,18 @@
  *     创建一致；home 容器允许改目录（执行模式仍禁改）。
  *  ④ buildVolumeMounts —— container 模式 /workspace/group 的挂载源即
  *     resolveWorkspaceRoot（本机目录 bind-mount）。
+ *  ⑤ resolveTaskWorkspaces —— agent-runner 侧工作区四路径解析：launcher
+ *     显式值（payload/env）绝不被 DEEPTHINK_DATA_DIR 的 PVC 推导覆盖
+ *     （回归：customCwd 工作区曾被重算回 data/groups/{folder}，Agent 跑在
+ *     默认目录）。
  */
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+
+import { resolveTaskWorkspaces } from '../container/agent-runner/src/utils.js';
 
 const SHARED_TMP =
   process.env.DEEPTHINK_TEST_DATA_DIR ??
@@ -427,5 +433,72 @@ describe('buildVolumeMounts —— container 模式挂载源', () => {
     );
     const ws = mounts.find((m) => m.containerPath === '/workspace/group');
     expect(ws?.hostPath).toBe(path.join(tmpDataDir, 'groups', 'folder-default'));
+  });
+});
+
+describe('resolveTaskWorkspaces —— agent-runner 侧工作区解析（PVC 推导不得覆盖显式值）', () => {
+  const customDir = 'C:\\Users\\someone\\mi';
+  const dataDir = 'C:\\Users\\someone\\AppData\\Roaming\\DeepThink\\data';
+
+  test('回归：env 注入的 customCwd 工作区不被 DEEPTHINK_DATA_DIR 重算（桌面版场景）', () => {
+    // 修复前 processOneTask 的 PVC 分支只要 DATA_DIR 非空就用
+    // DATA_DIR/groups/{groupFolder} 无条件重算 WORKSPACE_GROUP，
+    // customCwd 工作区被重算回默认目录。
+    const ws = resolveTaskWorkspaces(
+      { groupFolder: 'flow-abc' },
+      {
+        env: {
+          group: customDir,
+          ipc: path.join(dataDir, 'ipc', 'flow-abc', 'agents', 'agent-1'),
+          global: path.join(dataDir, 'groups', 'user-global', 'u1'),
+          memory: path.join(dataDir, 'memory', 'main'),
+        },
+        dataDir,
+      },
+    );
+    expect(ws.group).toBe(customDir);
+    expect(ws.ipc).toBe(path.join(dataDir, 'ipc', 'flow-abc', 'agents', 'agent-1'));
+    expect(ws.global).toBe(path.join(dataDir, 'groups', 'user-global', 'u1'));
+    expect(ws.memory).toBe(path.join(dataDir, 'memory', 'main'));
+  });
+
+  test('payload workspaceGroup 为最优先（launcher 显式契约）', () => {
+    const ws = resolveTaskWorkspaces(
+      { groupFolder: 'flow-abc', workspaceGroup: customDir },
+      {
+        env: { group: path.join(dataDir, 'groups', 'flow-abc') },
+        dataDir,
+      },
+    );
+    expect(ws.group).toBe(customDir);
+  });
+
+  test('无 payload/env 时按 DATA_DIR 布局推导（分布式 pod 兼容，行为不变）', () => {
+    const ws = resolveTaskWorkspaces({ groupFolder: 'flow-abc' }, { dataDir });
+    expect(ws.group).toBe(path.join(dataDir, 'groups', 'flow-abc'));
+    expect(ws.global).toBe(path.join(dataDir, 'groups', 'global'));
+    expect(ws.memory).toBe(path.join(dataDir, 'memory', 'flow-abc'));
+    expect(ws.ipc).toBe(path.join(dataDir, 'ipc', 'flow-abc'));
+  });
+
+  test('payload workspaceGlobal/workspaceMemory 胜过 PVC 推导（分布式 payload 契约）', () => {
+    const ws = resolveTaskWorkspaces(
+      {
+        groupFolder: 'flow-abc',
+        workspaceGlobal: path.join(dataDir, 'groups', 'user-global', 'u1'),
+        workspaceMemory: path.join(dataDir, 'memory', 'main'),
+      },
+      { dataDir },
+    );
+    expect(ws.global).toBe(path.join(dataDir, 'groups', 'user-global', 'u1'));
+    expect(ws.memory).toBe(path.join(dataDir, 'memory', 'main'));
+  });
+
+  test('无 DATA_DIR（容器模式）维持 /workspace/* 默认', () => {
+    const ws = resolveTaskWorkspaces({ groupFolder: 'flow-abc' }, {});
+    expect(ws.group).toBe('/workspace/group');
+    expect(ws.global).toBe('/workspace/global');
+    expect(ws.memory).toBe('/workspace/memory');
+    expect(ws.ipc).toBe('/workspace/ipc');
   });
 });

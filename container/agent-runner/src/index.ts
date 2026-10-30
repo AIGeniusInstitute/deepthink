@@ -38,7 +38,7 @@ import type { ClaudeContextAudit } from './stream-event.types.js';
 import { buildLanguageDirective } from './i18n-directive.js';
 export type { StreamEventType, StreamEvent } from './types.js';
 
-import { sanitizeFilename, generateFallbackName, formatLocalNow, isSuspectTruncatedStreamResult, AssistantTextTracker } from './utils.js';
+import { sanitizeFilename, generateFallbackName, formatLocalNow, isSuspectTruncatedStreamResult, AssistantTextTracker, resolveTaskWorkspaces } from './utils.js';
 import {
   initRedisIpc,
   isRedisIpcConnected,
@@ -2547,19 +2547,32 @@ async function processOneTask(): Promise<void> {
       log(`Trace node id base seeded to ${containerInput.traceNodeIdBase}`);
     }
 
-    // 分布式模式：按 group 把 workspace 重算到共享 PVC 上（与 web-server 的
-    // DATA_DIR 布局一致），确保 agent 能读写用户文件/记忆/技能且重启不丢。
-    // 非分布式模式（DATA_DIR 为空）保持原 env 默认值，向后兼容。
-    // Per-user global + owner-home memory 由 host 在 payload 里带（runner 无法
-    // 仅凭 groupFolder 推导 owner），与单机 container-runner 语义一致；否则
-    // 所有用户的全局 CLAUDE.md 撞进共享 groups/global，非 home 组记忆落进组
-    // 目录（对 host 记忆路由不可见）。
+    // 工作区四路径：以 launcher（container-runner）显式下发的值为唯一真相
+    // （payload 优先，其次 env），DEEPTHINK_DATA_DIR 的共享 PVC 布局推导只兜底
+    // 「旧 host + 分布式 pod」的空缺（与 web-server 的 DATA_DIR 布局一致），
+    // 绝不覆盖显式值。此前 PVC 分支只要 DATA_DIR 非空就无条件用
+    // `DATA_DIR/groups/{groupFolder}` 重算 WORKSPACE_GROUP（连同 IPC/GLOBAL/
+    // MEMORY 一并覆盖），而桌面版 / start-prod / bootstrap 都会给主服务注入
+    // DEEPTHINK_DATA_DIR 并被 host 模式子进程继承——customCwd 工作区于是被
+    // 重算回 data/groups/{folder}，Agent 实际跑在默认目录而非用户指定的本机
+    // 目录（docs/issues/2026-10-30-workspace-custom-cwd-ignored-by-agent.md）。
+    // Per-user global + owner-home memory 由 host 在 payload/env 里带（runner
+    // 无法仅凭 groupFolder 推导 owner），否则所有用户的全局 CLAUDE.md 会撞进
+    // 共享 groups/global，非 home 组记忆落进组目录（对 host 记忆路由不可见）。
+    const taskWorkspaces = resolveTaskWorkspaces(containerInput, {
+      env: {
+        group: process.env.DEEPTHINK_WORKSPACE_GROUP,
+        global: process.env.DEEPTHINK_WORKSPACE_GLOBAL,
+        memory: process.env.DEEPTHINK_WORKSPACE_MEMORY,
+        ipc: process.env.DEEPTHINK_WORKSPACE_IPC,
+      },
+      dataDir: DATA_DIR,
+    });
+    WORKSPACE_GROUP = taskWorkspaces.group;
+    WORKSPACE_GLOBAL = taskWorkspaces.global;
+    WORKSPACE_MEMORY = taskWorkspaces.memory;
+    WORKSPACE_IPC = taskWorkspaces.ipc;
     if (DATA_DIR && containerInput.groupFolder) {
-      const gf = containerInput.groupFolder;
-      WORKSPACE_GROUP = path.join(DATA_DIR, 'groups', gf);
-      WORKSPACE_IPC = path.join(DATA_DIR, 'ipc', gf);
-      WORKSPACE_GLOBAL = containerInput.workspaceGlobal || path.join(DATA_DIR, 'groups', 'global');
-      WORKSPACE_MEMORY = containerInput.workspaceMemory || path.join(DATA_DIR, 'memory', gf);
       for (const d of [WORKSPACE_GROUP, WORKSPACE_GLOBAL, WORKSPACE_MEMORY, WORKSPACE_IPC]) {
         try { fs.mkdirSync(d, { recursive: true }); } catch { /* may already exist */ }
       }

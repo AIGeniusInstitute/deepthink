@@ -353,6 +353,13 @@ export interface ContainerInput {
    *  Merged into agentDefinition at cold-start: skills→systemPrompt content
    *  (DB-stored, no disk SKILL.md in container), MCP/KB→mounts array. */
   turnMounts?: SelectedMounts;
+  /** Workspace root the agent must work in (its cwd), set just-in-time by
+   *  runContainerAgent/runHostAgent from resolveWorkspaceRoot(group) — host
+   *  mode passes the absolute host path (customCwd 本机目录或
+   *  data/groups/{folder})，container 模式传挂载目标 '/workspace/group'。
+   *  Never set by the caller; authoritative for the runner (it must not
+   *  re-derive the workspace from groupFolder when this is present). */
+  workspaceGroup?: string;
   /** Trace-node nodeId allocation base, populated just-in-time by
    *  runContainerAgent/runHostAgent from the chat's current
    *  MAX(chat_trace_nodes.id). Agent-runner seeds its allocator from this
@@ -1739,6 +1746,8 @@ export async function runContainerAgent(
         userLanguage: input.userLanguage ?? ownerLanguage,
         engine,
         traceNodeIdBase: getMaxChatTraceNodeId(input.chatJid) + 1,
+        // 容器内视角恒为 /workspace/group（customCwd 挂载目标，见 buildVolumeMounts）。
+        workspaceGroup: '/workspace/group',
         plugins: group.created_by
           ? loadUserPlugins(group.created_by, { runtime: 'docker' })
           : [],
@@ -2665,6 +2674,9 @@ export async function runHostAgent(
         sessionId: hostEngineSessionId,
         engine: groupEngine,
         traceNodeIdBase: getMaxChatTraceNodeId(input.chatJid) + 1,
+        // 宿主机视角的工作区根（resolveWorkspaceRoot + realpath + 运行时二次
+        // 校验后的 groupDir）：customCwd 本机目录或 data/groups/{folder}。
+        workspaceGroup: groupDir,
         userLanguage: input.userLanguage ?? hostOwnerLanguage,
         plugins: prepareHostPlugins(group.created_by),
         agentDefinition: hostAgentDef,

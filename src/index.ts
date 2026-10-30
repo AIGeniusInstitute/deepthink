@@ -34,6 +34,7 @@ import {
   writeGroupsSnapshot,
   writeTasksSnapshot,
 } from './container-runner.js';
+import { resolveWorkspaceRoot } from './workspace-root.js';
 import { buildReminderConfig } from './reminder-config.js';
 import {
   closeDatabase,
@@ -5314,6 +5315,7 @@ async function runAgent(
         messageTaskId,
         reminderConfig: buildReminderConfig(group.created_by, prompt),
         engine: group.engine,
+        workspaceGroup: resolveWorkspaceRoot(group),
         workspaceGlobal: distWorkspaceGlobal,
         workspaceMemory: distWorkspaceMemory,
         agentDefinition: enrichedAgentDef,
@@ -9143,6 +9145,7 @@ async function processAgentConversation(
         isAdminHome,
         images: imagesForAgent,
         engine: effectiveGroup.engine,
+        workspaceGroup: resolveWorkspaceRoot(effectiveGroup),
         workspaceGlobal: distWorkspaceGlobal,
         workspaceMemory: distWorkspaceMemory,
         agentDefinition: enrichedAgentDef,
