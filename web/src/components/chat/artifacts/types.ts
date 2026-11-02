@@ -140,6 +140,23 @@ export function detectInlineKind(language: string | undefined): ArtifactKind | u
   return undefined;
 }
 
+/**
+ * 将 markdown 链接/图片的 URI 还原为工作区相对路径。
+ *
+ * remark/micromark 的 normalizeUri 会对链接目的地做百分号编码，
+ * 中文等非 ASCII 文件名会被编码成 %XX 序列；而文件 API（/files/preview 等）
+ * 期望的是磁盘上的真实相对路径，直接把 href 当路径会按字面 "%E6…" 文件名
+ * 找文件 → 404 {"error":"File not found"}。故在 markdown URI → filePath
+ * 边界解码一次。非法 %XX 序列（如文件名里的字面 % 后跟非十六进制）原样返回。
+ */
+export function decodeMarkdownPath(uri: string): string {
+  try {
+    return decodeURIComponent(uri);
+  } catch {
+    return uri;
+  }
+}
+
 /** Extract file extension (without dot, lowercased) from a URL or path. */
 export function getExt(input: string | undefined | null): string | undefined {
   if (!input) return undefined;

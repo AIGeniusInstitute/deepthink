@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 import { Copy, Check } from 'lucide-react';
 import { MermaidDiagram } from './MermaidDiagram';
 import { ArtifactRenderer } from './artifacts/ArtifactRenderer';
-import { detectInlineKind, EXTENSION_TO_KIND, getExt } from './artifacts/types';
+import { detectInlineKind, EXTENSION_TO_KIND, getExt, decodeMarkdownPath } from './artifacts/types';
 import { toBase64Url } from '../../stores/files';
 import { withBasePath } from '../../utils/url';
 import 'highlight.js/styles/github.css';
@@ -33,7 +33,7 @@ function resolveImageSrc(src: string, groupJid?: string): string {
   if (/^(https?:\/\/|data:|\/\/)/.test(src) || src.startsWith('/')) return src;
   // Strip #agent:xxx suffix — file API uses the base group JID
   const baseJid = groupJid.replace(/#agent:.*$/, '');
-  const encoded = toBase64Url(src);
+  const encoded = toBase64Url(decodeMarkdownPath(src));
   return withBasePath(`/api/groups/${encodeURIComponent(baseJid)}/files/download/${encoded}`);
 }
 
@@ -258,8 +258,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, groupJ
               <ArtifactRenderer
                 kind={kind}
                 source={{
-                  filePath: src,
-                  fileName: alt || src.split('/').pop() || src,
+                  filePath: decodeMarkdownPath(src),
+                  fileName: alt || decodeMarkdownPath(src).split('/').pop() || src,
                   groupJid,
                   alt: alt || undefined,
                 }}
@@ -272,12 +272,13 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, groupJ
             const kind = ext ? EXTENSION_TO_KIND[ext] : undefined;
             // Artifact link: render inline for non-text kinds (text falls back to plain anchor)
             if (kind && kind !== 'text' && typeof href === 'string' && href) {
-              const label = extractText(children) || href.split('/').pop() || href;
+              const decodedHref = decodeMarkdownPath(href);
+              const label = extractText(children) || decodedHref.split('/').pop() || decodedHref;
               return (
                 <ArtifactRenderer
                   kind={kind}
                   source={{
-                    filePath: href,
+                    filePath: decodedHref,
                     fileName: label,
                     groupJid,
                   }}
