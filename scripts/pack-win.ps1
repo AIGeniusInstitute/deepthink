@@ -9,6 +9,9 @@
 #   → shared/ 单向真相源同步 → 编译后端 / 前端 / agent-runner / Electron 壳
 #   → 拉取内置 Node 二进制（dev-resources\node\）
 #   → 原生模块（better-sqlite3 等）按内置 Node ABI 重建并校验
+#     （Windows 会独占已加载的 .node 文件：重建前自动停止占用 binding 的
+#      本机实例及其 deepthink-watchdog 看门狗，否则 npm rebuild EBUSY/EPERM，
+#      见 docs/issues/2026-11-02-pack-win-error.md）
 #   → electron-builder 打包（build\win.json，--publish never）
 #
 # 版本号策略：
@@ -204,8 +207,106 @@ function Build-DesktopShell {
 
 # ── 原生模块 ABI（对应 Makefile 的 desktop-rebuild-natives）──
 
+# 文件是否被其它进程独占（Windows 下 node/electron 加载 .node 后独占该文件）
+function Test-FileLocked([string]$path) {
+  try {
+    $s = [System.IO.File]::Open($path, 'Open', 'ReadWrite', 'None')
+    $s.Close()
+    return $false
+  } catch [System.IO.IOException] {
+    return $true
+  }
+}
+
+# 加载了指定 binding 的进程（只认「模块列表里精确出现该文件」的进程，不猜、不误伤）
+function Get-BindingHolders([string]$bindingPath) {
+  $hits = @()
+  foreach ($proc in (Get-Process -ErrorAction SilentlyContinue)) {
+    if ($proc.Name -notmatch '^(node|electron|DeepThink)$') { continue }
+    $loaded = $false
+    try {
+      foreach ($mod in $proc.Modules) {
+        if ($mod.FileName -eq $bindingPath) { $loaded = $true; break }
+      }
+    } catch { continue }   # 枚举模块失败（权限）即跳过，宁可漏报不误杀
+    if (-not $loaded) { continue }
+    $cmd = ''
+    $cim = Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $proc.Id) -ErrorAction SilentlyContinue
+    if ($cim) { $cmd = [string]$cim.CommandLine }
+    if ($cmd.Length -gt 140) { $cmd = $cmd.Substring(0, 140) }
+    $hits += [pscustomobject]@{ Id = [int]$proc.Id; Cmd = $cmd }
+  }
+  return $hits
+}
+
+# 会自动拉起占用者的 deepthink-watchdog 看门狗（必须先停它，否则杀掉占用者后会被拉起重新加锁）。
+# 两个来源：① 命令行含 deepthink-watchdog 且含本仓库路径（覆盖重启空窗期的看门狗）；
+# ② 占用者祖先链上的 deepthink-watchdog（.sh 版命令行可能不含绝对路径，靠血缘归因）
+function Get-AutoRestartWatchdogs([int[]]$holderPids) {
+  $rootNorm = ($Root -replace '\\', '/').ToLower()
+  $found = @{}
+  foreach ($proc in (Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+    if (-not $proc.CommandLine) { continue }
+    $cmd = [string]$proc.CommandLine
+    if ($cmd -notmatch 'deepthink-watchdog') { continue }
+    if ((($cmd -replace '\\', '/').ToLower()) -like ('*' + $rootNorm + '*')) {
+      $found[[int]$proc.ProcessId] = $cmd
+    }
+  }
+  foreach ($hp in $holderPids) {
+    $cur = $hp
+    for ($i = 0; $i -lt 10 -and $cur -gt 0; $i++) {
+      $proc = Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $cur) -ErrorAction SilentlyContinue
+      if (-not $proc) { break }
+      if ($proc.CommandLine -and ($proc.CommandLine -match 'deepthink-watchdog')) {
+        $found[[int]$proc.ProcessId] = [string]$proc.CommandLine
+      }
+      $cur = [int]$proc.ParentProcessId
+    }
+  }
+  $hits = @()
+  foreach ($k in $found.Keys) {
+    $cmd = $found[$k]
+    if ($cmd.Length -gt 140) { $cmd = $cmd.Substring(0, 140) }
+    $hits += [pscustomobject]@{ Id = $k; Cmd = $cmd }
+  }
+  return $hits
+}
+
+# 解除 better_sqlite3.node 的进程占用：停看门狗（防自动拉起）→ 停占用者 → 轮询确认解锁。
+# 这是打包的硬前提——npm rebuild 必须覆盖该文件，被占用时 prebuild-install 报 EBUSY、
+# node-gyp clean 报 EPERM（docs/issues/2026-11-02-pack-win-error.md）
+function Free-NativeBinding {
+  $binding = Join-Path $Root 'node_modules\better-sqlite3\build\Release\better_sqlite3.node'
+  if (-not (Test-Path -LiteralPath $binding)) { return }
+  $bindingFull = (Resolve-Path -LiteralPath $binding).Path
+  if (-not (Test-FileLocked $bindingFull)) { return }
+
+  for ($round = 1; $round -le 3; $round++) {
+    $holders = @(Get-BindingHolders $bindingFull)
+    $wds = @(Get-AutoRestartWatchdogs @($holders | ForEach-Object { [int]$_.Id }))
+    if ($holders.Count -eq 0 -and $wds.Count -eq 0) { break }
+    Write-Y '   ⚠️  better_sqlite3.node 被本机进程占用（Windows 独占已加载的 .node），npm rebuild 无法覆盖，将先停止以下进程：'
+    foreach ($p in $wds)     { Write-Y ('     [看门狗] pid {0}: {1}' -f $p.Id, $p.Cmd) }
+    foreach ($p in $holders) { Write-Y ('     [占用者] pid {0}: {1}' -f $p.Id, $p.Cmd) }
+    # 先停看门狗再停占用者：只杀占用者的话 3s 后会被看门狗自动拉起重新加锁
+    foreach ($p in $wds)     { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+    foreach ($p in $holders) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+    for ($i = 0; $i -lt 10; $i++) {
+      Start-Sleep -Seconds 1
+      if (-not (Test-FileLocked $bindingFull)) {
+        Write-G '   ✅ better_sqlite3.node 已解除占用'
+        Write-Y '   （占用进程是本机 DeepThink 实例时已被停止；打包完成后可重启: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\rebuild-restart.ps1 <端口>）'
+        return
+      }
+    }
+  }
+  Die 'better_sqlite3.node 仍被占用且无法自动解除。请用资源监视器（CPU → 关联的句柄）搜索 better_sqlite3.node 定位持有进程，或先运行 scripts\stop-prod.ps1 -Port <端口> 停掉本机实例后重试。'
+}
+
 function Rebuild-Natives {
   Write-B ('   [原生模块] 按内置 Node {0} 重建 ...' -f $NodeVer)
+  Free-NativeBinding
   $oldTarget  = $env:npm_config_target
   $oldRuntime = $env:npm_config_runtime
   $env:npm_config_target  = $NodeVer
