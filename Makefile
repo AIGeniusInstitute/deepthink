@@ -9,6 +9,7 @@
        desktop-install web-install desktop-build-deps desktop-build desktop-fetch-node \
        desktop-rebuild-natives desktop-dev desktop-pack-mac desktop-pack-mac-x64 \
        desktop-pack-mac-all desktop-pack-win desktop-pack-linux \
+       android-payload android-payload-check \
        setup k8s-deploy docker-deploy health generate-tray-icons
 
 # ─── Runtime ────────────────────────────────────────────────
@@ -496,6 +497,14 @@ _ensure-sandbox-image: ## (内部) 检测沙箱镜像是否需要构建/重建
 	    fi; \
 	  fi; \
 	fi
+
+# ─── Android (Termux) payload ────────────────────────────────
+
+android-payload: ## 打包 Android/Termux 运行时 payload（dist-android/*.tar.gz + sha256，需先 make build）
+	@bash scripts/build-android-payload.sh
+
+android-payload-check: ## 校验 payload 压缩包内容（用法：make android-payload-check FILE=xxx.tar.gz）
+	@bash scripts/check-android-payload.sh $(FILE)
 
 # ─── Shared Types ────────────────────────────────────────────
 

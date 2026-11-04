@@ -74,3 +74,5 @@ desktop/resources/icon.iconset/
 dev-resources/
 web/node_modules
 .worktrees
+# Android/Termux 运行时打包产物（make android-payload）
+dist-android/

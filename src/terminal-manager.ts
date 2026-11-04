@@ -13,7 +13,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * over stdin/stdout.  This sidesteps Bun's incompatibility with node-pty's
  * native addon.
  */
-const PTY_WORKER_PATH = path.resolve(__dirname, '..', 'src', 'pty-worker.cjs');
+// 与入口同级：dev（tsx 直跑 src/）指向 src/pty-worker.cjs，prod（node dist/）
+// 指向 dist/pty-worker.cjs（由 scripts/copy-runtime-assets.cjs 复制）。
+// 打包部署（desktop extraResources / android payload）只含 dist/，旧写法
+// `__dirname/../src/pty-worker.cjs` 会 miss → PTY 静默降级 pipe 模式。
+const PTY_WORKER_PATH = path.resolve(__dirname, 'pty-worker.cjs');
 
 interface TerminalSessionBase {
   containerName: string;

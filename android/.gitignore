@@ -1,0 +1,9 @@
+# Android / Gradle 构建产物
+build/
+.gradle/
+local.properties
+.cxx/
+*.apk
+*.aab
+# 便携 JDK（如按 README 的回退方案放置）
+.jdk/

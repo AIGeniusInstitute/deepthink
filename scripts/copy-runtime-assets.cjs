@@ -12,10 +12,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const ROOT = path.resolve(__dirname, '..');
+// ROOT 可被 RUNTIME_ASSETS_ROOT 覆盖（测试用），默认行为不变
+const ROOT = process.env.RUNTIME_ASSETS_ROOT
+  ? path.resolve(process.env.RUNTIME_ASSETS_ROOT)
+  : path.resolve(__dirname, '..');
 
 // src/<rel> → dist/<rel>
-const ASSETS = ['eval-center/eval-schema.sql'];
+const ASSETS = ['eval-center/eval-schema.sql', 'pty-worker.cjs'];
 
 for (const rel of ASSETS) {
   const from = path.join(ROOT, 'src', rel);
