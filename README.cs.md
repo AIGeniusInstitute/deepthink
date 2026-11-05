@@ -62,6 +62,7 @@ DeepThink, platforma pro samo-vyvíjející se superinteligenci autonomního Age
 - **Sandboxed spuštění kódu** — Docker + seccomp + cgroups ztučněný sandbox pro spouštění Python / Node / shell kódu a Chromium CDP browser automatizaci
 - **Billing a statistiky využití** — kompletní billing (subscription, wallet, redemption kódy), sledování tokenů dle modelu s grafy
 - **Mobilní PWA** — hluboce optimalizováno pro mobil, instalace na domovskou obrazovku jedním klikem, iOS i Android
+- **Android verze pro zařízení** *(v1.9.0)* — Spusťte celý backend DeepThink na telefonu Android (runtime Termux + WebView shell aplikace s automatickým objevením místního serveru); chaty, soubory, paměť a naplánované úkoly zůstávají v zařízení, pouze volání LLM směřuje do cloudového API
 - **Internationalizováno** — 30 UI jazyků s nativními endonymy a podporou RTL; Agent odpovídá v jazyce, který si uživatel zvolí
 
 ## Ukázka funkcí

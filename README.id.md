@@ -62,6 +62,7 @@ DeepThink, platform evolusi-diri superinteligensi Agent otonom kelas enterprise,
 - **Eksekusi kode sandboxed** — Sandbox Docker + seccomp + cgroups untuk eksekusi kode Python / Node / shell dan otomatisasi browser Chromium CDP
 - **Billing dan statistik penggunaan** — sistem billing lengkap (paket langganan, dompet, kode penukaran), pelacakan token per model dengan grafik
 - **PWA mobile** — Dioptimalkan mendalam untuk mobile, instalasi satu ketuk ke layar utama, iOS / Android disesuaikan
+- **Edisi Android di perangkat** *(v1.9.0)* — Jalankan seluruh backend DeepThink di ponsel Android (runtime Termux + aplikasi shell WebView dengan penemuan otomatis server lokal tanpa konfigurasi); obrolan, file, memori, dan tugas terjadwal tetap di perangkat, sementara panggilan LLM menuju API cloud
 - **Internasionalisasi** — 30 bahasa UI dengan endonim asli dan dukungan RTL; Agent membalas dalam bahasa yang dipilih pengguna
 
 ## Peragaan Fitur

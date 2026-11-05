@@ -62,6 +62,7 @@ DeepThink, eine Unternehmens-Plattform zur Selbst-Evolution autonomen Agent-Supe
 - **Sandboxed-Code-Ausführung** — Durch Docker + seccomp + cgroups gehärtete Sandbox für Python / Node / Shell-Code-Ausführung und Chromium-CDP-Browser-Automatisierung
 - **Billing und Nutzungsstatistiken** — Vollständiges Billing-System (Abo-Pläne, Wallet, Einlösecodes), Token-Tracking pro Modell mit Diagramm-Visualisierungen
 - **Mobile PWA** — Tiefgreifend für Mobile optimiert, Ein-Tap-Installation auf dem Home-Screen, iOS / Android adaptiert
+- **Android On-Device-Ausgabe** *(v1.9.0)* — Betreiben Sie das gesamte DeepThink-Backend auf einem Android-Phone (Termux-Laufzeit + WebView-Shell-App mit automatischer Erkennung des lokalen Servers); Chats, Dateien, Speicher und geplante Aufgaben bleiben auf dem Gerät, nur der LLM-Aufruf geht an die Cloud-API
 - **Internationalisiert** — 30 UI-Sprachen mit nativen Endonymen und RTL-Support; der Agent antwortet in der vom Nutzer gewählten Sprache
 
 ## Funktionsübersicht

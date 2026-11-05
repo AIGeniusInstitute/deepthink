@@ -68,6 +68,7 @@ DeepThink，开源企业级自主 Agent 超级智能体自进化平台，是从 
 - **沙箱化代码执行** —— Docker + seccomp + cgroups 加固沙箱，用于 Python / Node / shell 代码执行和 Chromium CDP 浏览器自动化，作为 MCP 工具暴露给 Agent
 - **计费与用量统计** —— 完整的计费系统（订阅计划、钱包余额、兑换码），Per-model Token 用量追踪与图表可视化
 - **移动端 PWA** —— 针对移动端深度优化，支持一键安装到桌面，iOS / Android 均已适配
+- **Android 端上自治运行** *(v1.9.0)* —— 整套 DeepThink 后端跑进 Android 手机（Termux 运行时 + 零配置自动发现本机服务的 WebView 壳 app）；对话、文件、记忆、定时任务全部端上自治，LLM 推理走云端 API
 - **国际化** —— 30 种 UI 语言，支持原生 endonym 和 RTL；Agent 以用户选择的语言回复
 
 > 项目借鉴了 [OpenClaw](https://github.com/nicepkg/OpenClaw) 的容器化架构，并融合了 Claude Code 官方 [Cowork](https://github.com/anthropics/claude-code/tree/main/packages/cowork) 的多会话协作思路：多个独立 Agent 会话并行工作，各自拥有隔离的工作空间和持久记忆，结果通过 IM 渠道送达。
@@ -244,6 +245,15 @@ DeepThink 既可作为单节点运行，也可作为水平扩缩的 Kubernetes �
 - **无状态安全的请求级状态** —— 任何跨越 Web handler → 消息处理器边界的东西（per-turn 的 skill/MCP/KB 挂载、per-user 并发计数器、supervisor 配置）都存放在 Redis 或 PostgreSQL 中，绝不放在进程内的 Map 里。
 - **对象存储** —— 超过 64 KB 的 trace I/O 与工作区文件在启用后走 S3/MinIO；本地 PVC 仍是 `groups/`、`sessions/`、`memory/` 的主文件系统，因此多 Pod 部署需要一个 `ReadWriteMany` 卷。
 - **K8s 清单** —— Kustomize base 及 `deploy/k8s/` 下的 overlay（namespace、deployment、service、HPA、PVC、ConfigMap/Secret、备份 CronJob，以及一个 `kind` overlay），配套一次性 `make k8s-deploy`。
+
+### Android 端上自治运行 *(v1.9.0)*
+
+DeepThink 可以**整体跑在一部 Android 手机里**——不需要配置任何自建/远程 server URL。Termux 承载后端监听本机 `127.0.0.1`，DeepThink Android app（WebView 壳，Kotlin 源码在 `android/`）自动发现本机服务、零输入直接进入。
+
+- **零配置 app** —— 冷启动探测 `GET /api/health`（默认 9898 + 9890–9900 区间扫描）直接加载界面；未发现服务时展示 Termux 启动引导页（绝不强制填 URL）。保留远程 URL 手动模式对接企业服务器，并以可关闭的提示条标注本地降级的功能（沙箱代码执行 / 浏览器自动化 / Web 终端依赖 Docker，其余功能完整）。
+- **一键安装与启停** —— `android/termux/` 提供 `install.sh`（系统依赖 → npm 依赖含 better-sqlite3 设备端编译 → **claude CLI glibc 兼容**（patchelf 重写 interpreter，配方来自 [claude-code-android](https://github.com/ferrumclaudepilgrim/claude-code-android)）→ 自检汇总）与 `start` / `stop` / `status`（wake-lock + 健康探针）。
+- **`make android-payload`** —— 五件套（backend / web-dist / agent-runner / config / skills）打包为 22MB tar.gz，附 SHA256 与清单校验；`node_modules` 设备端安装、不随包分发。
+- **"端上"的边界** —— 对话、文件、记忆、定时任务、IM 全部本地运行；LLM 调用仍走云端 Claude API。完整安装手册见 [`android/README.md`](android/README.md)。
 
 ### Agent 群组协作（Swarm）*(v1.4.0 / v1.5.0)*
 

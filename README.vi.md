@@ -62,6 +62,7 @@ DeepThink, nền tảng siêu trí tuệ tự tiến hóa Agent tự chủ cấp
 - **Thực thi mã trong sandbox** — Sandbox Docker + seccomp + cgroups tăng cứng cho thực thi mã Python / Node / shell và tự động hóa trình duyệt Chromium CDP
 - **Billing và thống kê sử dụng** — Hệ thống billing đầy đủ (gói đăng ký, số dư ví, mã đổi thưởng), theo dõi token theo mô hình với biểu đồ trực quan
 - **PWA di động** — Tối ưu sâu cho di động, cài đặt màn hình chính một chạm, tương thích iOS / Android
+- **Phiên bản chạy trên thiết bị Android** *(v1.9.0)* — Chạy toàn bộ backend DeepThink trên điện thoại Android (runtime Termux + ứng dụng vỏ WebView tự động phát hiện máy chủ cục bộ, không cần cấu hình); tin nhắn, tệp, bộ nhớ và tác vụ theo lịch đều nằm trên thiết bị, chỉ lệnh gọi LLM đi tới API đám mây
 - **Quốc tế hóa** — 30 ngôn ngữ UI với endonym bản địa và hỗ trợ RTL; Agent trả lời theo ngôn ngữ người dùng chọn
 
 ## Trưng bày Tính năng

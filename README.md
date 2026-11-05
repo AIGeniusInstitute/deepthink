@@ -66,6 +66,7 @@ DeepThink, an Open Source Enterprise-grade Autonomous Agent self-evolving superi
 - **Sandboxed Code Execution** — Docker + seccomp + cgroups hardened sandbox for Python / Node / shell code execution and Chromium CDP browser automation, exposed to the Agent as MCP tools
 - **Billing & Usage Statistics** — A complete billing system (subscription plans, wallet balance, redemption codes), per-model token usage tracking, and chart visualizations
 - **Mobile PWA** — Deeply optimized for mobile, supports one-tap install to the home screen, fully adapted for iOS / Android
+- **Android On-Device Edition** *(v1.9.0)* — Run the full DeepThink backend on an Android phone (Termux runtime + WebView shell app with zero-config local-server auto-discovery); chats, files, memory and scheduled tasks stay on-device while the LLM call goes to the cloud API
 - **Internationalized** — 30 UI languages with native endonyms and RTL support; the Agent replies in the user's chosen language
 
 > The project draws on the containerized architecture of [OpenClaw](https://github.com/nicepkg/OpenClaw) and incorporates the multi-session collaboration ideas from Claude Code's official [Cowork](https://github.com/anthropics/claude-code/tree/main/packages/cowork): multiple independent Agent sessions work in parallel, each with its own isolated workspace and persistent memory, and results are delivered via IM channels.
@@ -243,6 +244,15 @@ DeepThink runs as either a single node or a horizontally scaled Kubernetes deplo
 - **Stateless-safe request state** — Anything crossing the web-handler → message-processor boundary (per-turn skill/MCP/KB mounts, per-user concurrency counters, supervisor config) lives in Redis or PostgreSQL, never in a process-local Map.
 - **Object storage** — Trace I/O above 64 KB and workspace files route through S3/MinIO when enabled; the local PVC remains the primary filesystem for `groups/`, `sessions/` and `memory/`, so a multi-pod deployment needs a `ReadWriteMany` volume.
 - **K8s manifests** — Kustomize base plus overlays under `deploy/k8s/` (namespace, deployments, services, HPA, PVC, ConfigMap/Secret, backup CronJob, and a `kind` overlay), with a one-shot `make k8s-deploy`.
+
+### Android On-Device Edition *(v1.9.0)*
+
+DeepThink runs **entirely inside an Android phone** — no self-hosted or remote server URL to configure. A Termux-hosted backend listens on `127.0.0.1`, and the DeepThink Android app (WebView shell, Kotlin source in `android/`) auto-discovers it and connects with zero input.
+
+- **Zero-config app** — Cold start probes `GET /api/health` (port 9898 plus a 9890–9900 scan) and loads the UI directly; if nothing is found, a guide page walks through starting the Termux service (never a forced URL entry). Manual remote-URL mode stays available for enterprise servers, and a dismissible banner flags the Docker-dependent features that degrade locally (sandbox code execution / browser automation / Web terminal — everything else works).
+- **One-command install & lifecycle** — `android/termux/` ships `install.sh` (system deps → npm install with on-device `better-sqlite3` compilation → **claude CLI glibc compatibility** via patchelf, recipe credited to [claude-code-android](https://github.com/ferrumclaudepilgrim/claude-code-android) → self-check summary) plus `start` / `stop` / `status` with wake-lock and health probes.
+- **`make android-payload`** — Packages the five-piece runtime (backend / web-dist / agent-runner / config / skills) as a 22MB tarball with SHA256 and manifest checks; `node_modules` installs on-device and is never shipped.
+- **What "on-device" means** — Chats, files, memory, scheduled tasks and IM all run locally; the LLM call still goes to the cloud Claude API. Full install manual: [`android/README.md`](android/README.md).
 
 ### Agent Group Chat (Swarm) *(v1.4.0 / v1.5.0)*
 

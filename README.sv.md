@@ -62,6 +62,7 @@ DeepThink, en företagsklassad plattform för själv-evolverande superintelligen
 - **Sandbox-kodexekvering** — Docker + seccomp + cgroups härdad sandbox för Python / Node / shell-kod och Chromium CDP-browserautomatisering
 - **Fakturering och användningsstatistik** — Komplett faktureringssystem (prenumeration, plånbok, inlösenkoder), token-spårning per modell med diagramvisualiseringar
 - **Mobil PWA** — Djupt optimerad för mobil, installation på hemskärm med ett klick, både iOS och Android
+- **Android-version för enhet** *(v1.9.0)* — Kör hela DeepThink-backenden på en Android-telefon (Termux-miljö + WebView-skalapp med automatisk upptäckt av lokal server); chattar, filer, minne och schemalagda uppgifter stannar på enheten, bara LLM-anropet går till moln-API:t
 - **Internationaliserat** — 30 UI-språk med inhemska endonymer och RTL-stöd; Agent svarar på användarens valda språk
 
 ## Funktionsöversikt

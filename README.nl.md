@@ -62,6 +62,7 @@ DeepThink, een enterprise-grade platform voor zelfevoluerende superintelligentie
 - **Sandboxed code-executie** — Docker + seccomp + cgroups-verhardte sandbox voor Python / Node / shell-code-executie en Chromium CDP-browserautomatisering
 - **Billing en gebruikstatistieken** — volledig billing-systeem (abonnement, wallet, inwisselcodes), per-model token-tracking met grafieken
 - **Mobiele PWA** — diep geoptimaliseerd voor mobiel, installatie op thuisscherm met één tik, iOS / Android aangepast
+- **Android On-device-editie** *(v1.9.0)* — Draai de volledige DeepThink-backend op een Android-telefoon (Termux-runtime + WebView-shell-app met automatische ontdekking van de lokale server); chats, bestanden, geheugen en geplande taken blijven op het apparaat, alleen de LLM-aanroep gaat naar de cloud-API
 - **Geïnternationaliseerd** — 30 UI-talen met native endoniemen en RTL-onsteun; de Agent antwoordt in de door de gebruiker gekozen taal
 
 ## Functieshowcase

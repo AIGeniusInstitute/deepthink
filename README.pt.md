@@ -62,6 +62,7 @@ DeepThink, uma plataforma de auto-evolução de superinteligência Agent autôno
 - **Execução de código em sandbox** — sandbox endurecido com Docker + seccomp + cgroups para execução de código Python / Node / shell e automação de navegador Chromium CDP
 - **Billing e estatísticas de uso** — sistema completo de billing (planos de assinatura, carteira, códigos de resgate), rastreamento de tokens por modelo com gráficos
 - **PWA móvel** — profundamente otimizado para mobile, instalação com um clique na área de trabalho, iOS e Android adaptados
+- **Edição Android no dispositivo** *(v1.9.0)* — Execute todo o backend do DeepThink em um telefone Android (runtime Termux + app WebView com descoberta automática do servidor local, sem configuração); chats, arquivos, memória e tarefas agendadas permanecem no dispositivo, enquanto a chamada LLM vai para a API na nuvem
 - **Internacionalizado** — 30 idiomas de UI com endônimos nativos e suporte a RTL; o Agent responde no idioma escolhido pelo usuário
 
 ## Vitrine de funcionalidades

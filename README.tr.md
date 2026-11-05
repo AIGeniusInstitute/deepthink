@@ -62,6 +62,7 @@ DeepThink, kurumsal düzeyde özerk Agent kendi-evrilen süper-zeka platformu; H
 - **Korumalı alanda kod yürütme** — Python / Node / shell kod yürütme ve Chromium CDP tarayıcı otomasyonu için Docker + seccomp + cgroups ile sertleştirilmiş sandbox
 - **Faturalama ve kullanım istatistikleri** — Tam faturalama sistemi (abonelik planları, cüzdan bakiyesi, kullanım kodları), model başına token kullanım takibi ve grafik görselleştirmeleri
 - **Mobil PWA** — Mobil için derinlemesine optimize, ana ekrana tek dokunuşla kurulum, iOS / Android uyumlu
+- **Android Cihaz Üstü Sürüm** *(v1.9.0)* — Tüm DeepThink arka ucunu bir Android telefonda çalıştırın (Termux çalışma zamanı + yerel sunucuyu yapılandırma olmadan otomatik bulan WebView kabuk uygulaması); sohbetler, dosyalar, bellek ve zamanlanmış görevler cihazda kalır, yalnızca LLM çağrısı bulut API'sine gider
 - **Uluslararası** — 30 UI dili, doğağınızla yazım ve RTL desteği; Agent kullanıcının seçtiği dilde yanıt verir
 
 ## Özellik Vitrini
