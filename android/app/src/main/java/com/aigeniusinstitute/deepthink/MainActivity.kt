@@ -224,9 +224,12 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        // 从设置返回：模式可能切换（本地↔远程），与当前连接不一致时重新走启动流程
+        // 从设置返回：模式切换（本地↔远程）或远程 URL 变更时重新走启动流程
         val modeChanged = connectedLocal != (prefs.mode == Prefs.MODE_LOCAL)
-        if (currentUrl == null || modeChanged) {
+        val wantRemote = prefs.mode == Prefs.MODE_REMOTE && prefs.remoteUrl.isNotBlank()
+        val targetChanged = wantRemote &&
+            ServerUrl.normalize(prefs.remoteUrl)?.let { it != currentUrl } == true
+        if (currentUrl == null || modeChanged || targetChanged) {
             currentUrl = null
             webView.stopLoading()
             start()
