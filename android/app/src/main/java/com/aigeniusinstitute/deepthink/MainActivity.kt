@@ -45,6 +45,7 @@ class MainActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
 
     private var currentUrl: String? = null
+    private var connectedLocal = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,8 +90,8 @@ class MainActivity : Activity() {
                 request: WebResourceRequest?,
             ): Boolean {
                 val host = request?.url?.host ?: return false
-                if (host == "127.0.0.1" || host == "localhost") return false
-                // 非本机链接交系统浏览器打开
+                if (isOurServerHost(host)) return false
+                // 非本服务器链接交系统浏览器打开
                 startActivity(Intent(Intent.ACTION_VIEW, request.url))
                 return true
             }
@@ -110,6 +111,17 @@ class MainActivity : Activity() {
     /** 本地模式降级提示（PRD F4d）：一次性、可关闭。 */
     private fun setupBanner() {
         bannerText.text = getString(R.string.banner_local_mode)
+    }
+
+    /** 本服务器主机：loopback 或已连接服务器的同主机（远程模式，如 10.0.2.2 / 内网域名）。 */
+    private fun isOurServerHost(host: String): Boolean {
+        if (host == "127.0.0.1" || host == "localhost" || host == "::1") return true
+        val cur = currentUrl ?: return false
+        return try {
+            java.net.URI(cur).host == host
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /** 入口：按模式启动（本地=自动发现，远程=手动 URL）。 */
@@ -148,6 +160,7 @@ class MainActivity : Activity() {
 
     private fun connect(url: String, local: Boolean) {
         currentUrl = url
+        connectedLocal = local
         statusPanel.visibility = View.GONE
         webView.visibility = View.VISIBLE
         webView.loadUrl("$url/")
@@ -211,8 +224,13 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        // 从设置返回：模式/端口可能变化；未连接时自动重来
-        if (currentUrl == null) start()
+        // 从设置返回：模式可能切换（本地↔远程），与当前连接不一致时重新走启动流程
+        val modeChanged = connectedLocal != (prefs.mode == Prefs.MODE_LOCAL)
+        if (currentUrl == null || modeChanged) {
+            currentUrl = null
+            webView.stopLoading()
+            start()
+        }
     }
 
     @Deprecated("Deprecated in Java")

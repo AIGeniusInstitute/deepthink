@@ -15,17 +15,23 @@
             android:text="@string/settings_mode"
             android:textStyle="bold" />
 
-        <RadioButton
-            android:id="@+id/radio_local"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_mode_local" />
+        <RadioGroup
+            android:id="@+id/mode_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
 
-        <RadioButton
-            android:id="@+id/radio_remote"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_mode_remote" />
+            <RadioButton
+                android:id="@+id/radio_local"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_mode_local" />
+
+            <RadioButton
+                android:id="@+id/radio_remote"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_mode_remote" />
+        </RadioGroup>
 
         <TextView
             android:layout_width="wrap_content"

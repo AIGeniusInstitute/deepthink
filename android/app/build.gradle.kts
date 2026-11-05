@@ -16,6 +16,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 与正式包并存安装（同签名、不同包名），便于在装有旧版/正式版的
+            // 设备与模拟器上直接测试，无需卸载既有应用
+            applicationIdSuffix = ".debug"
+        }
         release {
             isMinifyEnabled = false
             // 企业侧载默认用 debug keystore 签名（可安装）；正式分发时以
