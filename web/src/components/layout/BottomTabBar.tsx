@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useBillingStore } from '../../stores/billing';
 import { useScrollDirection } from '../../hooks/useScrollDirection';
@@ -10,17 +10,24 @@ export function BottomTabBar() {
   const scrollDir = useScrollDirection();
   const isCompact = scrollDir === 'down';
   const billingEnabled = useBillingStore((s) => s.billingEnabled);
+  const navRef = useRef<HTMLElement>(null);
 
   const navItems = useMemo(
     () => filterNavItems(billingEnabled),
     [billingEnabled],
   );
 
+  // 窄屏下菜单可横向滚动：把当前激活项滚进视口中央，保证定位可见
+  useEffect(() => {
+    const el = navRef.current?.querySelector('.floating-nav-item.active');
+    el?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  }, [location.pathname, navItems.length]);
+
   return (
     <>
       <div className="pwa-bottom-guard" aria-hidden="true" />
       <div className={`floating-nav-container ${isCompact ? 'compact' : ''}`}>
-        <nav className="floating-nav">
+        <nav className="floating-nav" ref={navRef}>
           {navItems.map(({ path, icon: Icon, label }) => {
             const isActive = location.pathname.startsWith(path);
             return (

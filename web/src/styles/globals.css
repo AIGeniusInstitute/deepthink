@@ -634,6 +634,9 @@ pre code.hljs {
   z-index: 10000;
   display: flex;
   justify-content: center;
+  /* 胶囊不得超出视口：10 个 52px 项 ≈ 554px，窄屏必须约束宽度并允许横滑 */
+  width: calc(100vw - 32px);
+  max-width: 720px;
   pointer-events: none;
   transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1),
               opacity 300ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -649,6 +652,16 @@ pre code.hljs {
   align-items: center;
   gap: 2px;
   padding: 8px;
+  /* max-content：内容不足时胶囊收窄由容器居中；溢出时封顶 100% 并内部横滑，
+     两端菜单项始终可达（裸 flex 居中会让溢出侧滑不出来） */
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
   background: var(--glass-bg);
   backdrop-filter: blur(24px) saturate(1.8);
   -webkit-backdrop-filter: blur(24px) saturate(1.8);
@@ -659,6 +672,10 @@ pre code.hljs {
   pointer-events: auto;
 }
 
+.floating-nav::-webkit-scrollbar {
+  display: none;
+}
+
 .floating-nav-item {
   position: relative;
   display: flex;
@@ -666,6 +683,8 @@ pre code.hljs {
   justify-content: center;
   width: 52px;
   height: 44px;
+  flex-shrink: 0;
+  scroll-snap-align: center;
   border-radius: 9999px;
   color: rgba(100, 116, 139, 0.7);
   transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
