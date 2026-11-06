@@ -11,7 +11,7 @@
 |---|---|---|---|
 | 步骤 1 | PRD + 验收标准 + 测试用例 | ✅ 完成 | 2026-11-06 |
 | 步骤 2 | 技术方案 | ✅ 完成 | 2026-11-06，含 spike 计划与方案对比 |
-| M0 Spike | S1 spawn 链 / S2 claude glibc / S3 保活 / S4 better-sqlite3 | 🔨 进行中 | 供应链与集成路径已验证（见下），S1 真机实验待做 |
+| M0 Spike | S1 spawn 链 / S2 claude glibc / S3 保活 / S4 better-sqlite3 | 🔨 进行中 | **S1 门禁通过**（模拟器 2026-11-06）；S2/S4 待做，S3 需真机 |
 | M1 运行时 | F1 RuntimeHost + F2 前台服务 + F7 端口生命周期 | ⏳ 未开始 | 依赖 M0 |
 | M2 执行链 | F3 spawn 链 + F4 claude 打包 + F5 原生模块 | ⏳ 未开始 | 依赖 M0 定型 |
 | M3 产品化 | F6 UI 集成 + F8 数据目录 + F9 构建管线 + F10 E2E | ⏳ 未开始 | |
@@ -35,14 +35,24 @@
   `RuntimeHost` JNI 模块，无需 RN 壳。`node.h` 头文件随 `android-libnode.zip` 提供。
 - ✅ **原生模块交叉编译机制可直接复用**：flun build.gradle 的 node-gyp 管线
   （`@flun/nodejs-mobile-gyp`，NDK toolchain，**含 Windows 宿主支持**）正是 better-sqlite3（S4）所需。
-- ⏳ S1 spawn 链真机实验未做（libnode 无 `node` 可执行文件，`child_process.spawn('node')` 行为待验，
-  方案 A 启动器 ELF = `dlopen(libnode)→node::Start` 的 20 行 C，与 RuntimeHost 胶水同构）。
+- ✅ **S1 spawn 链门禁通过**（模拟器 x86_64 实测，spike 工程 `android/spike/s1-spawn/`）：
+  - T0：libnode 嵌入后 **Node v22.23.2 完整运行**（`node::Start` JNI 胶水 ~100 行可用）；
+  - T1/T2：裸运行时 `spawn('node')`=EACCES、`process.execPath`=`/system/bin/app_process64`
+    （`fork()` 随之失效）——R1 的具体形态；
+  - T3：`spawn('/system/bin/sh')` 正常 → **通用 ELF 子进程拉起无限制**；
+  - **方案 A 启动器验证通过**：5.5KB ELF（`main→node::Start`，链接 libnode.so + rpath `$ORIGIN`）
+    以 `node` 为名放 PATH → `spawn('node')` status=0、**嵌套 spawn（子进程再 spawn）status=0**；
+    `execPath` 自动修复为启动器自身 → `fork()` 预计随之可用（M2 验证）。
+  - 附带发现：**app 数据目录 exec 无 W^X 限制**（debuggable 实测）；`extractNativeLibs=false`
+    时设备无展开 lib 目录；`adb exec-in` 会**提前返回**（远端进程仍在运行）——自动化脚本须
+    设备侧自等待 + 宿主侧轮询（`device-stage.sh` 的 driver 模式）。
+- ⏳ S2（claude CLI glibc 打包）、S4（better-sqlite3 交叉编译）待做；S3（MIUI 保活）需真机。
 
 ## 风险台账
 
 | 风险 | 等级 | 状态 |
 |---|---|---|
-| R1 spawn 链（libnode 无 node 可执行文件） | 高 | 未验证（S1） |
+| R1 spawn 链（libnode 无 node 可执行文件） | 高 | **已解除**（S1 通过：方案 A 启动器，嵌套 spawn 实测 OK） |
 | R2 claude CLI glibc ELF | 高 | 未验证（S2） |
 | R3 MIUI/HyperOS 保活 | 中 | 未验证（S3） |
 | R4 better-sqlite3 交叉编译 ABI | 中 | 未验证（S4） |

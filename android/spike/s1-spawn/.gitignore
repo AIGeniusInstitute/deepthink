@@ -1,0 +1,6 @@
+# libnode 运行时（fetch-libnode.sh 暂存，~240MB，不入库）
+app/src/main/cpp/libnode/
+app/src/main/jniLibs/
+.gradle/
+build/
+local.properties
