@@ -28,7 +28,8 @@ check_sync() {
 check_sync "$ROOT/shared/stream-event.ts" \
   "$ROOT/container/agent-runner/src/stream-event.types.ts" \
   "$ROOT/src/stream-event.types.ts" \
-  "$ROOT/web/src/stream-event.types.ts"
+  "$ROOT/web/src/stream-event.types.ts" \
+  "$ROOT/sdk/src/stream-event.types.ts"
 
 # Image detector
 check_sync "$ROOT/shared/image-detector.ts" \

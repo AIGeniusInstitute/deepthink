@@ -16,12 +16,13 @@ sync_file() {
   fi
 }
 
-# --- StreamEvent types (3 targets) ---
+# --- StreamEvent types (4 targets) ---
 SRC_SE="$ROOT/shared/stream-event.ts"
 for target in \
   "$ROOT/container/agent-runner/src/stream-event.types.ts" \
   "$ROOT/src/stream-event.types.ts" \
   "$ROOT/web/src/stream-event.types.ts" \
+  "$ROOT/sdk/src/stream-event.types.ts" \
 ; do
   sync_file "$SRC_SE" "$target"
 done
