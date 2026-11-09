@@ -247,8 +247,14 @@ export class Session {
         env: this.agent.buildEnv(),
         includePartialMessages: true,
         abortController: abort,
+        settingSources: ['project'] as string[],
         ...(this.sessionId ? { resume: this.sessionId } : {}),
       };
+      // F5：bundle 内联 skill 白名单（空 bundle 不带 skills 选项，走 SDK 默认）
+      const skillNames = this.agent.skillNames;
+      if (skillNames.length > 0) {
+        options.skills = skillNames;
+      }
       const model = opts.model ?? def.model;
       if (model) options.model = model;
       const maxTurns = opts.maxTurns ?? def.maxTurns;
@@ -343,7 +349,31 @@ export class Agent {
       secrets: options.secrets,
       skipHashCheck: options.skipHashCheck,
     });
-    return new Agent(bundle, options);
+    const agent = new Agent(bundle, options);
+    agent.materializeSkills();
+    return agent;
+  }
+
+  /**
+   * F5：把 bundle 内联 skills 物化到 `{workspace}/.claude/skills/`（SDK 技能
+   * 发现路径）。A5.2 白名单收敛由 query options 的 `skills` 数组保证——
+   * workspace 里没有 bundle 外的 skill 目录。
+   */
+  private materializeSkills(): void {
+    const skillsRoot = path.join(this.workspace, '.claude', 'skills');
+    for (const [skillId, files] of this.bundle.skills) {
+      const dir = path.join(skillsRoot, skillId);
+      for (const [rel, content] of files) {
+        const abs = path.join(dir, rel);
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, content, 'utf-8');
+      }
+    }
+  }
+
+  /** bundle 内联 skill 的 id 列表（query options 的 skills 白名单）。 */
+  get skillNames(): string[] {
+    return [...this.bundle.skills.keys()];
   }
 
   /**

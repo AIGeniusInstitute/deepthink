@@ -19,6 +19,8 @@ export type {
 } from './runtime.js';
 export { loadBundle } from './bundle.js';
 export type { LoadedBundle, BundleAgentDef, LoadBundleOptions } from './bundle.js';
+export { createTools, createToolsServer, resolveDiskPath, htmlToMarkdown } from './tools.js';
+export type { ToolsContext } from './tools.js';
 export {
   computeContentHash,
   verifyContentHash,

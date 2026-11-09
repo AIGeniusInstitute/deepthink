@@ -45,11 +45,12 @@ for target in \
   sync_file "$SRC_CP" "$target"
 done
 
-# --- Web search providers (2 targets: backend self-test + agent-runner tool) ---
+# --- Web search providers (3 targets: backend self-test + agent-runner tool + sdk tool) ---
 SRC_WS="$ROOT/shared/web-search.ts"
 for target in \
   "$ROOT/src/web-search.ts" \
   "$ROOT/container/agent-runner/src/web-search.ts" \
+  "$ROOT/sdk/src/web-search.ts" \
 ; do
   sync_file "$SRC_WS" "$target"
 done

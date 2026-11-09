@@ -44,7 +44,8 @@ check_sync "$ROOT/shared/channel-prefixes.ts" \
 # Web search providers
 check_sync "$ROOT/shared/web-search.ts" \
   "$ROOT/src/web-search.ts" \
-  "$ROOT/container/agent-runner/src/web-search.ts"
+  "$ROOT/container/agent-runner/src/web-search.ts" \
+  "$ROOT/sdk/src/web-search.ts"
 
 # Agent bundle format
 check_sync "$ROOT/shared/agent-bundle.ts" \
