@@ -4,7 +4,32 @@
 
 ## 当前阶段
 
-🔄 **M0.1 完成，进入 M0.2（SDK 核心）**。
+✅ **M0.1–M0.4 全部完成，自动化门禁全绿**。剩 TC-9.1 文档真人走查（需真实 API key，清单见 TEST_REPORT §6）。
+
+### M0.2 交付（已提交 ef89d1b）
+
+- `sdk/src/bundle.ts` 加载器（解包/校验/密钥解析，A6.3 显式报错）
+- `sdk/src/runtime.ts` Agent/Session 核心（每回合 query() + resume 续接、消息排队不丢、interrupt 兜底为 error result）
+- StreamEvent 流式映射（F4）；身份中性 systemPrompt（F8）
+- `tests/agent-sdk-runtime.test.ts` 10/10（TC-3.1/3.2/3.3/3.4/4.1/8.1）
+
+### M0.3 交付（已提交 f797c36）
+
+- `sdk/src/tools.ts` 自包含工具包：web_fetch/web_search/disk_*/memory_*（路径穿越防护），`createToolsServer` 注册
+- F5 skills 物化到 `{workspace}/.claude/skills/` + 白名单注入；F6 MCP stdio/http 装配
+- web-search 第 5 同步源进 sdk/；`tests/agent-sdk-tools.test.ts` 11/11（TC-5.x/6.x/7.x）
+
+### M0.4 交付
+
+- ✅ `sdk/README.md`（安装/快速上手/能力分级/FAQ/Android 说明）
+- ✅ `examples/quickstart/quickstart.mjs`（含错误处理示范）
+- ✅ F10 回归：全量 vitest 2570 passed / 15 failed，失败集合与 main 纯净副本（git archive 8b5e477）逐条一致 → **零回归**（证据见 `docs/test_report/agent-runtime-sdk/TEST_REPORT.md` §4）
+- ✅ 测试报告落盘
+
+## 剩余（待人工）
+
+- [ ] TC-9.1 文档走查（真实 API key，30 分钟成功标准）——清单见 TEST_REPORT §6
+- [ ] 走查通过后：合并 worktree 分支到 main 并 push（工作流步骤 6）
 
 ## 已完成
 
