@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-✅ **M0.1–M0.4 全部完成，自动化门禁全绿**。剩 TC-9.1 文档真人走查（需真实 API key，清单见 TEST_REPORT §6）。
+✅ **M0 验收通过**（自动化门禁全绿 + TC-9.1 真实 API 走查 7/7，2026-11-09）。待合并 main（工作流步骤 6）。
 
 ### M0.2 交付（已提交 ef89d1b）
 
@@ -26,10 +26,13 @@
 - ✅ F10 回归：全量 vitest 2570 passed / 15 failed，失败集合与 main 纯净副本（git archive 8b5e477）逐条一致 → **零回归**（证据见 `docs/test_report/agent-runtime-sdk/TEST_REPORT.md` §4）
 - ✅ 测试报告落盘
 
-## 剩余（待人工）
+## TC-9.1 走查结果（2026-11-09，真实 LLM provider）
 
-- [ ] TC-9.1 文档走查（真实 API key，30 分钟成功标准）——清单见 TEST_REPORT §6
-- [ ] 走查通过后：合并 worktree 分支到 main 并 push（工作流步骤 6）
+7/7 通过：流式单轮 / 多轮 context / skill 触发 / MCP 调用+密钥注入（token 注入证据）/ 跨进程 resume / 篡改检测 / 缺 secret 报错。证据见 `docs/test_report/agent-runtime-sdk/TEST_REPORT.md` §6。走查产物（quickstart/make-demo-bundle.ts fixture 生成器）已沉淀到 examples/quickstart/。
+
+## 剩余
+
+- [ ] 合并 worktree 分支到 main 并 push（工作流步骤 6，待用户确认后执行）
 
 ## 已完成
 

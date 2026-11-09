@@ -30,10 +30,15 @@ export interface AgentOptions {
   secrets?: Record<string, string>;
   /** 会话超时（毫秒），默认 30 分钟 */
   timeoutMs?: number;
+  /**
+   * 工具权限模式。headless 嵌入无法交互式授权，默认 'bypassPermissions'
+   * （自包含工具集不含破坏性宿主能力）；客户可收紧为 'default' 等。
+   */
+  permissionMode?: string;
   /** 附加 MCP servers（叠加在 bundle 声明之上） */
   extraMcpServers?: Record<string, Record<string, unknown>>;
   /** 自包含工具 MCP server（F7：web_fetch / disk_* / memory_* 等） */
-  toolsServer?: Record<string, unknown>;
+  toolsServer?: unknown;
 }
 
 export interface RunResult {
@@ -248,6 +253,10 @@ export class Session {
         includePartialMessages: true,
         abortController: abort,
         settingSources: ['project'] as string[],
+        permissionMode: this.agent.permissionMode,
+        ...(this.agent.permissionMode === 'bypassPermissions'
+          ? { allowDangerouslySkipPermissions: true }
+          : {}),
         ...(this.sessionId ? { resume: this.sessionId } : {}),
       };
       // F5：bundle 内联 skill 白名单（空 bundle 不带 skills 选项，走 SDK 默认）
@@ -255,7 +264,7 @@ export class Session {
       if (skillNames.length > 0) {
         options.skills = skillNames;
       }
-      const model = opts.model ?? def.model;
+      const model = opts.model ?? this.agent.credentials.model ?? def.model;
       if (model) options.model = model;
       const maxTurns = opts.maxTurns ?? def.maxTurns;
       if (maxTurns != null) options.maxTurns = maxTurns;
@@ -330,6 +339,8 @@ export class Agent {
   readonly workspace: string;
   readonly onEvent: ((event: StreamEvent) => void) | undefined;
   readonly timeoutMs: number;
+  readonly permissionMode: string;
+  readonly credentials: AgentCredentials;
   private readonly options: AgentOptions;
 
   private constructor(bundle: LoadedBundle, options: AgentOptions) {
@@ -338,6 +349,8 @@ export class Agent {
     this.workspace = path.resolve(options.workspace);
     this.onEvent = options.onEvent;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.permissionMode = options.permissionMode ?? 'bypassPermissions';
+    this.credentials = options.credentials ?? {};
     fs.mkdirSync(this.workspace, { recursive: true });
   }
 
@@ -407,9 +420,10 @@ export class Agent {
     const env: Record<string, string> = { ...(process.env as Record<string, string>) };
     // 会话持久化隔离到 workspace 内（跨进程 resume 的前提）
     env.CLAUDE_CONFIG_DIR = path.join(this.workspace, '.deepthink-sdk', 'claude');
-    const creds = this.options.credentials ?? {};
+    const creds = this.credentials;
     if (creds.apiKey) env.ANTHROPIC_API_KEY = creds.apiKey;
     if (creds.baseUrl) env.ANTHROPIC_BASE_URL = creds.baseUrl;
+    if (creds.model) env.ANTHROPIC_MODEL = creds.model;
     return env;
   }
 
