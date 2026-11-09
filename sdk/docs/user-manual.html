@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Agent SDK 用户手册</title>
+<style>
+  /* Layout: 文档手册——左侧粘性目录 + 65ch 单栏正文，代码块全宽溢出滚动 */
+  :root {
+    --bg: #f5f7f8;
+    --surface: #ffffff;
+    --ink: #1b2b34;
+    --muted: #5c6f79;
+    --line: #dce4e8;
+    --accent: #0d7d6e;
+    --accent-ink: #0a5f54;
+    --code-bg: #eef2f4;
+    --warn-bg: #fdf3e3;
+    --warn-ink: #8a5a12;
+    --warn-line: #e8cf9e;
+    --danger-bg: #fbeeee;
+    --danger-ink: #9c3232;
+    --danger-line: #e5b8b8;
+    --ok-bg: #e9f4f0;
+    --ok-ink: #0d7d6e;
+    --shadow: 0 1px 2px rgba(27, 43, 52, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101a20;
+      --surface: #17242c;
+      --ink: #d9e4e8;
+      --muted: #8fa2ac;
+      --line: #26363f;
+      --accent: #3cbda9;
+      --accent-ink: #5fd2be;
+      --code-bg: #1d2c35;
+      --warn-bg: #2c2416;
+      --warn-ink: #e0b46a;
+      --warn-line: #4d3d22;
+      --danger-bg: #2e1c1c;
+      --danger-ink: #e08b8b;
+      --danger-line: #523030;
+      --ok-bg: #162824;
+      --ok-ink: #4cc4ae;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101a20;
+    --surface: #17242c;
+    --ink: #d9e4e8;
+    --muted: #8fa2ac;
+    --line: #26363f;
+    --accent: #3cbda9;
+    --accent-ink: #5fd2be;
+    --code-bg: #1d2c35;
+    --warn-bg: #2c2416;
+    --warn-ink: #e0b46a;
+    --warn-line: #4d3d22;
+    --danger-bg: #2e1c1c;
+    --danger-ink: #e08b8b;
+    --danger-line: #523030;
+    --ok-bg: #162824;
+    --ok-ink: #4cc4ae;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.75;
+    margin: 0;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px;
+  }
+  a { color: var(--accent-ink); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  .layout {
+    max-width: 1080px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 48px;
+    align-items: start;
+  }
+
+  /* ---- 目录 ---- */
+  .toc {
+    position: sticky;
+    top: calc(16px + env(safe-area-inset-top, 0px));
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .toc-title {
+    font-size: 11px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 10px;
+    font-weight: 600;
+  }
+  .toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .toc a {
+    display: block;
+    padding: 3px 10px;
+    color: var(--muted);
+    border-left: 2px solid transparent;
+    border-radius: 0 4px 4px 0;
+  }
+  .toc a:hover { color: var(--ink); background: var(--surface); text-decoration: none; }
+  .toc a.active { color: var(--accent-ink); border-left-color: var(--accent); background: var(--surface); }
+
+  /* ---- 正文 ---- */
+  main { min-width: 0; }
+  .page-head { margin-bottom: 36px; }
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    font-weight: 700;
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-family: "Noto Serif SC", "Songti SC", serif;
+    font-size: clamp(26px, 5vw, 36px);
+    line-height: 1.25;
+    margin: 0 0 12px;
+    text-wrap: balance;
+    letter-spacing: .01em;
+  }
+  .lede { font-size: 16px; color: var(--muted); margin: 0; max-width: 62ch; }
+
+  section { margin-block: 44px; scroll-margin-top: 24px; }
+  h2 {
+    font-family: "Noto Serif SC", "Songti SC", serif;
+    font-size: 22px;
+    line-height: 1.35;
+    margin: 0 0 6px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    text-wrap: balance;
+  }
+  h3 { font-size: 16px; margin: 26px 0 8px; text-wrap: balance; }
+  p { margin: 10px 0; max-width: 65ch; }
+  strong { font-weight: 600; }
+  code {
+    font-family: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: .86em;
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: .12em .38em;
+    overflow-wrap: break-word;
+  }
+
+  /* ---- 代码块 ---- */
+  .codeblock {
+    position: relative;
+    margin: 14px 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--code-bg);
+    overflow: hidden;
+  }
+  .codeblock-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 12px;
+    border-bottom: 1px solid var(--line);
+    font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .codeblock pre {
+    margin: 0;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-family: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.7;
+  }
+  .codeblock pre code { background: none; padding: 0; font-size: inherit; }
+  .copy-btn {
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: .04em;
+    text-transform: none;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 2px 10px;
+    cursor: pointer;
+  }
+  .copy-btn:hover { color: var(--ink); border-color: var(--muted); }
+  .copy-btn.done { color: var(--ok-ink); border-color: var(--ok-ink); }
+
+  /* ---- 表格 ---- */
+  .table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; min-width: 0; }
+  th {
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+    background: var(--surface);
+    white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: none; }
+  td code { white-space: nowrap; }
+
+  /* ---- 提示框 ---- */
+  .note {
+    margin: 16px 0;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    font-size: 14px;
+    max-width: 65ch;
+  }
+  .note .note-label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .note.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+  .note.warn .note-label { color: var(--warn-ink); }
+  .note.danger { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-ink); }
+  .note.danger .note-label { color: var(--danger-ink); }
+  .note.ok { background: var(--ok-bg); border-color: var(--accent); color: var(--ok-ink); }
+  .note.ok .note-label { color: var(--ok-ink); }
+
+  /* ---- 徽标 / 能力分级 ---- */
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+  .badge {
+    font-size: 12px;
+    padding: 3px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .badge.on { border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+
+  /* ---- 步骤 ---- */
+  .steps { counter-reset: step; list-style: none; margin: 16px 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+  .steps > li { counter-increment: step; padding-left: 40px; position: relative; max-width: 65ch; }
+  .steps > li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0; top: 2px;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--bg);
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .steps > li .step-title { font-weight: 600; }
+
+  ul.plain { max-width: 65ch; padding-left: 22px; }
+  ul.plain li { margin: 5px 0; }
+
+  hr.sep { border: none; border-top: 1px solid var(--line); margin: 36px 0; }
+
+  .foot {
+    margin-top: 48px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    color: var(--muted);
+    max-width: 65ch;
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .toc {
+      position: static;
+      margin-bottom: 8px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .toc ol { flex-direction: row; flex-wrap: wrap; gap: 4px 2px; }
+    .toc a { border-left: none; border-radius: 5px; padding: 3px 9px; background: var(--surface); }
+    .toc a.active { border-left: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+  }
+  html { scroll-behavior: smooth; }
+</style>
+
+</head>
+<body>
+<div class="layout">
+  <nav class="toc" aria-label="目录">
+    <p class="toc-title">目录</p>
+    <ol>
+      <li><a href="#overview">概览</a></li>
+      <li><a href="#install">安装</a></li>
+      <li><a href="#quickstart">5 分钟上手</a></li>
+      <li><a href="#bundle">AgentBundle</a></li>
+      <li><a href="#api">API 参考</a></li>
+      <li><a href="#stream">流式事件</a></li>
+      <li><a href="#tools">自包含工具</a></li>
+      <li><a href="#skills-mcp">Skills 与 MCP</a></li>
+      <li><a href="#session">会话与续接</a></li>
+      <li><a href="#errors">错误与排查</a></li>
+      <li><a href="#faq">常见问题</a></li>
+      <li><a href="#platform">Android 与版本</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header class="page-head">
+      <p class="eyebrow">DeepThink · @deepthink/agent-sdk</p>
+      <h1>Agent SDK 用户手册</h1>
+      <p class="lede">把 Agent Studio 导出的 AgentBundle 嵌入任意 Node.js 应用——完整 agentloop（多轮会话、流式、续接）+ skills + MCP 工具能力包，无需部署 DeepThink 平台。</p>
+      <div class="badges">
+        <span class="badge on">Node.js ≥ 22</span>
+        <span class="badge on">T0 核心 agentloop</span>
+        <span class="badge on">T1 skills + MCP</span>
+        <span class="badge">T2 平台工具（M1）</span>
+        <span class="badge">SDK 0.1.x</span>
+      </div>
+    </header>
+
+    <!-- ================= 概览 ================= -->
+    <section id="overview">
+      <h2>概览</h2>
+      <p>SDK 做三件事：加载 <strong>AgentBundle</strong>（你在 Agent Studio 导出的自包含发布物）、在本进程里跑 <strong>agentloop</strong>（会话、流式、resume）、暴露 <strong>能力包</strong>（skills、MCP 工具、自包含工具）。运行全程不接触 DeepThink 平台的任何进程、端口或数据库——依赖面只有本包和 LLM API。</p>
+
+      <h3>能力分级</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>层级</th><th>能力</th><th>状态</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>T0</strong></td>
+              <td>agentloop：流式、多轮会话、跨进程 resume、自包含工具（web_fetch / web_search / disk_* / memory_*）</td>
+              <td>本版本包含</td>
+            </tr>
+            <tr>
+              <td><strong>T1</strong></td>
+              <td>+ bundle 内联 skills（自动装配）+ MCP servers（stdio / http / sse）</td>
+              <td>本版本包含</td>
+            </tr>
+            <tr>
+              <td><strong>T2</strong></td>
+              <td>+ 平台宿主工具（send_message / schedule_task / sandbox_* 等，以回调形式接入）</td>
+              <td>规划中（M1）</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <span class="note-label">设计原则</span>
+        未实现的能力不会注册为工具——你不会遇到「工具存在但调用报错」。bundle 没声明的 skill / MCP 也一律不可见（白名单收敛）。
+      </div>
+    </section>
+
+    <!-- ================= 安装 ================= -->
+    <section id="install">
+      <h2>安装</h2>
+      <div class="codeblock">
+        <div class="codeblock-head"><span>bash</span><button class="copy-btn" type="button">复制</button></div>
+        <pre><code>npm install @deepthink/agent-sdk
+# 或安装本地 tarball
+npm install ./deepthink-agent-sdk-0.1.0.tgz</code></pre>
+      </div>
+
+      <h3>环境要求</h3>
+      <ul class="plain">
+        <li><strong>Node.js ≥ 22</strong>（SDK 无原生模块依赖，Windows / macOS / Linux 通用）。</li>
+        <li>一个 <strong>Anthropic 兼容的 LLM API</strong>（官方 Anthropic 或兼容代理端点均可）。</li>
+      </ul>
+
+      <div class="note warn">
+        <span class="note-label">安装后自检</span>
+        npm 的 allow-scripts 策略可能拦截 <code>@anthropic-ai/claude-code</code> 的 postinstall，留下几百字节的 stub，运行时报 ENOEXEC。如遇「claude CLI 不是可执行文件」类错误，允许该包的 install 脚本后重装：<code>npm rebuild @anthropic-ai/claude-code</code>。
+      </div>
+    </section>
+
+    <!-- ================= 5 分钟上手 ================= -->
+    <section id="quickstart">
+      <h2>5 分钟上手</h2>
+      <ol class="steps">
+        <li><span class="step-title">导出 bundle</span><br>在 Agent Studio 打开你的 Agent → 详情页 → 「导出 SDK Bundle」，得到 <code>my-agent.bundle.zip</code>。</li>
+        <li><span class="step-title">配置凭据</span><br><code>export ANTHROPIC_API_KEY=sk-…</code>（可选：<code>ANTHROPIC_BASE_URL</code> 指向兼容代理）。</li>
+        <li><span class="step-title">跑起来</span><br>把下面的代码存成 <code>app.mjs</code>，<code>node app.mjs</code>。</li>
+      </ol>
+
+      <div class="codeblock">
+        <div class="codeblock-head"><span>app.mjs</span><button class="copy-btn" type="button">复制</button></div>
+        <pre><code>import { Agent, createToolsServer } from '@deepthink/agent-sdk';
+
+const workspace = './data/my-agent';
+
+const agent = await Agent.fromBundle('./my-agent.bundle.zip', {
+  credentials: {
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    baseUrl: process.env.ANTHROPIC_BASE_URL,   // 可选
+    model: process.env.ANTHROPIC_MODEL,         // 可选，覆盖 bundle 里的模型名
+  },
+  workspace,
+  // bundle 若引用了 ${ENV:XXX} 密钥，在这里提供（或用环境变量）
+  secrets: { MY_TOKEN: process.env.MY_TOKEN },
+  onEvent: (e) =&gt; {
+    if (e.eventType === 'text_delta') process.stdout.write(e.text ?? '');
+    else if (e.eventType === 'tool_use_start') console.log(`\n[tool] ${e.toolName}`);
+    else if (e.eventType === 'status') console.log(`\n[${e.summary}]`);
+  },
+  toolsServer: createToolsServer({ workspace }),
+});
+
+// 一次性调用
+const r = await agent.run('用一句话介绍你自己');
+console.log('\nusage:', r.usage);
+
+// 多轮会话
+const session = await agent.start({ prompt: '记住：项目代号是「灯塔」' });
+await session.wait();
+const r2 = await session.send('项目代号是什么？只回答代号。');
+console.log(r2.text);   // → 灯塔
+await session.close();</code></pre>
+      </div>
+
+      <div class="note ok">
+        <span class="note-label">这就够了</span>
+        同一 <code>workspace</code> 再跑一次脚本，对话会从上次继续（自动 resume）。想开新对话：<code>agent.resetSession()</code>。
+      </div>
+    </section>
+
+    <!-- ================= AgentBundle ================= -->
+    <section id="bundle">
+      <h2>AgentBundle</h2>
+      <p>bundle 是自包含的发布物——zip 或目录，结构如下：</p>
+      <div class="codeblock">
+        <div class="codeblock-head"><span>bundle 结构</span></div>
+        <pre><code>my-agent.bundle/
+  manifest.json          # schema、能力声明、${ENV:...} 密钥引用、contentHash
+  agent.json             # agent 定义（prompt / model / temperature / 校验策略）
+  prompts/system.md      # 最终 system prompt（导出时固化，所见即所得）
+  skills/{id}/SKILL.md   # skill 本体内联（含同目录其他文件）
+  mcp/servers.json       # MCP 配置（env / header 值全部脱敏为 ${ENV:...}）</code></pre>
+      </div>
+
+      <h3>密钥不进包</h3>
+      <p>导出时 MCP 的 <code>env</code> 与 <code>headers</code> 值全部替换为 <code>${ENV:NAME}</code> 引用，明文永远不会出现在 bundle 里。加载时按 <code>secrets</code> 选项优先、环境变量兜底的顺序解析：</p>
+      <div class="codeblock">
+        <div class="codeblock-head"><span>ts</span><button class="copy-btn" type="button">复制</button></div>
+        <pre><code>const agent = await Agent.fromBundle(bundlePath, {
+  workspace,
+  secrets: { MY_TOKEN: 'value-a' },   // 优先
+  // 未提供的引用回落到 process.env.MY_TOKEN
+});</code></pre>
+      </div>
+      <p>manifest 里标记为 <code>optional</code> 的引用缺失不阻塞；<strong>必需引用缺失会拒绝加载并列出全部缺失项</strong>（见「错误与排查」）。</p>
+
+      <h3>完整性校验</h3>
+      <p>manifest 的 <code>contentHash</code> 覆盖除 manifest.json 外的全部文件（确定性哈希，与打包顺序无关）。加载时逐字节校验，任何篡改都会被拒绝。</p>
+      <div class="note warn">
+        <span class="note-label">仅限调试</span>
+        <code>Agent.fromBundle(path, { skipHashCheck: true })</code> 可跳过校验。不要在生产路径上使用——它关闭的正是 bundle 的防篡改保障。
+      </div>
+    </section>
+
+    <!-- ================= API ================= -->
+    <section id="api">
+      <h2>API 参考</h2>
+
+      <h3>Agent.fromBundle(path, options)</h3>
+      <p>加载 bundle（zip 或目录）并装配运行时。校验失败、密钥缺失会抛错。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>选项</th><th>类型</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>workspace</code></td><td>string（必填）</td><td>工作区目录。会话、记忆、skill 装配、agent 产物都在这里。</td></tr>
+            <tr><td><code>credentials</code></td><td>{ apiKey?, baseUrl?, model? }</td><td>LLM 凭据。<code>model</code> 覆盖 bundle 的模型名（兼容代理端点常用）。</td></tr>
+            <tr><td><code>onEvent</code></td><td>(e: StreamEvent) =&gt; void</td><td>流式事件回调，见「流式事件」。</td></tr>
+            <tr><td><code>secrets</code></td><td>Record&lt;string, string&gt;</td><td><code>${ENV:...}</code> 密钥表，优先于环境变量。</td></tr>
+            <tr><td><code>timeoutMs</code></td><td>number</td><td>单回合超时，默认 30 分钟。</td></tr>
+            <tr><td><code>permissionMode</code></td><td>string</td><td>工具权限模式，默认 <code>bypassPermissions</code>（headless 无法交互授权；需要收紧时传 <code>default</code> 等）。</td></tr>
+            <tr><td><code>toolsServer</code></td><td>SDK MCP server</td><td>自包含工具包：<code>createToolsServer({ workspace })</code>。</td></tr>
+            <tr><td><code>extraMcpServers</code></td><td>Record&lt;string, cfg&gt;</td><td>在 bundle 声明之外叠加 MCP server。</td></tr>
+            <tr><td><code>skipHashCheck</code></td><td>boolean</td><td>跳过 contentHash 校验，仅限调试。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>agent.run(prompt, opts?)</h3>
+      <p>一次性调用，返回 <code>RunResult</code>：</p>
+      <div class="codeblock">
+        <div class="codeblock-head"><span>ts</span><button class="copy-btn" type="button">复制</button></div>
+        <pre><code>interface RunResult {
+  text: string;                 // 最终回复
+  sessionId: string | null;     // SDK 会话 id（用于续接）
+  usage?: Record&lt;string, number&gt;; // token 用量
+  error?: string;               // 非 success 时的原因（不抛异常）
+}</code></pre>
+      </div>
+
+      <h3>agent.start(opts) → Session</h3>
+      <p>开启会话并发起首回合。自动续接同 workspace 的历史会话。<code>opts</code> 支持 <code>prompt</code>、<code>images</code>（base64 图片数组）、以及按回合覆盖的 <code>model</code> / <code>maxTurns</code> / <code>temperature</code>。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>方法</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>session.send(prompt | opts)</code></td><td>发送回合，返回本回合 <code>RunResult</code>。排队执行：当前回合结束后自动续跑，消息不丢。</td></tr>
+            <tr><td><code>session.wait()</code></td><td>等待最近回合完成。</td></tr>
+            <tr><td><code>session.interrupt()</code></td><td>中断当前回合（长任务刹车）。排队消息保留，后续继续处理。</td></tr>
+            <tr><td><code>session.close()</code></td><td>关闭会话，清空未执行队列。</td></tr>
+            <tr><td><code>agent.resetSession()</code></td><td>清除续接状态，下次 start 开新对话。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>loadBundle(path, opts?)</h3>
+      <p>底层入口：只解包 + 校验 + 解析密钥，不建会话。返回 <code>{ manifest, agent, systemPrompt, skills, mcpServers }</code>，适合自定义装配。</p>
+    </section>
+
+    <!-- ================= 流式事件 ================= -->
+    <section id="stream">
+      <h2>流式事件</h2>
+      <p><code>onEvent</code> 收到的 <code>StreamEvent</code> 与 DeepThink 平台 Web 流式卡片同一类型，常用事件：</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>eventType</th><th>含义</th><th>常用字段</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>init</code></td><td>回合开始</td><td><code>sessionId</code></td></tr>
+            <tr><td><code>text_delta</code></td><td>回复文本增量（拼接即全文）</td><td><code>text</code></td></tr>
+            <tr><td><code>thinking_delta</code></td><td>思考过程增量</td><td><code>text</code></td></tr>
+            <tr><td><code>tool_use_start</code></td><td>工具开始调用</td><td><code>toolName</code>、<code>toolInputSummary</code></td></tr>
+            <tr><td><code>tool_use_end</code></td><td>工具调用结束</td><td><code>toolName</code>、<code>toolUseId</code></td></tr>
+            <tr><td><code>status</code></td><td>回合终态（含 usage）</td><td><code>summary</code>、<code>usage</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="codeblock">
+        <div class="codeblock-head"><span>ts · 终端流式渲染</span><button class="copy-btn" type="button">复制</button></div>
+        <pre><code>onEvent: (e) =&gt; {
+  switch (e.eventType) {
+    case 'text_delta':    process.stdout.write(e.text ?? ''); break;
+    case 'tool_use_start': console.log(`\n[tool] ${e.toolName} ${e.toolInputSummary ?? ''}`); break;
+    case 'status':        console.log(`\n[${e.summary}]`, e.usage); break;
+  }
+}</code></pre>
+      </div>
+    </section>
+
+    <!-- ================= 自包含工具 ================= -->
+    <section id="tools">
+      <h2>自包含工具</h2>
+      <p>通过 <code>createToolsServer({ workspace, webSearch?, memoryDir? })</code> 注册，零 IPC、纯本地：</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>工具</th><th>作用</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>web_fetch</code></td><td>抓取 URL 并转 Markdown（charset 嗅探，含 GB18030）</td></tr>
+            <tr><td><code>web_search</code></td><td>联网搜索；未配凭据时返回明确的降级提示（不静默）</td></tr>
+            <tr><td><code>disk_list / disk_read / disk_write / disk_delete</code></td><td>workspace 内文件操作；<strong>路径穿越会被拒绝</strong></td></tr>
+            <tr><td><code>memory_append / memory_search / memory_get</code></td><td>日期记忆（默认 <code>{workspace}/memory/</code>）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>启用搜索需要提供 provider 凭据：</p>
+      <div class="codeblock">
+        <div class="codeblock-head"><span>ts</span><button class="copy-btn" type="button">复制</button></div>
+        <pre><code>toolsServer: createToolsServer({
+  workspace,
+  webSearch: { provider: 'zhipu', apiKey: process.env.WEB_SEARCH_API_KEY },
+})</code></pre>
+      </div>
+    </section>
+
+    <!-- ================= Skills 与 MCP ================= -->
+    <section id="skills-mcp">
+      <h2>Skills 与 MCP</h2>
+
+      <h3>Skills</h3>
+      <p>bundle 内联的 skill 在加载时自动装配到 <code>{workspace}/.claude/skills/</code>，并以白名单启用——只有 bundle 里的 skill 可被发现，机器上的其他 skill 不受影响。skill 的 <code>allowed-tools</code> 约束保持生效。</p>
+
+      <h3>MCP servers</h3>
+      <p>bundle 的 <code>mcp/servers.json</code> 支持 stdio（<code>command/args/env</code>）与 http / sse（<code>type/url/headers</code>）。加载时 <code>${ENV:...}</code> 引用被解析为真实值后注入 server 配置——包括传递给 stdio 子进程的环境变量。</p>
+      <div class="codeblock">
+        <div class="codeblock-head"><span>jsonc · mcp/servers.json（导出后的样子）</span><button class="copy-btn" type="button">复制</button></div>
+        <pre><code>{
+  "servers": {
+    "my-api": {
+      "command": "node",
+      "args": ["./mcp-server.mjs"],
+      "env": { "API_TOKEN": "${ENV:API_TOKEN}" }   // 值不进包
+    },
+    "remote": {
+      "type": "http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": { "Authorization": "${ENV:AUTH_HEADER}" }
+    }
+  }
+}</code></pre>
+      </div>
+    </section>
+
+    <!-- ================= 会话 ================= -->
+    <section id="session">
+      <h2>会话与续接</h2>
+      <p>会话状态持久化在 workspace 内，与机器上的其他会话完全隔离：</p>
+      <div class="codeblock">
+        <div class="codeblock-head"><span>workspace 布局</span></div>
+        <pre><code>{workspace}/
+  .deepthink-sdk/
+    session.json      # sessionId（resume 凭据）
+    claude/           # 会话 transcript（隔离的 CLAUDE_CONFIG_DIR）
+  .claude/skills/     # bundle 内联 skill 的装配点
+  memory/             # memory_* 工具的日期记忆
+  …你的产物</code></pre>
+      </div>
+      <ul class="plain">
+        <li><strong>跨回合</strong>：同一 Session 内 <code>send()</code> 自动携带上下文。</li>
+        <li><strong>跨进程</strong>：同 workspace 的新 Agent 实例自动 resume 上一轮会话。</li>
+        <li><strong>开新对话</strong>：<code>agent.resetSession()</code>（只清会话状态，不动你的文件）。</li>
+      </ul>
+    </section>
+
+    <!-- ================= 错误 ================= -->
+    <section id="errors">
+      <h2>错误与排查</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>报错</th><th>原因</th><th>处理</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>missing required secrets: ${ENV:…}</code></td>
+              <td>bundle 声明的必需密钥无法解析</td>
+              <td>通过 <code>secrets</code> 选项或环境变量提供，报错里列出了全部缺失项</td>
+            </tr>
+            <tr>
+              <td><code>bundle integrity check failed: contentHash mismatch…</code></td>
+              <td>bundle 文件被改动过（哪怕一个字节）</td>
+              <td>重新导出；调试期可 <code>skipHashCheck: true</code></td>
+            </tr>
+            <tr>
+              <td><code>invalid bundle: manifest.json missing</code></td>
+              <td>不是合法 bundle（zip 结构不对）</td>
+              <td>确认传的是「导出 SDK Bundle」产物</td>
+            </tr>
+            <tr>
+              <td><code>unsupported schemaVersion</code></td>
+              <td>bundle 版本比 SDK 新</td>
+              <td>升级 <code>@deepthink/agent-sdk</code></td>
+            </tr>
+            <tr>
+              <td><code>web_search unavailable…</code></td>
+              <td>未配置搜索凭据</td>
+              <td>给 <code>createToolsServer</code> 传 <code>webSearch</code>，或让 agent 改用 web_fetch</td>
+            </tr>
+            <tr>
+              <td><code>claude CLI 不可执行 / ENOEXEC</code></td>
+              <td>npm install 脚本被拦截，CLI 是 stub</td>
+              <td><code>npm rebuild @anthropic-ai/claude-code</code> 后重试</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <span class="note-label">返回值里的错误</span>
+        <code>RunResult.error</code> 是回合级失败（上游返回非 success），SDK 不会抛异常——检查它再使用 <code>text</code>。
+      </div>
+    </section>
+
+    <!-- ================= FAQ ================= -->
+    <section id="faq">
+      <h2>常见问题</h2>
+      <h3>为什么回复里没有我预设的人设？</h3>
+      <p>bundle 的 <code>prompts/system.md</code> 就是最终 system prompt（导出时固化）。如果导出后又在 Agent Studio 改了 prompt，需要重新导出 bundle。</p>
+
+      <h3>可以让 agent 使用机器上的其他 skill / MCP 吗？</h3>
+      <p>bundle 的 skill 与 MCP 是白名单语义，bundle 外的不可见。需要叠加时用 <code>extraMcpServers</code> 显式声明。</p>
+
+      <h3>并发跑多个 agent？</h3>
+      <p>每个 Agent 实例用独立 workspace 即可并行；同一 workspace 的多个实例不要并发写（会话状态会互相覆盖）。</p>
+
+      <h3>怎么观察 agent 在干什么？</h3>
+      <p>用 <code>onEvent</code>。<code>tool_use_start</code> 带工具名与入参摘要，<code>status</code> 带终态与 token 用量。</p>
+    </section>
+
+    <!-- ================= 平台与版本 ================= -->
+    <section id="platform">
+      <h2>Android 与版本</h2>
+      <h3>Android / 移动端</h3>
+      <p>bundle 是纯数据，可直接打进 Android 应用（assets 或首启下载），由嵌入式 Node 运行时 + 本 SDK 执行。两个注意点：stdio 型 MCP 需纯 JS 实现（设备上没有任意系统二进制）；manifest 的 <code>runtime.mcpDeps</code> 字段声明了各 MCP 的依赖形态，供移动环境过滤。</p>
+
+      <h3>版本与兼容</h3>
+      <ul class="plain">
+        <li>SDK 遵循 semver；<code>@anthropic-ai/claude-agent-sdk</code> 在包内锁定版本，不跟随 latest 漂移。</li>
+        <li>bundle 的 <code>manifest.schemaVersion</code> 当前为 1；加载器拒绝更高版本并提示升级 SDK。</li>
+        <li>StreamEvent 类型与 DeepThink 平台共用同一真相源，平台侧的事件语义变更会随 SDK 版本说明。</li>
+      </ul>
+    </section>
+
+    <footer class="foot">
+      DeepThink Agent SDK · 本手册对应 SDK 0.1.x / AgentBundle schemaVersion 1。示例代码可直接复制运行；bundle 由 Agent Studio「导出 SDK Bundle」产出。
+    </footer>
+  </main>
+</div>
+
+<script>
+  // 代码复制（clipboard 失败时回落为选中文本）
+  document.querySelectorAll('.copy-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const code = btn.closest('.codeblock').querySelector('pre code');
+      const text = code ? code.textContent : '';
+      const done = () => {
+        btn.classList.add('done');
+        btn.textContent = '已复制';
+        setTimeout(() => { btn.classList.remove('done'); btn.textContent = '复制'; }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => selectText(code));
+      } else {
+        selectText(code);
+      }
+    });
+  });
+  function selectText(el) {
+    if (!el) return;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  // 目录高亮（IntersectionObserver，无该 API 时静默跳过）
+  const links = [...document.querySelectorAll('.toc a')];
+  const byId = new Map(links.map((a) => [a.getAttribute('href').slice(1), a]));
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (en.isIntersecting) {
+          links.forEach((a) => a.classList.remove('active'));
+          const a = byId.get(en.target.id);
+          if (a) a.classList.add('active');
+        }
+      });
+    }, { rootMargin: '-10% 0px -70% 0px' });
+    document.querySelectorAll('main section').forEach((s) => io.observe(s));
+  }
+</script>
+
+</body>
+</html>
