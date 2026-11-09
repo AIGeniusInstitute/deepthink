@@ -1,0 +1,329 @@
+/**
+ * Canonical StreamEvent type definitions.
+ *
+ * This is the single source of truth. Build step copies this file to:
+ *   - container/agent-runner/src/stream-event.types.ts
+ *   - src/stream-event.types.ts
+ *   - web/src/stream-event.types.ts
+ *
+ * DO NOT edit the copies directly -- edit this file and run `make build`.
+ */
+
+export type StreamEventType =
+  | 'text_delta' | 'thinking_delta'
+  | 'tool_use_start' | 'tool_use_end' | 'tool_progress' | 'tool_result'
+  | 'hook_started' | 'hook_progress' | 'hook_response'
+  | 'task_start' | 'task_progress' | 'task_updated' | 'task_notification'
+  | 'permission_denied' | 'memory_recall' | 'compact_boundary'
+  | 'notification' | 'prompt_suggestion' | 'raw_sdk_event'
+  | 'context_audit'
+  | 'todo_update'
+  | 'usage'
+  | 'status' | 'init'
+  | 'loop_start' | 'loop_iteration_start' | 'loop_iteration_end'
+  | 'loop_goal_check' | 'loop_review_result' | 'loop_end'
+  | 'human_approval_request' | 'human_approval_result'
+  | 'reminder_injected'
+  | 'autonomous_started' | 'autonomous_continued' | 'autonomous_aborted' | 'autonomous_brake'
+  | 'autonomous_recovering' | 'autonomous_recovered'
+  | 'graph_start' | 'graph_node_start' | 'graph_node_status' | 'graph_node_end'
+  | 'graph_edge_taken' | 'graph_end'
+  | 'group_message_created' | 'group_message_delta' | 'group_message_done'
+  | 'group_seat_status' | 'group_floor_changed'
+  | 'group_thinking_delta' | 'group_tool_call' | 'group_tool_result' | 'group_token_usage'
+  | 'run_started' | 'run_status_changed' | 'run_completed';
+
+export type StreamAgentScope = 'main' | 'task' | 'subagent' | 'system';
+export type StreamDisplayLevel = 'primary' | 'detail' | 'debug';
+
+export interface ClaudeContextFileAudit {
+  sourcePath?: string;
+  runtimePath?: string;
+  status: 'linked' | 'mounted' | 'missing' | 'shadowed' | 'unavailable' | 'unknown';
+  tokens?: number;
+  loaded?: boolean;
+}
+
+export interface ClaudeContextRulesAudit {
+  sourcePath?: string;
+  runtimePath?: string;
+  status: 'linked' | 'mounted' | 'missing' | 'unavailable' | 'unknown';
+  fileCount: number;
+  loadedFileCount?: number;
+  loadedFiles?: Array<{ path: string; tokens?: number }>;
+}
+
+export interface ClaudeContextSkillsSourceAudit {
+  name: 'builtin' | 'external' | 'project' | 'user' | 'plugin' | 'unknown';
+  sourcePath?: string;
+  runtimePath?: string;
+  count?: number;
+  tokens?: number;
+}
+
+export interface ClaudeContextSkillsAudit {
+  totalSkills?: number;
+  includedSkills?: number;
+  tokens?: number;
+  sources: ClaudeContextSkillsSourceAudit[];
+}
+
+export interface ClaudeContextPromptAudit {
+  totalBytes: number;
+  files: Array<{ name: string; bytes: number }>;
+}
+
+export interface ClaudeContextAudit {
+  executionMode: 'host' | 'container';
+  cwd?: string;
+  claudeConfigDir?: string;
+  externalClaudeDir?: string;
+  claudeMd: ClaudeContextFileAudit;
+  rules: ClaudeContextRulesAudit;
+  skills: ClaudeContextSkillsAudit;
+  deepthinkPrompt: ClaudeContextPromptAudit;
+  warnings: string[];
+}
+
+export interface StreamEvent {
+  eventType: StreamEventType;
+  /** Which runtime actor produced the event. */
+  agentScope?: StreamAgentScope;
+  /** Correlates all stream events for a single user turn. */
+  turnId?: string;
+  /** SDK session identifier if known. */
+  sessionId?: string;
+  /** SDK message uuid if known. */
+  messageUuid?: string;
+  /** Reserved — whether this event was synthesized locally rather than emitted directly by SDK semantics. */
+  isSynthetic?: boolean;
+  /** UI priority: primary is surfaced inline, detail in trace panels, debug in developer trace. */
+  displayLevel?: StreamDisplayLevel;
+  text?: string;
+  title?: string;
+  summary?: string;
+  detail?: string;
+  rawType?: string;
+  toolName?: string;
+  toolUseId?: string;
+  parentToolUseId?: string | null;
+  isNested?: boolean;
+  skillName?: string;
+  toolInputSummary?: string;
+  /** Tool execution result text (truncated + sanitized), carried on
+   *  `tool_result` events so the card/Web can surface what a tool returned,
+   *  aligning the trace with what Claude Code shows. */
+  toolResult?: string;
+  elapsedSeconds?: number;
+  hookName?: string;
+  hookEvent?: string;
+  hookOutcome?: string;
+  statusText?: string;
+  taskDescription?: string;
+  taskId?: string;
+  taskStatus?: string;
+  taskSummary?: string;
+  taskPatch?: {
+    status?: string;
+    description?: string;
+    end_time?: number;
+    total_paused_ms?: number;
+    error?: string;
+    is_backgrounded?: boolean;
+  };
+  subagentType?: string;
+  lastToolName?: string;
+  outputFile?: string;
+  sdkTaskUsage?: {
+    totalTokens: number;
+    toolUses: number;
+    durationMs: number;
+  };
+  permissionDenied?: {
+    toolName: string;
+    toolUseId: string;
+    agentId?: string;
+    reasonType?: string;
+    reason?: string;
+    message: string;
+  };
+  isBackground?: boolean;
+  isTeammate?: boolean;
+  toolInput?: Record<string, unknown>;
+  rawEvent?: Record<string, unknown>;
+  contextAudit?: ClaudeContextAudit;
+  todos?: Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' }>;
+  /** Token usage data emitted at query completion */
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens: number;
+    cacheCreationInputTokens: number;
+    costUSD: number;
+    durationMs: number;
+    numTurns: number;
+    modelUsage?: Record<string, {
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadInputTokens: number;
+      cacheCreationInputTokens: number;
+      costUSD: number;
+    }>;
+  };
+  /** Loop engineering metadata. Present on loop_* events and any event
+   *  emitted while ContainerInput.loopRunId is set. */
+  loop?: {
+    loopRunId: string;
+    kind: 'goal' | 'loop' | 'schedule' | 'proactive' | 'adaptive' | 'skill_evolution';
+    iteration?: number;
+    goalText?: string;
+    successCriteria?: string;
+    maxTurns?: number;
+    currentTurn?: number;
+    status?: string;
+    reviewResult?: 'pass' | 'fail' | 'needs_improvement' | 'skipped';
+    reviewReason?: string;
+    totalTokens?: number;
+    totalCostUsd?: number;
+  };
+  /** Reminder mechanism: a reminder was re-injected into the running query's
+   *  context (via MessageStream.push) to counter LLM context decay / goal drift
+   *  in long tasks. Carried on `reminder_injected` events so the chat UI can
+   *  surface the injection log in a dedicated Reminder panel. */
+  reminder?: {
+    reason: 'periodic' | 'compact';
+    /** SDK turn count at injection time (resultCount). */
+    turnIndex: number;
+    /** Tool steps elapsed since the previous periodic reminder. */
+    stepsSinceLast: number;
+    /** Truncated original task objective (first ~500 chars of the prompt). */
+    goalSnippet: string;
+    /** Short excerpt of the injected reminder text. */
+    summary: string;
+  };
+  /** Trace node metadata for DAG visualization. Persisted to loop_trace_nodes. */
+  traceNode?: {
+    nodeId: number;
+    /** Coarse DAG types (chat_trace_nodes) OR atomic step types (trace_steps).
+     *  The persist layer (chat-trace-persist.ts) splits on COARSE_NODE_TYPES;
+     *  non-coarse values route to trace_steps. Must stay in sync with
+     *  container/agent-runner/src/trace-node-allocator.ts TraceNodeDescriptor. */
+    nodeType:
+      | 'turn' | 'tool' | 'review' | 'goal_check' | 'skill' | 'subagent'
+      | 'thinking' | 'compact' | 'memory_recall' | 'memory_write'
+      | 'tool_select' | 'llm_call' | 'permission_check' | 'context_audit'
+      | 'validation';
+    parentNodeId?: number | null;
+    title?: string;
+    inputSummary?: string;
+    outputSummary?: string;
+    tokens?: number;
+    status?: string;
+    /** Super Agent Team: link this trace node to its graph run + agent node,
+     *  so an agent node's internal steps form a traceable sub-graph. Set by
+     *  TraceNodeAllocator from ContainerInput.graphRunId/graphNodeId. */
+    graphRunId?: string;
+    graphNodeId?: string;
+    /** Tool call identity (for tool nodes), mirrored from the event so the
+     *  persist layer can join trace_tool_calls without re-reading the event. */
+    toolName?: string;
+    toolUseId?: string;
+    /** Atomic Step Trace (v57): span linkage so a coarse DAG node cross-
+     *  references its fine-grained trace_steps row. traceId/spanId identify
+     *  the span this node belongs to; parentSpanId mirrors parentNodeId in
+     *  span space. Optional — coarse nodes may lack span info. */
+    traceId?: string;
+    spanId?: string;
+    parentSpanId?: string | null;
+    /** Inline evidence items (mirrors db.ts TraceEvidenceItem — kept inline so
+     *  this shared file stays import-free for cross-project copying). */
+    evidence?: Array<{
+      type: 'message' | 'test' | 'file' | 'log' | 'trace_node' | 'tool_call' | 'metric';
+      ref: string;
+      detail?: string;
+    }> | null;
+    /** Object-store ref for offloaded large I/O (see chat-trace-persist.ts). */
+    outputRef?: string | null;
+  };
+  /** Super Agent Team P1: a human approval node paused the run and is awaiting
+   *  the user's decision in the DeepThink chat. The frontend renders an
+   *  ApprovalCard from this payload. */
+  approvalRequest?: {
+    runId: string;
+    nodeId: string;
+    title: string;
+    question: string;
+    options: { label: string; value: string }[];
+    stateKey?: string;
+  };
+  /** Agent Group Chat (swarm): a `group_messages` row. Carried on
+   *  `group_message_created` (the row exists — `id` is set) and on
+   *  `group_message_delta` (only `senderSeatId` + the incremental `content`
+   *  text are meaningful; the row is only written once the seat settles). Lets
+   *  the swarm page render the reply while it is being written instead of
+   *  polling for it. */
+  groupMessage?: {
+    id?: number;
+    groupId: string;
+    runId?: string | null;
+    nodeRunId?: string | null;
+    senderType: 'user' | 'agent' | 'system';
+    senderSeatId?: number | null;
+    msgType?: string;
+    content?: string;
+    status?: string;
+    createdAt?: string;
+  };
+  /** Super Agent Team P1: the user submitted an approval decision. Lets all
+   *  clients mark the corresponding ApprovalCard as resolved. */
+  approvalResult?: {
+    runId: string;
+    nodeId: string;
+    optionId?: string;
+    note?: string;
+    byUserId?: string;
+  };
+  /** Autonomous mode metadata. Present on autonomous_* events emitted by the
+   *  agent-runner's autonomous block: started (entering autonomous run),
+   *  continued (auto-injected next turn after end-of-turn detection),
+   *  aborted (user pressed stop), brake (hard brake fired). */
+  autonomous?: {
+    reason?: 'user_stop' | 'turn_limit' | 'token_limit' | 'loop_detected' | 'destructive_command' | 'task_complete';
+    turnCount?: number;
+    maxTurns?: number;
+    totalTokens?: number;
+    maxTokens?: number;
+    message?: string;
+    /** Recoverable-brake: short strategy label (safe_alternative /
+     *  checkpoint_compact_resume / force_compact_resume / reflect_and_pivot). */
+    strategy?: string;
+    /** Recoverable-brake: 1-based recovery attempt count for this brake type. */
+    attempt?: number;
+  };
+  /** Graph Task Planning (DSL v2): real-time graph execution events pushed over
+   *  WebSocket so the frontend canvas can render node status changes with < 2s
+   *  latency (replacing the 5s polling fallback). Emitted by the orchestrator at
+   *  graph / node / edge lifecycle boundaries. */
+  graphEvent?: {
+    runId: string;
+    definitionId?: string;
+    nodeId?: string;
+    nodeType?: string;
+    title?: string;
+    status?: string;
+    tokens?: number;
+    costUsd?: number;
+    durationMs?: number;
+    /** For graph_edge_taken: which edge was activated. */
+    fromNodeId?: string;
+    toNodeId?: string;
+    edgeId?: string;
+    edgeLabel?: string;
+    /** For graph_end: run-level totals. */
+    totalTokens?: number;
+    totalCostUsd?: number;
+    /** Node output summary (for the detail drawer). */
+    output?: string;
+    error?: string;
+  };
+}

@@ -1,0 +1,4 @@
+# 走查运行产物（bundle / workspace / 隔离数据目录），不入库
+data/
+my-agent.bundle.zip
+node_modules/

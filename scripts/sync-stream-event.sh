@@ -16,12 +16,13 @@ sync_file() {
   fi
 }
 
-# --- StreamEvent types (3 targets) ---
+# --- StreamEvent types (4 targets) ---
 SRC_SE="$ROOT/shared/stream-event.ts"
 for target in \
   "$ROOT/container/agent-runner/src/stream-event.types.ts" \
   "$ROOT/src/stream-event.types.ts" \
   "$ROOT/web/src/stream-event.types.ts" \
+  "$ROOT/sdk/src/stream-event.types.ts" \
 ; do
   sync_file "$SRC_SE" "$target"
 done
@@ -44,11 +45,21 @@ for target in \
   sync_file "$SRC_CP" "$target"
 done
 
-# --- Web search providers (2 targets: backend self-test + agent-runner tool) ---
+# --- Web search providers (3 targets: backend self-test + agent-runner tool + sdk tool) ---
 SRC_WS="$ROOT/shared/web-search.ts"
 for target in \
   "$ROOT/src/web-search.ts" \
   "$ROOT/container/agent-runner/src/web-search.ts" \
+  "$ROOT/sdk/src/web-search.ts" \
 ; do
   sync_file "$SRC_WS" "$target"
+done
+
+# --- Agent bundle format (2 targets: backend exporter + sdk loader) ---
+SRC_AB="$ROOT/shared/agent-bundle.ts"
+for target in \
+  "$ROOT/src/agent-bundle.ts" \
+  "$ROOT/sdk/src/agent-bundle.ts" \
+; do
+  sync_file "$SRC_AB" "$target"
 done

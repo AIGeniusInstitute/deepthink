@@ -1,0 +1,32 @@
+{
+  "name": "@deepthink/agent-sdk",
+  "version": "0.1.0",
+  "description": "DeepThink Agent Runtime SDK — embed user-created agents (agentloop + skills + MCP tools) without the DeepThink platform",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.311",
+    "@anthropic-ai/claude-code": "*",
+    "jszip": "^3.10.1",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.9.3"
+  }
+}

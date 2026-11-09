@@ -12,6 +12,7 @@ import { isSchemaValid } from '../graph-engineering/json-schema-validator.js';
 import {
   listAgentDefinitions,
   getAgentDefinition,
+  getAgentDefinitionById,
   createAgentDefinition,
   updateAgentDefinition,
   deleteAgentDefinition,
@@ -58,6 +59,7 @@ import { getWebDeps } from '../web-context.js';
 import { GROUPS_DIR } from '../config.js';
 import { removeFlowArtifacts } from '../file-manager.js';
 import { generateAgentContent, optimizeAgentContent } from '../agent-ai.js';
+import { exportAgentBundle } from '../agent-bundle-export.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { discoverSkills, type Skill } from './skills.js';
@@ -961,6 +963,36 @@ paasAgentsRoute.post('/:id/test-chat', (c) => {
   logger.info({ agentId, jid, folder, userId: user.id }, 'Agent test-chat group created');
 
   return c.json({ jid, folder, name });
+});
+
+// M0：导出 SDK Bundle（AgentBundle 自包含发布物：定义 + skills/MCP 本体内联 + 密钥脱敏）
+paasAgentsRoute.post('/:id/export', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const row = getAgentDefinitionById(id);
+  if (!row) {
+    return c.json({ error: 'Agent definition not found' }, 404);
+  }
+  // A2.2：仅所有者或 admin 可导出
+  if (row.user_id !== user.id && user.role !== 'admin') {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+  try {
+    // 资源本体从属主目录解析（admin 导出他人 agent 时按属主的 skills/mcp 组装）
+    const bundle = await exportAgentBundle(id, row.user_id);
+    const safeName = (row.name || 'agent').replace(/[^\w-]+/g, '_').slice(0, 60);
+    return new Response(new Uint8Array(bundle.zipBuffer), {
+      headers: {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': `attachment; filename="agent-bundle-${safeName}.zip"`,
+        'X-Bundle-Content-Hash': bundle.sha256,
+        'X-Bundle-Warnings': encodeURIComponent(JSON.stringify(bundle.warnings)),
+      },
+    });
+  } catch (err) {
+    logger.error({ err, agentId: id }, 'agent bundle export failed');
+    return c.json({ error: 'Export failed', detail: String(err) }, 500);
+  }
 });
 
 export default paasAgentsRoute;
