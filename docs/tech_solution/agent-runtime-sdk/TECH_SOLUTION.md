@@ -225,10 +225,17 @@ my-agent.bundle/                  # 发布时打 .tar.gz + sha256
   "agent": { "id": "…", "name": "…", "kind": "assistant|orchestrator" },
   "requires": { "tier": "T0|T1", "hostTools": [] },
   "secrets": [ { "ref": "${ENV:MY_API_KEY}", "usedBy": "mcp/foo", "optional": false } ],
-  "runtime": { "engines": ["claude"], "sdkRange": "^1.0.0", "nodeRange": ">=22" },
+  "runtime": {
+    "engines": ["claude"], "sdkRange": "^1.0.0", "nodeRange": ">=22",
+    // —— Android/移动预留字段（M0 只写不消费，向前兼容）——
+    "platform": "any|desktop|mobile",        // 资源可移植性声明，导出时可选「移动友好」过滤
+    "mcpDeps": { "foo": "pure-js|node|native|system" }  // 每个 MCP server 的依赖形态
+  },
   "contentHash": "sha256:…"       // 覆盖全部资源文件，安装时校验（确定性打包）
 }
 ```
+
+> **Bundle × Android 路径**：bundle 是纯数据（运行时无关），Android 端的执行运行时 = android-single-apk 的嵌入式 libnode（Node v22.23.2）+ `@deepthink/agent-sdk` 同一个 npm 包（在 runtime.tar.zst 的 node_modules 里）。即「android-single-apk 运行时包 + AgentBundle = Android 版 Agent SDK」，与 §5.3 Runtime Kit 是同一模式（带 Node 的自包含运行时 + bundle）的两个实例。适配点只有三个，且都不进 bundle 本体：① stdio MCP 需纯 JS（系统二进制型在设备上不可用，故 manifest 加 `mcpDeps` 声明）；② claude CLI 的 bionic/glibc patchelf 配方属于运行时包（android-on-device 已验证）；③ T2 平台工具与 sandbox/browser 在移动端同样裁剪。android-single-apk M2 之后可直接消费 bundle，M0 只做格式预留、不做专门开发。
 
 ### 4.3 导出与安装（平台侧新增）
 
@@ -320,6 +327,7 @@ Node 二进制 + agent-sdk + claude CLI + bundle + 启动器；stdio JSONL 或�
 | KB/Plugins/Workers | 推迟 M2；bundle 格式预留目录位 |
 | Runtime Kit | 无明确非 Node 客户前推迟 M4 |
 | 多轮语义 | 走 MessageStream 会话循环（不是 AaaS 的「只取最后一条」） |
+| bundle × Android | bundle 纯数据可直接进 Android；执行靠 android-single-apk 嵌入式 libnode 运行时 + 同一 npm SDK。M0 只做 manifest `platform`/`mcpDeps` 字段预留（只写不消费），Android 专门开发等 android-single-apk M2 后另行立项 |
 
 ## 附录：调研依据
 

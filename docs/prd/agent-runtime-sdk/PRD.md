@@ -46,7 +46,7 @@ Agent Studio 创建的 agent 目前对外服务只有「开放平台 HTTP 接口
 
 #### F1 AgentBundle 格式 v1（发布物序列化）
 
-- 内容：`manifest.json`（schemaVersion、requires.tier、secrets 引用声明、sdkRange、contentHash）、`agent.json`（agent 定义全字段 + validation 5 字段）、`prompts/system.md`（最终 system prompt，所见即所得）、`skills/{skillId}/`（SKILL.md 全文 + 目录文件）、`mcp/servers.json`（McpServerEntry 本体，env 值脱敏为 `${ENV:VAR}` 引用）。
+- 内容：`manifest.json`（schemaVersion、requires.tier、secrets 引用声明、sdkRange、contentHash；**预留 Android 字段** `runtime.platform` / `runtime.mcpDeps`——只写不消费，向前兼容）、`agent.json`（agent 定义全字段 + validation 5 字段）、`prompts/system.md`（最终 system prompt，所见即所得）、`skills/{skillId}/`（SKILL.md 全文 + 目录文件）、`mcp/servers.json`（McpServerEntry 本体，env 值脱敏为 `${ENV:VAR}` 引用）。
 - **验收标准**：
   - A1.1 目录结构与 manifest schema 符合规范（提供 JSON schema 并校验）。
   - A1.2 contentHash 覆盖全部资源文件；任一文件被篡改后 `fromBundle` 拒绝加载并报明确错误。
@@ -131,6 +131,7 @@ Agent Studio 创建的 agent 目前对外服务只有「开放平台 HTTP 接口
 | npm registry 正式发布管线（M0 以 `npm pack` tarball 消费） | M3 |
 | Bundle 签名、版本快照随包 | M4 |
 | 非 Claude 引擎（atomcode/codex/opencode/pi） | 暂不支持（manifest `runtime.engines: ["claude"]`） |
+| Android 端专门开发（bundle 在 M0 仅格式预留 `platform`/`mcpDeps` 字段） | android-single-apk M2 后另行立项（bundle 纯数据可直接被嵌入式 libnode 运行时 + 同一 npm SDK 消费，见技术方案 §4.2） |
 
 ## 5. 测试用例
 
