@@ -52,3 +52,12 @@ for target in \
 ; do
   sync_file "$SRC_WS" "$target"
 done
+
+# --- Agent bundle format (2 targets: backend exporter + sdk loader) ---
+SRC_AB="$ROOT/shared/agent-bundle.ts"
+for target in \
+  "$ROOT/src/agent-bundle.ts" \
+  "$ROOT/sdk/src/agent-bundle.ts" \
+; do
+  sync_file "$SRC_AB" "$target"
+done

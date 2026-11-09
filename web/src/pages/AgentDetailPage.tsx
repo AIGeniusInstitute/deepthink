@@ -14,7 +14,7 @@ import { api } from '../api/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { ArrowLeft, Bot, Plus, Trash2, Link as LinkIcon, Folder, History, RotateCcw, Share2, Users, GitCompare, MessageSquare, Wand2, Loader2, Network, Play } from 'lucide-react';
+import { ArrowLeft, Bot, Plus, Trash2, Link as LinkIcon, Folder, History, RotateCcw, Share2, Users, GitCompare, MessageSquare, Wand2, Loader2, Network, Play, Download } from 'lucide-react';
 import { OptimizeAgentDialog } from '@/components/agents/OptimizeAgentDialog';
 
 const RESOURCE_LABEL: Record<ResourceType, string> = {
@@ -275,6 +275,8 @@ function AgentDetailView({ agent }: { agent: AgentDefinition }) {
               else toast.error('撤销失败');
             }}
           />
+
+          <BundleExportSection agentId={selected.id} />
 
           <CollaboratorsSection
             agentId={selected.id}
@@ -573,6 +575,41 @@ function VersionHistorySection({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function BundleExportSection({ agentId }: { agentId: string }) {
+  const exportBundle = useAgentsPaasStore((s) => s.exportBundle);
+  const [exporting, setExporting] = useState(false);
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium flex items-center gap-2">
+          <Download className="size-4" /> 导出 SDK Bundle
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={exporting}
+          onClick={async () => {
+            setExporting(true);
+            try {
+              const ok = await exportBundle(agentId);
+              if (ok) toast.success('Bundle 已导出');
+              else toast.error('导出失败');
+            } finally {
+              setExporting(false);
+            }
+          }}
+        >
+          {exporting ? <Loader2 className="size-3 mr-1 animate-spin" /> : <Download className="size-3 mr-1" />}
+          导出 .zip
+        </Button>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        打包 Agent 定义 + skills/MCP 资源本体（密钥自动脱敏），供 <code>@deepthink/agent-sdk</code> 在任意 Node.js 环境离线运行，无需部署 DeepThink 平台。
+      </div>
     </div>
   );
 }

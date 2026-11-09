@@ -138,6 +138,7 @@ interface AgentsState {
   createShare: (agentId: string) => Promise<AgentShare | null>;
   listShares: (agentId: string) => Promise<AgentShare[]>;
   deleteShare: (agentId: string, shareId: string) => Promise<boolean>;
+  exportBundle: (agentId: string) => Promise<boolean>;
   listCollaborators: (agentId: string) => Promise<AgentCollaborator[]>;
   addCollaborator: (agentId: string, userId: string, role: 'editor' | 'viewer') => Promise<boolean>;
   removeCollaborator: (agentId: string, userId: string) => Promise<boolean>;
@@ -274,6 +275,31 @@ export const useAgentsPaasStore = create<AgentsState>((set, get) => ({
     try {
       await api.delete(`/api/paas/agents/${agentId}/shares/${shareId}`);
       await get().listShares(agentId);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  // 导出 SDK Bundle：二进制 zip 下载（apiFetch 只处理 JSON，这里直接 fetch + blob）
+  exportBundle: async (agentId) => {
+    try {
+      const res = await fetch(`/api/paas/agents/${agentId}/export`, {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return false;
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') ?? '';
+      const match = /filename="([^"]+)"/.exec(disposition);
+      const filename = match?.[1] ?? `agent-bundle-${agentId}.zip`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
       return true;
     } catch {
       return false;

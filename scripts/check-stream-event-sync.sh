@@ -45,6 +45,11 @@ check_sync "$ROOT/shared/web-search.ts" \
   "$ROOT/src/web-search.ts" \
   "$ROOT/container/agent-runner/src/web-search.ts"
 
+# Agent bundle format
+check_sync "$ROOT/shared/agent-bundle.ts" \
+  "$ROOT/src/agent-bundle.ts" \
+  "$ROOT/sdk/src/agent-bundle.ts"
+
 if [ "$FAIL" -eq 0 ]; then
   echo "All shared type copies are in sync."
 else
